@@ -43,6 +43,8 @@ def detect_inferred_completion_signal(obj: dict) -> str | None:
             return "item_completed_final_answer"
     if method == "thread/status/changed":
         status = params.get("status") or (params.get("thread") or {}).get("status")
+        if isinstance(status, dict):
+            status = status.get("type")
         if status in {"idle", "completed"}:
             return f"thread_status_{status}"
     return None

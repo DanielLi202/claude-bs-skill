@@ -17,6 +17,10 @@ class CodexDriverTests(unittest.TestCase):
         obj = {'method': 'thread/status/changed', 'params': {'status': 'idle'}}
         self.assertEqual(codex_driver.detect_inferred_completion_signal(obj), 'thread_status_idle')
 
+    def test_object_status_signal_extracts_type(self):
+        obj = {'method': 'thread/status/changed', 'params': {'status': {'type': 'idle', 'activeFlags': []}}}
+        self.assertEqual(codex_driver.detect_inferred_completion_signal(obj), 'thread_status_idle')
+
     def test_driver_defaults_include_heartbeat_and_inferred_timer(self):
         source = DRIVER.read_text(encoding='utf-8')
         self.assertIn('default=30', source)
