@@ -50,19 +50,19 @@ Next task is the lexicographically smallest pending task whose dependencies are 
 3. Select the next unblocked pending task.
 4. Run Step 1 self-containment gate: required fields, status precondition, closed enums, dependency closure, `spec_refs` length, and file/dir existence for `spec_refs` after stripping informational anchors.
 5. On main with clean working tree, change the task to `in_progress`, commit `bs: start <ID> <title>`, push `origin main`, and verify remote main equals local HEAD.
-6. Create the cycle directory and worktree branch from that pushed commit; write `cycle.yaml`, binding snapshot, and `step_events.jsonl` started/completed events.
+6. Create the cycle directory and worktree branch from that pushed commit; write `cycle.yaml`, binding snapshot, and strict `step_events.jsonl` started/terminal attempt pairs.
 7. Run the 11-step cycle: ingest, identify, shape, conduct, grade, fix loop, PR, auto-merge, escalation handling, reflection, ledger close.
 8. Step 10 closes with one atomic commit on main containing both ledger append and backlog writeback.
 
 ## 5. Step events and resume
 
-`step_events.jsonl` is append-only. Every step emits exactly `started` and then either `completed` or `failed`. Semantic details go in `outcome` or `reason`, never by inventing event names.
+`step_events.jsonl` is append-only. Every step attempt emits exactly `started` and then either `completed` or `failed`. The state key is `(step, attempt)` where `attempt` defaults to `0`; retries must increment `attempt`. A terminal event without a matching start, nested start for the same `(step, attempt)`, or unclosed start is invalid. Semantic details go in `outcome` or `reason`, never by inventing event names.
 
-`/bs resume` rebuilds state from `step_events.jsonl`. If a step is started without terminal event, runtime requires a human decision: `--redo`, `--mark-completed`, or `--escalate`. It must not infer success for side-effecting steps.
+`/bs resume` rebuilds state from `step_events.jsonl` with strict pairing, not last-write-wins. If a step attempt is started without terminal event, runtime requires a human decision: `--redo`, `--mark-completed`, or `--escalate`. It must not infer success for side-effecting steps.
 
 ## 6. Required artifacts
 
-Every cycle produces `outcome.md`, `shape_critic.yaml`, `preflight_initial.yaml`, `step_events.jsonl`, `grade_round_0.md`, `grade_result.md`, `auto_merge_gate.yaml`, `task_knowledge.yaml`, `workflow_reflection.yaml`, and evidence files: `raw_vendor_output.jsonl`, `rpc_requests.jsonl`, `vendor_stderr.txt`, `git_diff.patch`, `git_status.txt`.
+Every cycle produces `outcome.md`, `shape_critic.yaml`, `preflight_initial.yaml`, `step_events.jsonl`, `grade_round_0.md`, `grade_result.md`, `auto_merge_gate.yaml`, `task_knowledge.yaml`, `workflow_reflection.yaml`, and evidence files: `raw_vendor_output.jsonl`, `rpc_requests.jsonl`, `vendor_stderr.txt`, `driver_events.jsonl`, `git_diff.patch`, `git_status.txt`.
 
 Fix-round artifacts are conditional on fix rounds. Medium/high risk grade raw output goes under `evidence/grade/`.
 
@@ -84,6 +84,10 @@ If the commit fails, runtime reverts both files and escalates.
 - `/bs doctor`: read-only health diagnosis.
 - `/bs refresh-contract`: explicit contract update and hash writeback.
 
-## 9. Non-goals
+## 9. Driver robustness
+
+The Codex app-server driver emits a heartbeat every 30 seconds while waiting for turn completion. If an app-server final-answer/idle signal arrives but `turn/completed` is missing or raced, the driver arms a 5-second inferred-completion timer, records `inferred_completion: true` in `driver_events.jsonl`, and treats that turn as completed unless an explicit terminal event arrives first.
+
+## 10. Non-goals
 
 No parallel cycles, enum extension, severity override, council-member override, multi-backlog, markdown-embedded backlog compatibility, automatic v1.2 ledger migration, `/bs gc`, or repository-specific prompt override in v1.3.
