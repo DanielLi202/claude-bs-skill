@@ -1,0 +1,21 @@
+name: bs
+version: "1.3.0"
+description: "Bootstrap development workflow — automated cycle execution from backlog"
+contract_version: "1.3"
+commands:
+  - name: bs
+    description: "Run next pending task from backlog"
+  - name: bs-init
+    description: "Initialize bootstrap workflow in current repo"
+  - name: bs-status
+    description: "Show backlog status summary"
+  - name: bs-resume
+    description: "Resume interrupted cycle"
+  - name: bs-park
+    description: "Park a pending backlog task"
+  - name: bs-unpark
+    description: "Move a parked task back to pending"
+  - name: bs-doctor
+    description: "Diagnose binding, contract hash, and backlog health"
+  - name: bs-refresh-contract
+    description: "Refresh the local contract and binding hash explicitly"
