@@ -43,6 +43,44 @@ Parser checks are fail-fast: required fields, enum values, duplicate IDs, ID for
 
 Next task is the lexicographically smallest pending task whose dependencies are completed.
 
+
+## Expected Task Scale & Agent Autonomy
+
+### Task scale
+
+Bootstrap cycles span a wide range of task sizes:
+
+- **TC-A** (~100 LOC): docs / tooling / spec patches; small validation cycles.
+- **TC-B** (~thousands LOC): greenfield modules, large refactors, new daemon implementations. This is the **target task size** the workflow is designed for.
+- **TC-C** (~500 LOC): mid-size refactors, documentation overhauls.
+
+Early cycles in a fresh adopter's ledger may be predominantly TC-A (intentional validation runs). **Do not infer typical task size from prior cycle history** — task size is set by `backlog.yaml.tasks[*].estimated_loc` (or unknown if absent) and is the adopter's intent, not an emergent baseline.
+
+If `estimated_loc` is **absent or null** for a task, the size is *unknown* — this is NOT a pause condition. Proceed to Step 2 Shape; the Shape agent will derive scope from `spec_refs` and `acceptance_hints`.
+
+The Conduct driver (path A `codex app-server`) is designed to handle TC-B tasks in a single turn. If a single turn cannot produce the full implementation, that surfaces as a Step 3 `failed` event (heartbeat timeout / inferred completion exhaustion / vendor crash) and triggers the standard Step 5 fix loop, not a Step 2 pre-emptive pause.
+
+### Agent autonomy bounds (normative)
+
+The `/bs` agent **MUST NOT** pause or request user confirmation based on:
+
+- Task LOC magnitude (absolute or relative to prior cycles)
+- Subjective "task feels large / risky / unfamiliar" heuristics
+- Comparison against prior cycle wall-clock or fix-loop counts
+- Anything not enumerated below as a schema-defined gate
+
+The agent **MUST** pause / escalate only on:
+
+- Step 1 self-containment gate failure (missing required field, broken `spec_refs` path, unsatisfied `blocked_by`)
+- Step 3 driver crash / heartbeat timeout / inferred completion fails after retry
+- Step 4 P0+P1 > 0 after fix loop max iterations or non-strictly-decreasing
+- Step 7 auto-merge gate fails (conflict / hook fail / pending review)
+- Explicit `/bs park`, `/bs resume --escalate`, user-initiated abort
+- Backlog/binding schema validation failure at startup
+- `verify_command` non-zero exit
+
+If the agent encounters a situation it considers concerning but not covered by the above gates, it **MUST proceed and record the concern as a `workflow_reflection.yaml` entry** in Step 9, rather than pause to ask. If experience shows a real new gate is needed, it gets added to the contract via a patch cycle (like this v1.3.1).
+
 ## 4. Main `/bs` flow
 
 1. Find repo root, validate `.bootstrap.yaml`, contract hash, and backlog schema.
