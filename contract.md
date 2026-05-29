@@ -1,4 +1,4 @@
-# Bootstrap Development Workflow Contract v1.3
+# Bootstrap Development Workflow Contract v1.3.4
 
 > Universal workflow contract for bootstrap-driven repositories. The contract owns orchestration semantics; each repository owns only its binding, backlog, ledger, verification command, and red-line documents.
 
@@ -22,7 +22,7 @@ Required binding fields:
 - optional `workflow_dir` override; null means use skill bundled runtime
 - optional `register_prefixes` and `agent_prompts.*`
 
-Contract verification is three-way: `.bootstrap.yaml.contract.source_sha256`, `.bootstrap/contract.sha256`, and the local skill `contract.md` sha256 must match. Semver compatibility uses `contract.compatible_range`; floating latest is forbidden.
+Contract verification is three-way: `.bootstrap.yaml.contract.source_sha256`, `.bootstrap/contract.sha256`, and the local skill `contract.md` sha256 must match. Semver compatibility uses `contract.compatible_range`; floating latest is forbidden. If the contract contains a Runtime manifest, every listed runtime or command-surface file must match its locked sha256 during binding validation.
 
 ## 3. Backlog requirements
 
@@ -86,11 +86,12 @@ If the agent encounters a situation it considers concerning but not covered by t
 1. Find repo root, validate `.bootstrap.yaml`, contract hash, and backlog schema.
 2. Reject if any task is already `in_progress`; use `/bs resume` instead.
 3. Select the next unblocked pending task.
-4. Run Step 1 self-containment gate: required fields, status precondition, closed enums, dependency closure, `spec_refs` length, and file/dir existence for `spec_refs` after stripping informational anchors.
-5. On main with clean working tree, change the task to `in_progress`, commit `bs: start <ID> <title>`, push `origin main`, and verify remote main equals local HEAD.
-6. Create the cycle directory and worktree branch from that pushed commit; write `cycle.yaml`, binding snapshot, and strict `step_events.jsonl` started/terminal attempt pairs.
-7. Run the 11-step cycle: ingest, identify, shape, conduct, grade, fix loop, PR, auto-merge, escalation handling, reflection, ledger close.
-8. Step 10 closes with one atomic commit on main containing both ledger append and backlog writeback.
+4. Run the startup (pre-start) gate via `${runtime}/preflight.sh` before the start commit or cycle directory. Non-zero exit escalates with no cycle artifacts.
+5. Run Step 1 self-containment gate: required fields, status precondition, closed enums, dependency closure, `spec_refs` length, and file/dir existence for `spec_refs` after stripping informational anchors.
+6. On main with clean working tree, change the task to `in_progress`, commit `bs: start <ID> <title>`, push `origin main`, and verify remote main equals local HEAD.
+7. Create the cycle directory and worktree branch from that pushed commit; write `cycle.yaml`, binding snapshot, the captured startup gate output as `preflight_initial.yaml`, and strict `step_events.jsonl` started/terminal attempt pairs.
+8. Run the 11-step cycle: ingest, identify, shape, conduct, grade, fix loop, PR, auto-merge, escalation handling, reflection, ledger close.
+9. Step 10 closes with one atomic commit on main containing both ledger append and backlog writeback.
 
 ## 5. Step events and resume
 
@@ -124,8 +125,34 @@ If the commit fails, runtime reverts both files and escalates.
 
 ## 9. Driver robustness
 
-The Codex app-server driver emits a heartbeat every 30 seconds while waiting for turn completion. If an app-server final-answer/idle signal arrives but `turn/completed` is missing or raced, the driver arms a 5-second inferred-completion timer, records `inferred_completion: true` in `driver_events.jsonl`, and treats that turn as completed unless an explicit terminal event arrives first.
+The Codex app-server driver sends `/goal @<outcome.md>` through `codex app-server --listen stdio://`; no prompt wrapper and no `codex exec --json` fallback exist. Launch/handshake transient failures retry, then exit 3 on exhaustion. Deterministic launch failures exit 4 without retry. Turn failures after `turn/start` exit 2.
+
+The driver emits a heartbeat every 30 seconds while waiting for turn completion. If an app-server final-answer/idle signal arrives but `turn/completed` is missing or raced, the driver arms a 5-second inferred-completion timer, records `inferred_completion: true` in `driver_events.jsonl`, and treats that turn as completed unless an explicit terminal event arrives first. Idle timeout is based only on stdout JSON-RPC activity; stderr sidecar noise does not keep a stuck turn alive.
+
+## Conduct invariants (normative)
+
+- A startup (pre-start) gate MUST run `${runtime}/preflight.sh` BEFORE the `bs: start` commit / cycle dir creation / step_0 ingest. Non-zero exit MUST escalate with no artifacts created (fail-fast on dependency failure). This gate is distinct from the cycle's step_0 ingest; preflight detail is recorded post-start in `preflight_initial.yaml`.
+- Conduct (Step 3) and Fix (Step 5) MUST invoke `${runtime}/conduct.sh`. They MUST NOT invoke `codex_driver.py` / `codex_fix_driver.py` / `codex` directly, MUST NOT use `codex exec --json`, and MUST NOT substitute any other vendor binary path. Bootstrap is intentionally stricter than the product's DA-24 transport fallback because bootstrap exists partly to validate the app-server path.
+- Goal mode is mandatory and file-referenced: the driver sends `/goal @<outcome.md>`. The agent MUST pass `--outcome-file`; it MUST NOT wrap a conduct prompt or inject any prompt during delegation.
+- If `codex app-server` launch fails transiently, the driver retries up to `--launch-retries` then exits 3. On exhaustion (exit 3) or deterministic launch fatal (exit 4), the agent MUST escalate at Step 3 and MUST NOT try another transport.
+
+## Runtime manifest (locked)
+
+| file | sha256 |
+|---|---|
+| runtime/preflight.sh | 233a3d7e8b634355be1c50dbf30929753443dea27db0ce3eac6b526e3b9f639a |
+| runtime/codex_driver.py | f2afcad77177d58e122f24a46491eb4294dc1d5967182bed98eba383aabe3ab0 |
+| runtime/codex_fix_driver.py | 0ba1be44f6ddf4f8ff8d40a8a661bd317c85752c5e9597f6c2ac13afb9d1ae4a |
+| runtime/conduct.sh | 6d98e274c6711141738a0fe1a4d18ef76387578f89ef0b1f5c1d45aa53440ca7 |
+| commands/bs.md | 10affdf01f0ecd3b9d1dacb55924c53261c73daaee8e8e70c06478a2fcfc2c8a |
+
+The manifest locks runtime and slash-command surface by making file hashes part of the contract hash. Any listed file change requires updating this table and refreshing adopter bindings.
 
 ## 10. Non-goals
 
-No parallel cycles, enum extension, severity override, council-member override, multi-backlog, markdown-embedded backlog compatibility, automatic v1.2 ledger migration, `/bs gc`, or repository-specific prompt override in v1.3.
+No parallel cycles, enum extension, severity override, council-member override, multi-backlog, markdown-embedded backlog compatibility, automatic v1.2 ledger migration, `/bs gc`, or repository-specific prompt override in v1.3.4.
+
+
+## 11. Changelog
+
+- v1.3.4: code-enforced app-server-only Conduct path, `/goal @outcome.md`, startup preflight dependency gate, transient launch retry-then-stop, mandatory `conduct.sh`, stdout-only idle timeout, test-only fake Codex injection, and runtime manifest hash.

@@ -6,9 +6,10 @@ Execute the next bootstrap backlog task end-to-end. Do not only describe the wor
 
 1. Resolve repo root with `git rev-parse --show-toplevel` and `cd` there.
 2. Read `~/.claude/skills/bs/contract.md` before executing.
-3. Load `.bootstrap.yaml`; validate binding, contract hash, `compatible_range`, backlog schema, and red-line docs.
-4. Reject if the working tree is dirty, current branch is not `main`, or any backlog task is `in_progress`.
-5. Select the lexicographically smallest pending task whose dependencies are completed. Skip `B-000`.
+3. Load `.bootstrap.yaml`; validate binding, contract hash, `compatible_range`, runtime manifest hashes, backlog schema, and red-line docs.
+4. Run the startup (pre-start) gate via `${runtime}/preflight.sh` before any start commit or cycle directory creation. If it exits non-zero, escalate without creating cycle artifacts.
+5. Reject if the working tree is dirty, current branch is not `main`, or any backlog task is `in_progress`.
+6. Select the lexicographically smallest pending task whose dependencies are completed. Skip `B-000`.
 
 ## Execution flow
 
@@ -28,11 +29,12 @@ Execute the next bootstrap backlog task end-to-end. Do not only describe the wor
 4. Write initial artifacts:
    - `cycle.yaml` with binding snapshot, task snapshot, start commit, branch, timestamps;
    - `step_events.jsonl` using strict started/terminal pairs and `attempt` for retries;
-   - `outcome.md`, `preflight_initial.yaml`, and evidence directory.
+   - `outcome.md`, evidence directory, and `preflight_initial.yaml` copied from the pre-start gate output (record only; this is not `step_0`).
 5. Run the 11-step cycle from the contract:
    - Shape outcome and acceptance;
-   - Conduct via `${runtime}/codex_driver.py` with evidence captured;
-   - Grade and, if needed, run bounded fix rounds via `${runtime}/codex_fix_driver.py`;
+   - Conduct via `${runtime}/conduct.sh` with evidence captured. MUST NOT call `codex_driver.py`, `codex`, or `codex exec --json` directly;
+   - The conduct driver sends `/goal @<outcome.md>` and MUST NOT wrap or inject a separate conduct prompt;
+   - Grade and, if needed, run bounded fix rounds via `${runtime}/conduct.sh --fix-round N`;
    - run `${binding.verify_command}` in the worktree before PR;
    - create PR from the worktree branch;
    - use balanced auto-merge only when P0/P1 counts are zero and checks pass;
