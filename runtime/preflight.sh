@@ -80,7 +80,7 @@ fi
 if [[ "$SKIP_VERIFY_PREFLIGHT" == 1 ]]; then
   add_check verify_command_baseline warn false "baseline verify skipped"
 elif [[ -n "$VERIFY_COMMAND" ]]; then
-  if out=$(bash -lc "$VERIFY_COMMAND" 2>&1); then add_check verify_command_baseline pass true "verify command passed"; else add_check verify_command_baseline fail true "$out"; fi
+  if out=$(bash -c "$VERIFY_COMMAND" 2>&1); then add_check verify_command_baseline pass true "verify command passed"; else add_check verify_command_baseline fail true "$out"; fi
 else
   add_check verify_command_baseline warn false "no verify command provided"
 fi

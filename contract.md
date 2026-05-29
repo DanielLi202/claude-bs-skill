@@ -140,7 +140,7 @@ The driver emits a heartbeat every 30 seconds while waiting for turn completion.
 
 | file | sha256 |
 |---|---|
-| runtime/preflight.sh | 233a3d7e8b634355be1c50dbf30929753443dea27db0ce3eac6b526e3b9f639a |
+| runtime/preflight.sh | 9b3904e33a7f2c3fef56bceb614f62bf6987c994ec630d3f4444f41a73aabfd5 |
 | runtime/codex_driver.py | f2afcad77177d58e122f24a46491eb4294dc1d5967182bed98eba383aabe3ab0 |
 | runtime/codex_fix_driver.py | 0ba1be44f6ddf4f8ff8d40a8a661bd317c85752c5e9597f6c2ac13afb9d1ae4a |
 | runtime/conduct.sh | 6d98e274c6711141738a0fe1a4d18ef76387578f89ef0b1f5c1d45aa53440ca7 |
