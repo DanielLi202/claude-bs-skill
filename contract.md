@@ -1,4 +1,4 @@
-# Bootstrap Development Workflow Contract v1.3.4
+# Bootstrap Development Workflow Contract v1.3.5
 
 > Universal workflow contract for bootstrap-driven repositories. The contract owns orchestration semantics; each repository owns only its binding, backlog, ledger, verification command, and red-line documents.
 
@@ -103,7 +103,25 @@ If the agent encounters a situation it considers concerning but not covered by t
 
 Every cycle produces `outcome.md`, `shape_critic.yaml`, `preflight_initial.yaml`, `step_events.jsonl`, `grade_round_0.md`, `grade_result.md`, `auto_merge_gate.yaml`, `task_knowledge.yaml`, `workflow_reflection.yaml`, and evidence files: `raw_vendor_output.jsonl`, `rpc_requests.jsonl`, `vendor_stderr.txt`, `driver_events.jsonl`, `git_diff.patch`, `git_status.txt`.
 
-Fix-round artifacts are conditional on fix rounds. Medium/high risk grade raw output goes under `evidence/grade/`.
+Each `grade_round_<N>.md` MUST contain parseable fenced YAML blocks for both:
+
+```yaml
+grade_summary:
+  p0_count: 0
+  p1_count: 1
+  p2_count: 0
+```
+
+```yaml
+acceptance_status:
+  - id: B011-FORCED-RESHAPE-CONTROL
+    status: fail
+    severity: P1
+```
+
+`grade_summary.p0_count + p1_count` is the blocking-failure metric for fix-loop stop conditions. Missing or malformed `grade_summary` / `acceptance_status` is fail-fast because the loop cannot evaluate itself blind.
+
+Fix-round artifacts are conditional on fix rounds: `outcome.v<g>.md` archives for every re-shape, a `bs-fix-round: R` marker in live `outcome.md`, and per-round evidence under `evidence/conduct_round_<N>/` including round 0. Medium/high risk grade raw output goes under `evidence/grade/`.
 
 ## 7. Step 10 atomic close
 
@@ -125,7 +143,7 @@ If the commit fails, runtime reverts both files and escalates.
 
 ## 9. Driver robustness
 
-The Codex app-server driver sends `/goal @<outcome.md>` through `codex app-server --listen stdio://`; no prompt wrapper and no `codex exec --json` fallback exist. Launch/handshake transient failures retry, then exit 3 on exhaustion. Deterministic launch failures exit 4 without retry. Turn failures after `turn/start` exit 2.
+The Codex app-server driver sends `/goal @<outcome.md>` through `codex app-server --listen stdio://`; no prompt wrapper and no `codex exec --json` fallback exist. Fix rounds (`--fix-round R`, R >= 1) re-read the cycle's `outcome.md` after `reshape_fix_round.py` has re-shaped it; the driver still sends exactly one `/goal @<outcome.md>`, never a second file or a prompt wrapper. Launch/handshake transient failures retry, then exit 3 on exhaustion. Deterministic launch failures exit 4 without retry. Turn failures after `turn/start` exit 2.
 
 The driver emits a heartbeat every 30 seconds while waiting for turn completion. If an app-server final-answer/idle signal arrives but `turn/completed` is missing or raced, the driver arms a 5-second inferred-completion timer, records `inferred_completion: true` in `driver_events.jsonl`, and treats that turn as completed unless an explicit terminal event arrives first. Idle timeout is based only on stdout JSON-RPC activity; stderr sidecar noise does not keep a stuck turn alive.
 
@@ -134,6 +152,9 @@ The driver emits a heartbeat every 30 seconds while waiting for turn completion.
 - A startup (pre-start) gate MUST run `${runtime}/preflight.sh` BEFORE the `bs: start` commit / cycle dir creation / step_0 ingest. Non-zero exit MUST escalate with no artifacts created (fail-fast on dependency failure). This gate is distinct from the cycle's step_0 ingest; preflight detail is recorded post-start in `preflight_initial.yaml`.
 - Conduct (Step 3) and Fix (Step 5) MUST invoke `${runtime}/conduct.sh`. They MUST NOT invoke `codex_driver.py` / `codex_fix_driver.py` / `codex` directly, MUST NOT use `codex exec --json`, and MUST NOT substitute any other vendor binary path. Bootstrap is intentionally stricter than the product's DA-24 transport fallback because bootstrap exists partly to validate the app-server path.
 - Goal mode is mandatory and file-referenced: the driver sends `/goal @<outcome.md>`. The agent MUST pass `--outcome-file`; it MUST NOT wrap a conduct prompt or inject any prompt during delegation.
+- A grade failure (Step 4 P0+P1 > 0) is repaired by re-shaping the capsule via `${runtime}/reshape_fix_round.py`, never by prompt injection. For fix round R (R >= 1) the helper MUST archive the prior capsule to `outcome.v<R-1>.md`, fold structured findings from `grade_round_<R-1>.md` (failed acceptance IDs plus an optional length-bounded corrections list plus a reference to that grade file, not a verbatim paste), and emit a `bs-fix-round: R` marker.
+- `${runtime}/conduct.sh --fix-round R` MUST refuse to launch unless `outcome.v<R-1>.md` and `grade_round_<R-1>.md` exist and `outcome.md` carries the `bs-fix-round: R` marker. The driver still sends exactly one `/goal @<outcome.md>`.
+- The fix loop is bounded by `max_fix_rounds = 3`. The agent MUST escalate at Step 4 if P0+P1 > 0 after round 3, or if P0+P1 does not strictly decrease across rounds. Strict decrease is measured from `grade_summary.p0_count + p1_count`, not acceptance pass/fail. No unbounded looping.
 - If `codex app-server` launch fails transiently, the driver retries up to `--launch-retries` then exits 3. On exhaustion (exit 3) or deterministic launch fatal (exit 4), the agent MUST escalate at Step 3 and MUST NOT try another transport.
 
 ## Runtime manifest (locked)
@@ -143,16 +164,18 @@ The driver emits a heartbeat every 30 seconds while waiting for turn completion.
 | runtime/preflight.sh | 9b3904e33a7f2c3fef56bceb614f62bf6987c994ec630d3f4444f41a73aabfd5 |
 | runtime/codex_driver.py | f2afcad77177d58e122f24a46491eb4294dc1d5967182bed98eba383aabe3ab0 |
 | runtime/codex_fix_driver.py | 0ba1be44f6ddf4f8ff8d40a8a661bd317c85752c5e9597f6c2ac13afb9d1ae4a |
-| runtime/conduct.sh | 6d98e274c6711141738a0fe1a4d18ef76387578f89ef0b1f5c1d45aa53440ca7 |
-| commands/bs.md | 10affdf01f0ecd3b9d1dacb55924c53261c73daaee8e8e70c06478a2fcfc2c8a |
+| runtime/reshape_fix_round.py | 601dca47d7c729b05110efb2634135a8f83afec2bae8daaabe5f20b5aa2b759b |
+| runtime/conduct.sh | 1e48ffb37ecb0efc07c70961752f4c6ec90292cc7c90828915c34ddb35bbcb7a |
+| commands/bs.md | be9736ec041da48c2170f95514624a831cd34827883c6b311c5964dcc4158b61 |
 
 The manifest locks runtime and slash-command surface by making file hashes part of the contract hash. Any listed file change requires updating this table and refreshing adopter bindings.
 
 ## 10. Non-goals
 
-No parallel cycles, enum extension, severity override, council-member override, multi-backlog, markdown-embedded backlog compatibility, automatic v1.2 ledger migration, `/bs gc`, or repository-specific prompt override in v1.3.4.
+No parallel cycles, enum extension, severity override, council-member override, multi-backlog, markdown-embedded backlog compatibility, automatic v1.2 ledger migration, `/bs gc`, repository-specific prompt override, second `/goal` file, raw grade markdown paste into the capsule, or unbounded fix loop in v1.3.5.
 
 
 ## 11. Changelog
 
+- v1.3.5: mechanically-enforced fix-round capsule re-shape. `reshape_fix_round.py` archives `outcome.v<R-1>.md`, folds structured grade findings (failed acceptance IDs plus bounded corrections, not pasted raw markdown) and a `bs-fix-round` marker; `conduct.sh --fix-round R` guards on archive + grade + marker; the driver still sends one `/goal @outcome.md`; per-round evidence dirs and `max_fix_rounds=3` with strict P0+P1 decrease are locked.
 - v1.3.4: code-enforced app-server-only Conduct path, `/goal @outcome.md`, startup preflight dependency gate, transient launch retry-then-stop, mandatory `conduct.sh`, stdout-only idle timeout, test-only fake Codex injection, and runtime manifest hash.

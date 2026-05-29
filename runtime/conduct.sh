@@ -28,6 +28,23 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$CYCLE_DIR" && -n "$OUTCOME_FILE" && -n "$EVIDENCE_DIR" ]] || { usage; exit 64; }
+
+ROUND="0"
+if [[ -n "$FIX_ROUND" ]]; then
+  if ! [[ "$FIX_ROUND" =~ ^[1-9][0-9]*$ ]]; then
+    echo '{"conduct_result":"reshape_missing","exit":5,"reason":"invalid_fix_round"}'
+    exit 5
+  fi
+  ROUND="$FIX_ROUND"
+  ARCHIVE="$CYCLE_DIR/outcome.v$((FIX_ROUND - 1)).md"
+  GRADE="$CYCLE_DIR/grade_round_$((FIX_ROUND - 1)).md"
+  if [[ ! -f "$ARCHIVE" || ! -f "$GRADE" ]] || ! grep -q "bs-fix-round: ${FIX_ROUND}" "$OUTCOME_FILE"; then
+    echo '{"conduct_result":"reshape_missing","exit":5}'
+    exit 5
+  fi
+fi
+
+ROUND_EVIDENCE_DIR="$EVIDENCE_DIR/conduct_round_${ROUND}"
 command -v codex >/dev/null 2>&1 || { echo '{"conduct_result":"launch_fatal","exit":4,"reason":"codex binary missing"}'; exit 4; }
 codex login status >/dev/null 2>&1 || { echo '{"conduct_result":"launch_fatal","exit":4,"reason":"codex login required"}'; exit 4; }
 
@@ -35,7 +52,7 @@ RUNTIME_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 DRIVER="$RUNTIME_DIR/codex_driver.py"
 [[ -z "$FIX_ROUND" ]] || DRIVER="$RUNTIME_DIR/codex_fix_driver.py"
 
-ARGS=("$DRIVER" --cwd "$(git rev-parse --show-toplevel)" --outcome-file "$OUTCOME_FILE" --evidence-dir "$EVIDENCE_DIR" --effort "$EFFORT")
+ARGS=("$DRIVER" --cwd "$(git rev-parse --show-toplevel)" --outcome-file "$OUTCOME_FILE" --evidence-dir "$ROUND_EVIDENCE_DIR" --effort "$EFFORT")
 [[ -z "$MODEL" ]] || ARGS+=(--model "$MODEL")
 
 set +e
@@ -49,5 +66,5 @@ case "$rc" in
   4) result="launch_fatal" ;;
   *) result="failed" ;;
 esac
-printf '{"conduct_result":"%s","exit":%s}\n' "$result" "$rc"
+printf '{"conduct_result":"%s","exit":%s,"round":%s}\n' "$result" "$rc" "$ROUND"
 exit "$rc"
