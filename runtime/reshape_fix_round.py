@@ -109,8 +109,15 @@ def blocking_count(summary: dict) -> int:
     return int(summary["p0_count"]) + int(summary["p1_count"])
 
 
-def marker(text: str) -> re.Match[str] | None:
-    return MARKER_RE.search(text)
+def markers(text: str) -> list[re.Match[str]]:
+    return list(MARKER_RE.finditer(text))
+
+
+def marker_for_round(text: str, round_number: int) -> re.Match[str] | None:
+    matches = [m for m in markers(text) if m.group("round") == str(round_number)]
+    if len(matches) > 1:
+        raise ReshapeError(f"inconsistent fix-round state: multiple markers for round {round_number}")
+    return matches[0] if matches else None
 
 
 def enforce_bounds(cycle_dir: Path, grade_file: Path, round_number: int, summary: dict) -> None:
@@ -161,16 +168,20 @@ def reshape(cycle_dir: Path, outcome_file: Path, grade_file: Path, round_number:
     archive_name = f"outcome.v{g}.md"
     archive = cycle_dir / archive_name
     text = outcome_file.read_text(encoding="utf-8")
-    existing_marker = marker(text)
+    all_markers = markers(text)
+    future_markers = [m.group("round") for m in all_markers if int(m.group("round")) > round_number]
+    if future_markers:
+        raise ReshapeError(f"inconsistent fix-round state: future marker(s) present before round {round_number}: {','.join(future_markers)}")
+    existing_marker = marker_for_round(text, round_number)
 
     if archive.exists() and existing_marker:
-        if existing_marker.group("round") == str(round_number) and existing_marker.group("archive") == archive_name and existing_marker.group("grade") == grade_name:
+        if existing_marker.group("archive") == archive_name and existing_marker.group("grade") == grade_name:
             return "no-op: fix round already reshaped"
         raise ReshapeError("inconsistent fix-round state: archive exists but marker references a different round/grade")
-    if archive.exists() != bool(existing_marker):
-        raise ReshapeError("inconsistent fix-round state: archive/marker mismatch")
-    if existing_marker:
-        raise ReshapeError("inconsistent fix-round state: marker exists without matching archive")
+    if archive.exists() and not existing_marker:
+        raise ReshapeError("inconsistent fix-round state: archive exists but current-round marker is missing")
+    if existing_marker and not archive.exists():
+        raise ReshapeError("inconsistent fix-round state: current-round marker exists without archive")
 
     failed_ids = [row["id"] for row in acceptance if row["status"] == "fail"]
     if not failed_ids:

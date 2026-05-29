@@ -36,9 +36,13 @@ if [[ -n "$FIX_ROUND" ]]; then
     exit 5
   fi
   ROUND="$FIX_ROUND"
-  ARCHIVE="$CYCLE_DIR/outcome.v$((FIX_ROUND - 1)).md"
-  GRADE="$CYCLE_DIR/grade_round_$((FIX_ROUND - 1)).md"
-  if [[ ! -f "$ARCHIVE" || ! -f "$GRADE" ]] || ! grep -q "bs-fix-round: ${FIX_ROUND}" "$OUTCOME_FILE"; then
+  PREV_ROUND=$((FIX_ROUND - 1))
+  ARCHIVE_NAME="outcome.v${PREV_ROUND}.md"
+  GRADE_NAME="grade_round_${PREV_ROUND}.md"
+  ARCHIVE="$CYCLE_DIR/$ARCHIVE_NAME"
+  GRADE="$CYCLE_DIR/$GRADE_NAME"
+  MARKER_RE="<!--[[:space:]]*bs-fix-round:[[:space:]]*${FIX_ROUND};[[:space:]]*archive=outcome[.]v${PREV_ROUND}[.]md;[[:space:]]*grade=grade_round_${PREV_ROUND}[.]md;"
+  if [[ ! -f "$ARCHIVE" || ! -f "$GRADE" ]] || ! grep -Eq "$MARKER_RE" "$OUTCOME_FILE"; then
     echo '{"conduct_result":"reshape_missing","exit":5}'
     exit 5
   fi

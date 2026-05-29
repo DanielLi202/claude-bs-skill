@@ -63,6 +63,33 @@ class ReshapeFixRoundTests(unittest.TestCase):
             self.assertIn('no-op', second.stdout)
             self.assertEqual((root / 'outcome.v0.md').read_text(encoding='utf-8'), before)
 
+    def test_second_fix_round_allows_prior_marker_when_blockers_strictly_decrease(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / 'outcome.md').write_text('# Outcome\n', encoding='utf-8')
+            (root / 'grade_round_0.md').write_text(grade(p1=2, ids=('a1', 'a2')), encoding='utf-8')
+            (root / 'grade_round_1.md').write_text(grade(p1=1, ids=('a2',)), encoding='utf-8')
+
+            first = self.run_helper(root, 1, 'grade_round_0.md')
+            self.assertEqual(first.returncode, 0, first.stderr)
+            second = self.run_helper(root, 2, 'grade_round_1.md')
+            self.assertEqual(second.returncode, 0, second.stderr)
+
+            self.assertTrue((root / 'outcome.v0.md').exists())
+            self.assertTrue((root / 'outcome.v1.md').exists())
+            text = (root / 'outcome.md').read_text(encoding='utf-8')
+            self.assertIn('bs-fix-round: 1', text)
+            self.assertIn('bs-fix-round: 2', text)
+            self.assertIn('archive=outcome.v1.md', text)
+            self.assertIn('grade=grade_round_1.md', text)
+            self.assertNotIn('RAW GRADE PROSE MUST NOT BE INLINED', text)
+
+            before = (root / 'outcome.v1.md').read_text(encoding='utf-8')
+            retry = self.run_helper(root, 2, 'grade_round_1.md')
+            self.assertEqual(retry.returncode, 0, retry.stderr)
+            self.assertIn('no-op', retry.stdout)
+            self.assertEqual((root / 'outcome.v1.md').read_text(encoding='utf-8'), before)
+
     def test_partial_state_is_loud_failure(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

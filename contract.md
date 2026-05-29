@@ -1,4 +1,4 @@
-# Bootstrap Development Workflow Contract v1.3.5
+# Bootstrap Development Workflow Contract v1.3.6
 
 > Universal workflow contract for bootstrap-driven repositories. The contract owns orchestration semantics; each repository owns only its binding, backlog, ledger, verification command, and red-line documents.
 
@@ -164,18 +164,19 @@ The driver emits a heartbeat every 30 seconds while waiting for turn completion.
 | runtime/preflight.sh | 9b3904e33a7f2c3fef56bceb614f62bf6987c994ec630d3f4444f41a73aabfd5 |
 | runtime/codex_driver.py | f2afcad77177d58e122f24a46491eb4294dc1d5967182bed98eba383aabe3ab0 |
 | runtime/codex_fix_driver.py | 0ba1be44f6ddf4f8ff8d40a8a661bd317c85752c5e9597f6c2ac13afb9d1ae4a |
-| runtime/reshape_fix_round.py | 601dca47d7c729b05110efb2634135a8f83afec2bae8daaabe5f20b5aa2b759b |
-| runtime/conduct.sh | 1e48ffb37ecb0efc07c70961752f4c6ec90292cc7c90828915c34ddb35bbcb7a |
+| runtime/reshape_fix_round.py | ce6caf0114102fc706798963f6756e75c90b2d7d12caa854eca6352e30f9a73a |
+| runtime/conduct.sh | 02a10c8e21ccca4bf5d5b6262027b5f44a84d596733fcb683b70edb631cc6e3c |
 | commands/bs.md | be9736ec041da48c2170f95514624a831cd34827883c6b311c5964dcc4158b61 |
 
 The manifest locks runtime and slash-command surface by making file hashes part of the contract hash. Any listed file change requires updating this table and refreshing adopter bindings.
 
 ## 10. Non-goals
 
-No parallel cycles, enum extension, severity override, council-member override, multi-backlog, markdown-embedded backlog compatibility, automatic v1.2 ledger migration, `/bs gc`, repository-specific prompt override, second `/goal` file, raw grade markdown paste into the capsule, or unbounded fix loop in v1.3.5.
+No parallel cycles, enum extension, severity override, council-member override, multi-backlog, markdown-embedded backlog compatibility, automatic v1.2 ledger migration, `/bs gc`, repository-specific prompt override, second `/goal` file, raw grade markdown paste into the capsule, or unbounded fix loop in v1.3.6.
 
 
 ## 11. Changelog
 
+- v1.3.6: multi-round fix loop hardening. `reshape_fix_round.py` scopes resume/idempotency state to the current fix round so prior `bs-fix-round` markers do not block strict-decrease R >= 2 re-shapes; `conduct.sh --fix-round R` anchors the guard on the full HTML marker with matching archive and grade; tests cover the R=2 strict-decrease happy path and prose-substring false positive.
 - v1.3.5: mechanically-enforced fix-round capsule re-shape. `reshape_fix_round.py` archives `outcome.v<R-1>.md`, folds structured grade findings (failed acceptance IDs plus bounded corrections, not pasted raw markdown) and a `bs-fix-round` marker; `conduct.sh --fix-round R` guards on archive + grade + marker; the driver still sends one `/goal @outcome.md`; per-round evidence dirs and `max_fix_rounds=3` with strict P0+P1 decrease are locked.
 - v1.3.4: code-enforced app-server-only Conduct path, `/goal @outcome.md`, startup preflight dependency gate, transient launch retry-then-stop, mandatory `conduct.sh`, stdout-only idle timeout, test-only fake Codex injection, and runtime manifest hash.
