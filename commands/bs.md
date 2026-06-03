@@ -34,13 +34,14 @@ Execute the next bootstrap backlog task end-to-end. Do not only describe the wor
    - Shape outcome and acceptance;
    - Conduct via `${runtime}/conduct.sh` with evidence captured. MUST NOT call `codex_driver.py`, `codex`, or `codex exec --json` directly;
    - The conduct driver sends `/goal @<outcome.md>` and MUST NOT wrap or inject a separate conduct prompt;
-   - Grade by writing `grade_round_<N>.md` with parseable fenced `grade_summary` and `acceptance_status` YAML blocks. `grade_summary.p0_count + p1_count` is the blocking-failure metric.
+   - Grade by writing `grade_round_<N>.md` with parseable fenced `grade_summary` and `acceptance_status` YAML blocks. For medium/high code tasks it MUST also include `adversarial_checks`, `trust_surface_inventory`, and `deferred_claims`. `grade_summary.p0_count + p1_count` is the blocking-failure metric.
+   - For `type == code` and `risk_level in {medium, high}`, immediately run `${runtime}/grade_lint.py --task-type <type> --risk-level <risk_level> --grade-file grade_round_<N>.md --outcome-file outcome.md --evidence-file evidence/grade_lint_round_<N>.json` after each Grade round and before fix-loop decisions. Lint failure is a blocking Grade failure; do not proceed to auto-merge with a failing or missing applicable lint result.
    - If `grade_round_<g>.md` has blocking failures and `g < max_fix_rounds` (3), run `${runtime}/reshape_fix_round.py --cycle-dir <cycle-dir> --outcome-file <outcome.md> --grade-file grade_round_<g>.md --round <g+1>` before any fix delegation. The helper archives `outcome.v<g>.md`, folds only structured failed acceptance IDs plus optional bounded corrections into `outcome.md`, and emits the `bs-fix-round` marker.
    - Then run `${runtime}/conduct.sh --fix-round <g+1>`; it re-reads the re-shaped `outcome.md` and refuses to launch if the archive, grade file, or marker is missing. Never inject grade findings as a prompt and never pass a second `/goal` file.
-   - Re-grade as `grade_round_<g+1>.md`. Escalate if the helper refuses because `R > 3` or P0+P1 did not strictly decrease, or if P0+P1 remains > 0 after round 3.
+   - Re-grade as `grade_round_<g+1>.md`, then re-run applicable `grade_lint.py` for round `<g+1>`. Escalate if the helper refuses because `R > 3`, P0+P1 did not strictly decrease, lint remains failing, or if P0+P1 remains > 0 after round 3.
    - run `${binding.verify_command}` in the worktree before PR;
    - create PR from the worktree branch;
-   - use balanced auto-merge only when P0/P1 counts are zero and checks pass;
+   - use balanced auto-merge only when P0/P1 counts are zero, checks pass, and the latest applicable `grade_lint.py` evidence is pass;
    - merge PR, pull latest `main`, then close.
 6. Step 10 close is one atomic commit on `main` after PR merge:
    - append ledger entry to `${binding.ledger}`;
