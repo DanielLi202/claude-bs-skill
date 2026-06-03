@@ -27,15 +27,19 @@ for line in sys.stdin:
     elif method == 'thread/start':
         emit({'jsonrpc':'2.0','id':req['id'],'result':{'thread':{'id':'thread-1'}}})
     elif method == 'turn/start':
+        text = req.get('params', {}).get('input', [{}])[0].get('text', '')
         if record:
             with open(record, 'w') as f:
                 f.write(json.dumps(req.get('params', {}).get('input')))
         emit({'jsonrpc':'2.0','id':req['id'],'result':{'turn':{'id':'turn-1'}}})
         time.sleep(0.05)
+        open('workspace-write.txt', 'w').write('done')
+        emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':'Done'}}})
         emit({'jsonrpc':'2.0','method':'turn/completed','params':{'turn':{'status':'completed'}}})
     else:
         emit({'jsonrpc':'2.0','id':req.get('id'),'result':{}})
 '''
+
 
 GRADE = textwrap.dedent('''
 # Grade

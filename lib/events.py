@@ -9,6 +9,7 @@ class EventError(ValueError):
 
 TERMINAL = {"completed", "failed"}
 VALID_EVENTS = {"started", "completed", "failed"}
+VALID_REASON_CODES = {"semantic_blocked_final_answer", "semantic_refusal_final_answer", "semantic_required_effect_missing", "transport_eof_before_completion", "launch_transient", "launch_fatal", "verify_command_failed", "verify_evidence_missing", "wall_clock_policy_exceeded"}
 
 @dataclass(frozen=True)
 class EventKey:
@@ -47,6 +48,19 @@ def iter_events(path: Path):
         step = event.get('step')
         if not isinstance(step, str) or not step:
             raise EventError(f"line {n}: missing step")
+        reason_code = event.get('reason_code')
+        if reason_code is not None and reason_code not in VALID_REASON_CODES:
+            raise EventError(f"line {n}: invalid reason_code {reason_code!r}")
+        if name in TERMINAL:
+            for field in ("workspace_delta_files", "evidence_delta_files"):
+                if field in event and not isinstance(event[field], list):
+                    raise EventError(f"line {n}: {field} must be list when present")
+            if "write_actions" in event and (isinstance(event["write_actions"], bool) or not isinstance(event["write_actions"], int) or event["write_actions"] < 0):
+                raise EventError(f"line {n}: write_actions must be non-negative int")
+            if "driver_exit" in event and (isinstance(event["driver_exit"], bool) or not isinstance(event["driver_exit"], int)):
+                raise EventError(f"line {n}: driver_exit must be int")
+            if "conduct_result" in event and (not isinstance(event["conduct_result"], str) or not event["conduct_result"]):
+                raise EventError(f"line {n}: conduct_result must be non-empty string")
         yield n, EventKey(step, _attempt(event)), name, event
 
 
