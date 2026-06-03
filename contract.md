@@ -1,4 +1,4 @@
-# Bootstrap Development Workflow Contract v1.3.6
+# Bootstrap Development Workflow Contract v1.3.7
 
 > Universal workflow contract for bootstrap-driven repositories. The contract owns orchestration semantics; each repository owns only its binding, backlog, ledger, verification command, and red-line documents.
 
@@ -30,7 +30,7 @@ Contract verification is three-way: `.bootstrap.yaml.contract.source_sha256`, `.
 
 - `id`: `^[A-Z]+-\d{3}$`; `B-000` is reserved for retroactive completed history and is skipped by next-task selection.
 - `title`, `type`, `risk_level`, `status`, `blocked_by`, `spec_refs`
-- optional `estimated_loc`, `acceptance_hints`, `non_goals_hints`
+- optional `estimated_loc`, `risk_surfaces`, `acceptance_hints`, `non_goals_hints`
 - closure fields: `closed_in`, `closed_at`, `escalation_reason`, `parked_reason`
 
 Closed enums:
@@ -101,7 +101,7 @@ If the agent encounters a situation it considers concerning but not covered by t
 
 ## 6. Required artifacts
 
-Every cycle produces `outcome.md`, `shape_critic.yaml`, `preflight_initial.yaml`, `step_events.jsonl`, `grade_round_0.md`, `grade_result.md`, `auto_merge_gate.yaml`, `task_knowledge.yaml`, `workflow_reflection.yaml`, and evidence files: `raw_vendor_output.jsonl`, `rpc_requests.jsonl`, `vendor_stderr.txt`, `driver_events.jsonl`, `git_diff.patch`, `git_status.txt`.
+Every cycle produces `outcome.md`, `shape_critic.yaml`, `preflight_initial.yaml`, `step_events.jsonl`, `grade_round_0.md`, `grade_result.md`, `auto_merge_gate.yaml`, `task_knowledge.yaml`, `workflow_reflection.yaml`, and evidence files: `raw_vendor_output.jsonl`, `rpc_requests.jsonl`, `vendor_stderr.txt`, `driver_events.jsonl`, `git_diff.patch`, `git_status.txt`. Medium/high code Grade rounds also produce `evidence/grade_lint_round_<N>.json`.
 
 Each `grade_round_<N>.md` MUST contain parseable fenced YAML blocks for both:
 
@@ -120,6 +120,14 @@ acceptance_status:
 ```
 
 `grade_summary.p0_count + p1_count` is the blocking-failure metric for fix-loop stop conditions. Missing or malformed `grade_summary` / `acceptance_status` is fail-fast because the loop cannot evaluate itself blind.
+
+For `tasks[*].type == code` and `risk_level in {medium, high}`, Shape MUST include parseable fenced YAML blocks named `risk_surface` and `adversarial_acceptance` in `outcome.md`. High-risk surfaces are `process`, `background_process`, `runtime_files`, `identity_sentinel`, `network_probe`, `auth_or_secret`, `file_modes`, `concurrency_or_locking`, `destructive_operation`, and `external_subprocess`. Every present high-risk surface must have at least one adversarial acceptance row with an evidence-oriented `verification_hint`; a surface may be marked not applicable only with a one-line reason.
+
+For the same medium/high code tasks, every `grade_round_<N>.md` MUST also contain parseable fenced YAML blocks named `adversarial_checks`, `trust_surface_inventory`, and `deferred_claims`. Missing or malformed medium/high code adversarial blocks are blocking P1. Any `adversarial_checks[*].status in {fail, unverified}` with `severity_if_fail in {P0, P1}` contributes to the blocking count. `trust_surface_inventory.unverified_items` with P0/P1 severity is blocking. A `deferred_claims` row with `current_scope_implementable: true` must cite `evidence_ref` or an acceptance/waiver reference; a P0/P1 waiver of current-scope foundation safety must cite a tracked maintainer/user waiver artifact. Grade cannot downgrade such a waiver by assertion alone.
+
+`${runtime}/grade_lint.py` is the deterministic schema/accounting gate. Step 4 MUST run it after each Grade round and before fix-loop decision for medium/high code tasks, writing `evidence/grade_lint_round_<N>.json`. Step 7 auto-merge MUST require the latest applicable grade-lint result to pass. Low-risk docs/spec cycles keep the lightweight `grade_summary` + `acceptance_status` contract.
+
+Backlog authors SHOULD include `risk_surfaces`, happy-path `acceptance_hints`, adversarial `acceptance_hints`, and `non_goals_hints` for medium/high code tasks. Shape remains responsible for deriving missing risk surfaces from `spec_refs`; repository-specific details stay in backlog/cycle artifacts, not in this contract.
 
 Fix-round artifacts are conditional on fix rounds: `outcome.v<g>.md` archives for every re-shape, a `bs-fix-round: R` marker in live `outcome.md`, and per-round evidence under `evidence/conduct_round_<N>/` including round 0. Medium/high risk grade raw output goes under `evidence/grade/`.
 
@@ -154,6 +162,7 @@ The driver emits a heartbeat every 30 seconds while waiting for turn completion.
 - Goal mode is mandatory and file-referenced: the driver sends `/goal @<outcome.md>`. The agent MUST pass `--outcome-file`; it MUST NOT wrap a conduct prompt or inject any prompt during delegation.
 - A grade failure (Step 4 P0+P1 > 0) is repaired by re-shaping the capsule via `${runtime}/reshape_fix_round.py`, never by prompt injection. For fix round R (R >= 1) the helper MUST archive the prior capsule to `outcome.v<R-1>.md`, fold structured findings from `grade_round_<R-1>.md` (failed acceptance IDs plus an optional length-bounded corrections list plus a reference to that grade file, not a verbatim paste), and emit a `bs-fix-round: R` marker.
 - `${runtime}/conduct.sh --fix-round R` MUST refuse to launch unless `outcome.v<R-1>.md` and `grade_round_<R-1>.md` exist and `outcome.md` carries the `bs-fix-round: R` marker. The driver still sends exactly one `/goal @<outcome.md>`.
+- Step 4 MUST run `${runtime}/grade_lint.py --task-type <type> --risk-level <risk> --grade-file grade_round_<N>.md --outcome-file outcome.md --evidence-file evidence/grade_lint_round_<N>.json` before computing fix-loop decisions when `<type> == code` and `<risk> in {medium, high}`. Lint failure is a blocking Grade failure and must be reflected in `grade_summary.p0_count + p1_count`.
 - The fix loop is bounded by `max_fix_rounds = 3`. The agent MUST escalate at Step 4 if P0+P1 > 0 after round 3, or if P0+P1 does not strictly decrease across rounds. Strict decrease is measured from `grade_summary.p0_count + p1_count`, not acceptance pass/fail. No unbounded looping.
 - If `codex app-server` launch fails transiently, the driver retries up to `--launch-retries` then exits 3. On exhaustion (exit 3) or deterministic launch fatal (exit 4), the agent MUST escalate at Step 3 and MUST NOT try another transport.
 
@@ -166,17 +175,19 @@ The driver emits a heartbeat every 30 seconds while waiting for turn completion.
 | runtime/codex_fix_driver.py | 0ba1be44f6ddf4f8ff8d40a8a661bd317c85752c5e9597f6c2ac13afb9d1ae4a |
 | runtime/reshape_fix_round.py | ce6caf0114102fc706798963f6756e75c90b2d7d12caa854eca6352e30f9a73a |
 | runtime/conduct.sh | 02a10c8e21ccca4bf5d5b6262027b5f44a84d596733fcb683b70edb631cc6e3c |
-| commands/bs.md | be9736ec041da48c2170f95514624a831cd34827883c6b311c5964dcc4158b61 |
+| runtime/grade_lint.py | 5240666933aed85b6182b4ac15cb545f76dff6a70c5cc8c494ccc1f4d4371e5f |
+| commands/bs.md | 7b8397f01ad15cfee8a1c6cbab0bcb505f6cea1b6d061e2293532edcfdd15b35 |
 
 The manifest locks runtime and slash-command surface by making file hashes part of the contract hash. Any listed file change requires updating this table and refreshing adopter bindings.
 
 ## 10. Non-goals
 
-No parallel cycles, enum extension, severity override, council-member override, multi-backlog, markdown-embedded backlog compatibility, automatic v1.2 ledger migration, `/bs gc`, repository-specific prompt override, second `/goal` file, raw grade markdown paste into the capsule, or unbounded fix loop in v1.3.6.
+No parallel cycles, enum extension, severity override, council-member override, multi-backlog, markdown-embedded backlog compatibility, automatic v1.2 ledger migration, `/bs gc`, repository-specific prompt override, second `/goal` file, raw grade markdown paste into the capsule, universal heavy adversarial process for low-risk docs/spec tasks, or unbounded fix loop in v1.3.7.
 
 
 ## 11. Changelog
 
+- v1.3.7: TC-B adversarial acceptance and Grade lint gate. Medium/high code Shape outputs `risk_surface` + `adversarial_acceptance`; Grade outputs `adversarial_checks`, `trust_surface_inventory`, and `deferred_claims`; `runtime/grade_lint.py` deterministically blocks malformed/missing adversarial blocks, P0/P1 fail/unverified checks, P0/P1 unverified trust items, and untracked current-scope safety waivers. `/bs` runs grade lint before fix-loop decisions and auto-merge for applicable tasks. Low-risk docs/spec cycles stay lightweight.
 - v1.3.6: multi-round fix loop hardening. `reshape_fix_round.py` scopes resume/idempotency state to the current fix round so prior `bs-fix-round` markers do not block strict-decrease R >= 2 re-shapes; `conduct.sh --fix-round R` anchors the guard on the full HTML marker with matching archive and grade; tests cover the R=2 strict-decrease happy path and prose-substring false positive.
 - v1.3.5: mechanically-enforced fix-round capsule re-shape. `reshape_fix_round.py` archives `outcome.v<R-1>.md`, folds structured grade findings (failed acceptance IDs plus bounded corrections, not pasted raw markdown) and a `bs-fix-round` marker; `conduct.sh --fix-round R` guards on archive + grade + marker; the driver still sends one `/goal @outcome.md`; per-round evidence dirs and `max_fix_rounds=3` with strict P0+P1 decrease are locked.
 - v1.3.4: code-enforced app-server-only Conduct path, `/goal @outcome.md`, startup preflight dependency gate, transient launch retry-then-stop, mandatory `conduct.sh`, stdout-only idle timeout, test-only fake Codex injection, and runtime manifest hash.
