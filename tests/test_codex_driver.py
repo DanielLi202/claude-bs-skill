@@ -5,13 +5,13 @@ import os
 import subprocess
 import sys
 import tempfile
-import textwrap
 import unittest
 from unittest import mock
 
 DRIVER = Path(__file__).resolve().parents[1] / 'runtime' / 'codex_driver.py'
 spec = importlib.util.spec_from_file_location('codex_driver', DRIVER)
 codex_driver = importlib.util.module_from_spec(spec)
+sys.modules['codex_driver'] = codex_driver
 spec.loader.exec_module(codex_driver)
 
 
@@ -33,14 +33,13 @@ class CodexDriverUnitTests(unittest.TestCase):
 
     def test_driver_defaults_include_required_flags(self):
         source = DRIVER.read_text(encoding='utf-8')
-        self.assertIn('default=30', source)
-        self.assertIn('default=5', source)
-        self.assertIn('default=120', source)
-        self.assertIn('--outcome-file', source)
-        self.assertIn('--launch-retries', source)
-        self.assertIn('--codex-bin', source)
-        self.assertIn('turn_completed_inferred', source)
-        self.assertIn('heartbeat', source)
+        self.assertIn('--idle-timeout-sec', source)
+        self.assertIn('deprecated hard idle kill', source)
+        self.assertIn('turn_silent_soft_limit', source)
+        self.assertIn('turn_semantic_failed', source)
+        self.assertIn('--expected-effect-kind', source)
+        self.assertIn('--on-wall-clock-limit', source)
+        self.assertNotIn('exec --json', source)
 
     def test_codex_bin_env_requires_test_gate(self):
         ns = type('Args', (), {'codex_bin': None})()
@@ -48,6 +47,33 @@ class CodexDriverUnitTests(unittest.TestCase):
             self.assertEqual(codex_driver.resolve_codex_bin(ns), 'codex')
         with mock.patch.dict(os.environ, {'CODEX_BIN': '/tmp/fake', 'BS_TEST_FAKE_CODEX': '1'}, clear=True):
             self.assertEqual(codex_driver.resolve_codex_bin(ns), '/tmp/fake')
+
+    def test_snapshot_delta_ignores_dirty_tree_at_start(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            evidence = root / 'evidence'; evidence.mkdir()
+            dirty = root / 'dirty.txt'; dirty.write_text('already dirty', encoding='utf-8')
+            obs = codex_driver.TurnObservation(root, evidence)
+            obs.start(); obs.finish()
+            self.assertEqual(obs.workspace_delta_files, [])
+            dirty.write_text('changed now', encoding='utf-8')
+            obs.finish()
+            self.assertEqual(obs.workspace_delta_files, ['dirty.txt'])
+
+    def test_evidence_delta_ignores_preexisting_and_driver_logs(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            evidence = root / 'evidence'; evidence.mkdir()
+            (evidence / 'preexisting.log').write_text('old', encoding='utf-8')
+            (evidence / 'raw_vendor_output.jsonl').write_text('driver log start', encoding='utf-8')
+            obs = codex_driver.TurnObservation(root, evidence)
+            obs.start()
+            (evidence / 'raw_vendor_output.jsonl').write_text('driver log changed', encoding='utf-8')
+            obs.finish()
+            self.assertEqual(obs.evidence_delta_files, [])
+            (evidence / 'grade_verify_round_0.yaml').write_text('status: pass', encoding='utf-8')
+            obs.finish()
+            self.assertEqual(obs.evidence_delta_files, ['grade_verify_round_0.yaml'])
 
 
 FAKE_CODEX = r'''#!/usr/bin/env python3
@@ -73,15 +99,32 @@ for line in sys.stdin:
     elif method == 'thread/start':
         emit({'jsonrpc':'2.0','id':req['id'],'result':{'thread':{'id':'thread-1'}}})
     elif method == 'turn/start':
+        text = req.get('params', {}).get('input', [{}])[0].get('text', '')
         if record:
-            open(record, 'w').write(json.dumps(req.get('params', {}).get('input')))
+            open(record, 'w').write(json.dumps({'input': req.get('params', {}).get('input'), 'text': text}))
         emit({'jsonrpc':'2.0','id':req['id'],'result':{'turn':{'id':'turn-1'}}})
         if mode == 'stderr_noise':
-            while True:
+            end = time.time() + 1.4
+            while time.time() < end:
                 print('token refresh noise', file=sys.stderr, flush=True)
                 time.sleep(0.05)
+            open('workspace-write.txt', 'w').write('done')
+            emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':'Done'}}})
+            emit({'jsonrpc':'2.0','method':'turn/completed','params':{'turn':{'status':'completed'}}})
+        elif mode == 'blocked':
+            time.sleep(0.1)
+            emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':'Blocked: true required tools are unavailable'}}})
+        elif mode == 'immediate':
+            open('workspace-write.txt', 'w').write('done')
+            emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':'Done'}}})
+            emit({'jsonrpc':'2.0','method':'turn/completed','params':{'turn':{'status':'completed'}}})
+        elif mode == 'no_output':
+            while True:
+                time.sleep(1)
         else:
             time.sleep(0.1)
+            open('workspace-write.txt', 'w').write('done')
+            emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':'Done'}}})
             emit({'jsonrpc':'2.0','method':'turn/completed','params':{'turn':{'status':'completed'}}})
     else:
         emit({'jsonrpc':'2.0','id':req.get('id'),'result':{}})
@@ -89,7 +132,7 @@ for line in sys.stdin:
 
 
 class CodexDriverIntegrationTests(unittest.TestCase):
-    def run_driver(self, mode: str, extra_args=None):
+    def run_driver(self, mode: str, extra_args=None, timeout=10, extra_env=None):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             fake = root / 'fake_codex.py'
@@ -101,14 +144,14 @@ class CodexDriverIntegrationTests(unittest.TestCase):
             record = root / 'record.json'
             env = os.environ.copy()
             env.update({'BS_TEST_FAKE_CODEX': '1', 'CODEX_BIN': str(fake), 'FAKE_CODEX_MODE': mode, 'FAKE_CODEX_RECORD': str(record)})
-            cmd = [sys.executable, str(DRIVER), '--cwd', str(root), '--outcome-file', str(outcome), '--evidence-dir', str(evidence), '--launch-retries', '2', '--launch-backoff', '0', '--handshake-timeout-sec', '3', '--idle-timeout-sec', '1', '--timeout-sec', '5']
+            if extra_env:
+                env.update(extra_env)
+            cmd = [sys.executable, str(DRIVER), '--cwd', str(root), '--outcome-file', str(outcome), '--evidence-dir', str(evidence), '--launch-retries', '2', '--launch-backoff', '0', '--handshake-timeout-sec', '3', '--silent-soft-limit-sec', '1', '--stale-notice-sec', '2', '--progress-report-sec', '1', '--inferred-completion-sec', '1']
             if extra_args:
                 cmd.extend(extra_args)
-            proc = subprocess.run(cmd, cwd=str(root), env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
-            events = []
+            proc = subprocess.run(cmd, cwd=str(root), env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
             events_path = evidence / 'driver_events.jsonl'
-            if events_path.exists():
-                events = [json.loads(line) for line in events_path.read_text().splitlines() if line.strip()]
+            events = [json.loads(line) for line in events_path.read_text().splitlines() if line.strip()] if events_path.exists() else []
             requests = (evidence / 'rpc_requests.jsonl').read_text() if (evidence / 'rpc_requests.jsonl').exists() else ''
             record_text = record.read_text() if record.exists() else ''
             return proc.returncode, events, requests, record_text, proc.stderr
@@ -128,16 +171,45 @@ class CodexDriverIntegrationTests(unittest.TestCase):
 
     def test_success_sends_goal_outcome_file(self):
         rc, events, _requests, record, _stderr = self.run_driver('ok')
-        self.assertEqual(rc, 0)
+        self.assertEqual(rc, 0, _stderr)
         self.assertIn('launch_ok', [e['event'] for e in events])
         self.assertIn('/goal @', record)
         self.assertIn('outcome.md', record)
         self.assertNotIn('Conduct via', record)
 
-    def test_stderr_noise_does_not_keep_idle_turn_alive(self):
+    def test_immediate_notifications_after_turn_start_response_are_observed(self):
+        rc, events, _requests, record, _stderr = self.run_driver('immediate', timeout=5)
+        self.assertEqual(rc, 0, _stderr)
+        self.assertIn('/goal @', record)
+        self.assertIn('turn_completed_explicit', [e['event'] for e in events])
+
+    def test_blocked_final_answer_returns_semantic_failed(self):
+        rc, events, _requests, _record, _stderr = self.run_driver('blocked')
+        self.assertEqual(rc, 6)
+        semantic = [e for e in events if e['event'] == 'turn_semantic_failed']
+        self.assertEqual(semantic[-1]['reason_code'], 'semantic_blocked_final_answer')
+
+    def test_expected_effect_none_still_fails_hard_refusal(self):
+        rc, events, _requests, _record, _stderr = self.run_driver('blocked', extra_args=['--expected-effect-kind', 'none'])
+        self.assertEqual(rc, 6)
+        self.assertEqual([e for e in events if e['event'] == 'turn_semantic_failed'][-1]['reason_code'], 'semantic_blocked_final_answer')
+
+    def test_stderr_noise_does_not_keep_or_kill_idle_turn(self):
         rc, events, _requests, _record, _stderr = self.run_driver('stderr_noise')
+        self.assertEqual(rc, 0, _stderr)
+        names = [e['event'] for e in events]
+        self.assertIn('turn_silent_soft_limit', names)
+        self.assertNotIn('turn_idle_timeout', names)
+
+    def test_wall_clock_fail_policy_is_explicit_opt_in(self):
+        rc, events, _requests, _record, _stderr = self.run_driver('no_output', extra_args=['--wall-clock-limit-sec', '1', '--on-wall-clock-limit', 'fail'], timeout=5)
         self.assertEqual(rc, 2)
-        self.assertIn('turn_idle_timeout', [e['event'] for e in events])
+        self.assertIn('turn_wall_clock_limit', [e['event'] for e in events])
+
+    def test_legacy_timeout_sec_does_not_kill_by_default(self):
+        rc, events, _requests, _record, _stderr = self.run_driver('stderr_noise', extra_args=['--timeout-sec', '1'])
+        self.assertEqual(rc, 0, _stderr)
+        self.assertNotIn('turn_total_timeout', [e['event'] for e in events])
 
 
 if __name__ == '__main__':

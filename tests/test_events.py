@@ -45,6 +45,29 @@ class EventStateTests(unittest.TestCase):
         with self.assertRaisesRegex(EventError, 'unclosed started|started after terminal'):
             step_states(path)
 
+    def test_valid_reason_code_and_terminal_fields_are_allowed(self):
+        path = self.write('\n'.join([
+            '{"step":"step_3","event":"started"}',
+            '{"step":"step_3","event":"failed","reason_code":"semantic_required_effect_missing","driver_exit":6,"conduct_result":"semantic_failed","workspace_delta_files":[],"evidence_delta_files":[],"write_actions":0}',
+        ]))
+        self.assertEqual(step_states(path), {'step_3': 'failed'})
+
+    def test_invalid_reason_code_is_rejected(self):
+        path = self.write('\n'.join([
+            '{"step":"step_3","event":"started"}',
+            '{"step":"step_3","event":"failed","reason_code":"environment_blocked"}',
+        ]))
+        with self.assertRaisesRegex(EventError, 'invalid reason_code'):
+            step_states(path)
+
+    def test_invalid_terminal_field_shape_is_rejected(self):
+        path = self.write('\n'.join([
+            '{"step":"step_3","event":"started"}',
+            '{"step":"step_3","event":"failed","workspace_delta_files":"nope"}',
+        ]))
+        with self.assertRaisesRegex(EventError, 'workspace_delta_files must be list'):
+            step_states(path)
+
 
 if __name__ == '__main__':
     unittest.main()

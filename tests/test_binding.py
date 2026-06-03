@@ -25,6 +25,20 @@ class BindingManifestTests(unittest.TestCase):
             with self.assertRaises(binding.BindingError):
                 binding.validate_runtime_manifest(root, bad)
 
+    def test_validate_verify_and_preflight_config_accepts_new_fields(self):
+        data = {
+            "verify": {"grade": {"code": ["cargo build"], "docs": ["bash scripts/verify-docs.sh"]}, "env": {"clear": ["RUSTC_WRAPPER"]}},
+            "preflight": {"require_council": False, "council_quorum_min": 2, "council_required_when": {"risk_level": "high"}},
+        }
+        binding.validate_verify_config(data)
+        binding.validate_preflight_config(data)
+
+    def test_validate_verify_config_rejects_missing_command_list_shape(self):
+        with self.assertRaises(binding.BindingError):
+            binding.validate_verify_config({"verify": {"grade": {"code": []}}})
+        with self.assertRaises(binding.BindingError):
+            binding.validate_preflight_config({"preflight": {"require_council": "false"}})
+
 
 if __name__ == '__main__':
     unittest.main()
