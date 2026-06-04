@@ -1,7 +1,9 @@
 from pathlib import Path
 import importlib.util
+import io
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
@@ -28,8 +30,20 @@ class CodexDriverUnitTests(unittest.TestCase):
         obj = {'method': 'thread/status/changed', 'params': {'status': {'type': 'idle', 'activeFlags': []}}}
         self.assertEqual(codex_driver.detect_inferred_completion_signal(obj), 'thread_status_idle')
 
-    def test_goal_input_uses_file_reference_without_wrapper(self):
-        self.assertEqual(codex_driver.build_goal_input(Path('/tmp/outcome.md')), '/goal @/tmp/outcome.md')
+    def test_goal_objective_header_is_json_parseable_for_paths_with_spaces(self):
+        path = Path('/tmp/path with spaces/outcome.md')
+        objective = codex_driver.build_goal_objective(path, 'a' * 64, 'cycle-013')
+        parsed = codex_driver.parse_goal_header(objective)
+        self.assertEqual(parsed['run_id'], 'cycle-013')
+        self.assertEqual(parsed['outcome_sha256'], 'a' * 64)
+        self.assertEqual(parsed['outcome_path'], str(path))
+        self.assertLessEqual(len(objective), 4000)
+
+    def test_status_normalization_preserves_vendor_semantics(self):
+        self.assertEqual(codex_driver.normalize_goal_status('usageLimited'), 'usage_limited')
+        self.assertEqual(codex_driver.normalize_goal_status('budgetLimited'), 'budget_limited')
+        self.assertEqual(codex_driver.normalize_goal_status('complete'), 'complete')
+        self.assertEqual(codex_driver.normalize_goal_status('weird'), 'unknown')
 
     def test_driver_defaults_include_required_flags(self):
         source = DRIVER.read_text(encoding='utf-8')
@@ -75,6 +89,20 @@ class CodexDriverUnitTests(unittest.TestCase):
             obs.finish()
             self.assertEqual(obs.evidence_delta_files, ['grade_verify_round_0.yaml'])
 
+    def test_signal_handler_invokes_cleanup_before_exit(self):
+        meta = io.StringIO()
+        proc = object()
+        codex_driver.ACTIVE_CLEANUP.clear()
+        codex_driver.ACTIVE_CLEANUP.update({'proc': proc, 'raw': io.StringIO(), 'rpc': io.StringIO(), 'err': io.StringIO(), 'meta': meta, 'thread_id': 'thread-1'})
+        with mock.patch.object(codex_driver, 'cleanup_thread') as cleanup, mock.patch.object(codex_driver, 'kill_proc') as kill:
+            with self.assertRaises(SystemExit) as raised:
+                codex_driver._signal_handler(signal.SIGTERM, None)
+        self.assertEqual(raised.exception.code, 2)
+        cleanup.assert_called_once()
+        kill.assert_called_once_with(proc)
+        self.assertIn('signal_received', meta.getvalue())
+        codex_driver.ACTIVE_CLEANUP.clear()
+
 
 FAKE_CODEX = r'''#!/usr/bin/env python3
 import json, os, sys, time
@@ -84,9 +112,20 @@ if len(sys.argv) < 2 or sys.argv[1] != 'app-server':
 if mode == 'exit':
     sys.exit(99)
 record = os.environ.get('FAKE_CODEX_RECORD')
+goal = None
+final_status = os.environ.get('FAKE_FINAL_GOAL_STATUS', 'complete')
+emit_marker = os.environ.get('FAKE_EMIT_MARKER', '1') == '1'
 
 def emit(obj):
     print(json.dumps(obj), flush=True)
+
+def marker_from(text):
+    prefix = 'BS_OUTCOME_READ '
+    idx = text.find(prefix)
+    if idx < 0:
+        return ''
+    payload, _ = json.JSONDecoder().raw_decode(text[idx + len(prefix):].lstrip())
+    return prefix + json.dumps(payload, sort_keys=True, separators=(',', ':'))
 
 for line in sys.stdin:
     req = json.loads(line)
@@ -97,26 +136,42 @@ for line in sys.stdin:
     if method == 'initialize':
         emit({'jsonrpc':'2.0','id':req['id'],'result':{}})
     elif method == 'thread/start':
-        emit({'jsonrpc':'2.0','id':req['id'],'result':{'thread':{'id':'thread-1'}}})
+        if req.get('params', {}).get('ephemeral') is not False:
+            emit({'jsonrpc':'2.0','id':req['id'],'error':{'code':-32600,'message':'ephemeral must be false'}})
+        else:
+            emit({'jsonrpc':'2.0','id':req['id'],'result':{'thread':{'id':'thread-1'}}})
+    elif method == 'thread/goal/get':
+        if goal is None:
+            emit({'jsonrpc':'2.0','id':req['id'],'result':{}})
+        else:
+            status = final_status if req['id'] == 800001 else goal.get('status', 'active')
+            emit({'jsonrpc':'2.0','id':req['id'],'result':{'goal':{'objective':goal['objective'],'status':status}}})
+    elif method == 'thread/goal/set':
+        goal = {'objective':req.get('params', {}).get('objective'), 'status':req.get('params', {}).get('status')}
+        emit({'jsonrpc':'2.0','id':req['id'],'result':{'goal':goal}})
+    elif method in ('thread/goal/clear', 'thread/archive'):
+        emit({'jsonrpc':'2.0','id':req['id'],'result':{}})
     elif method == 'turn/start':
         text = req.get('params', {}).get('input', [{}])[0].get('text', '')
         if record:
             open(record, 'w').write(json.dumps({'input': req.get('params', {}).get('input'), 'text': text}))
         emit({'jsonrpc':'2.0','id':req['id'],'result':{'turn':{'id':'turn-1'}}})
+        marker = marker_from(text) if emit_marker else ''
         if mode == 'stderr_noise':
             end = time.time() + 1.4
             while time.time() < end:
                 print('token refresh noise', file=sys.stderr, flush=True)
                 time.sleep(0.05)
             open('workspace-write.txt', 'w').write('done')
-            emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':'Done'}}})
+            emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':marker + ' Done'}}})
             emit({'jsonrpc':'2.0','method':'turn/completed','params':{'turn':{'status':'completed'}}})
         elif mode == 'blocked':
             time.sleep(0.1)
-            emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':'Blocked: true required tools are unavailable'}}})
+            emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':marker + ' Blocked: true required tools are unavailable'}}})
         elif mode == 'immediate':
             open('workspace-write.txt', 'w').write('done')
-            emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':'Done'}}})
+            if marker:
+                emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':marker + ' Done'}}})
             emit({'jsonrpc':'2.0','method':'turn/completed','params':{'turn':{'status':'completed'}}})
         elif mode == 'no_output':
             while True:
@@ -124,7 +179,8 @@ for line in sys.stdin:
         else:
             time.sleep(0.1)
             open('workspace-write.txt', 'w').write('done')
-            emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':'Done'}}})
+            if marker:
+                emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':marker + ' Done'}}})
             emit({'jsonrpc':'2.0','method':'turn/completed','params':{'turn':{'status':'completed'}}})
     else:
         emit({'jsonrpc':'2.0','id':req.get('id'),'result':{}})
@@ -173,26 +229,49 @@ class CodexDriverIntegrationTests(unittest.TestCase):
         rc, events, _requests, record, _stderr = self.run_driver('ok')
         self.assertEqual(rc, 0, _stderr)
         self.assertIn('launch_ok', [e['event'] for e in events])
-        self.assertIn('/goal @', record)
+        self.assertNotIn('/goal @', record)
+        self.assertIn('BS_OUTCOME_READ', record)
+        self.assertIn('BS_GOAL_V1', _requests)
+        self.assertIn('\"ephemeral\": false', _requests)
+        self.assertIn('thread/goal/set', _requests)
+        self.assertIn('thread/goal/get', _requests)
+        self.assertIn('thread/archive', _requests)
         self.assertIn('outcome.md', record)
         self.assertNotIn('Conduct via', record)
 
-    def test_immediate_notifications_after_turn_start_response_are_observed(self):
+    def test_immediate_completion_uses_goal_oracle_even_if_turn_signal_races(self):
         rc, events, _requests, record, _stderr = self.run_driver('immediate', timeout=5)
         self.assertEqual(rc, 0, _stderr)
-        self.assertIn('/goal @', record)
-        self.assertIn('turn_completed_explicit', [e['event'] for e in events])
+        self.assertIn('BS_OUTCOME_READ', record)
+        self.assertIn('goal_status_final', [e['event'] for e in events])
+        self.assertEqual([e for e in events if e['event'] == 'goal_status_final'][-1]['goal_status'], 'complete')
 
     def test_blocked_final_answer_returns_semantic_failed(self):
         rc, events, _requests, _record, _stderr = self.run_driver('blocked')
-        self.assertEqual(rc, 6)
-        semantic = [e for e in events if e['event'] == 'turn_semantic_failed']
+        self.assertEqual(rc, 0)
+        semantic = [e for e in events if e['event'] == 'turn_semantic_observation']
         self.assertEqual(semantic[-1]['reason_code'], 'semantic_blocked_final_answer')
 
-    def test_expected_effect_none_still_fails_hard_refusal(self):
+    def test_expected_effect_none_allows_complete_goal_with_refusal_observation(self):
         rc, events, _requests, _record, _stderr = self.run_driver('blocked', extra_args=['--expected-effect-kind', 'none'])
+        self.assertEqual(rc, 0)
+        self.assertEqual([e for e in events if e['event'] == 'turn_semantic_observation'][-1]['reason_code'], 'semantic_blocked_final_answer')
+
+    def test_final_goal_non_success_returns_nonzero_with_raw_status(self):
+        rc, events, _requests, _record, _stderr = self.run_driver('ok', extra_env={'FAKE_FINAL_GOAL_STATUS': 'usageLimited'})
         self.assertEqual(rc, 6)
-        self.assertEqual([e for e in events if e['event'] == 'turn_semantic_failed'][-1]['reason_code'], 'semantic_blocked_final_answer')
+        final = [e for e in events if e['event'] == 'goal_status_final'][-1]
+        self.assertEqual(final['goal_status'], 'usage_limited')
+        self.assertEqual(final['raw_goal_status'], 'usageLimited')
+        self.assertIn('cleanup_goal_clear', [e['event'] for e in events])
+        self.assertIn('cleanup_thread_archive', [e['event'] for e in events])
+
+    def test_missing_outcome_read_marker_fails_even_when_goal_complete(self):
+        rc, events, _requests, _record, _stderr = self.run_driver('ok', extra_env={'FAKE_EMIT_MARKER': '0'})
+        self.assertEqual(rc, 6)
+        self.assertIn('outcome_read_marker_missing_or_mismatch', [e['event'] for e in events])
+        self.assertIn('cleanup_goal_clear', [e['event'] for e in events])
+        self.assertIn('cleanup_thread_archive', [e['event'] for e in events])
 
     def test_stderr_noise_does_not_keep_or_kill_idle_turn(self):
         rc, events, _requests, _record, _stderr = self.run_driver('stderr_noise')

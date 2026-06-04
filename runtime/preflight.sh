@@ -52,12 +52,68 @@ sys.exit(0 if have and need and have >= need else 1)
 PY
 }
 
+goal_rpc_probe() {
+  python3 - <<'PY'
+import json, os, select, subprocess, sys, time
+prefix = "BS_GOAL_V1 "
+objective = prefix + json.dumps(
+    {"run_id":"preflight","outcome_sha256":"0"*64,"outcome_path":"/preflight/outcome.md"},
+    sort_keys=True,
+    separators=(",",":"),
+) + "\nPreflight goal RPC capability probe."
+
+def send(proc, i, method, params):
+    proc.stdin.write(json.dumps({"jsonrpc":"2.0","id":i,"method":method,"params":params})+"\n")
+    proc.stdin.flush()
+def read(proc, i, timeout=10):
+    start=time.monotonic()
+    while time.monotonic()-start<timeout:
+        if proc.poll() is not None: raise RuntimeError(f"app-server exited before id={i}: {proc.returncode}")
+        ready,_,_=select.select([proc.stdout, proc.stderr], [], [], 0.25)
+        for stream in ready:
+            line=stream.readline()
+            if not line or stream is proc.stderr: continue
+            obj=json.loads(line)
+            if obj.get("id")==i:
+                if "error" in obj: raise RuntimeError(str(obj["error"]))
+                return obj.get("result") or {}
+    raise RuntimeError(f"timeout waiting id={i}")
+def goal_obj(result):
+    return result.get("goal") or result.get("threadGoal") or result.get("data") or result
+
+proc=None; thread_id=None
+try:
+    proc=subprocess.Popen(["codex","app-server","--listen","stdio://"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
+    send(proc,1,"initialize",{"clientInfo":{"name":"bs-preflight","version":"1.4.0"},"capabilities":{"experimentalApi":True}}); read(proc,1)
+    send(proc,2,"thread/start",{"cwd":os.getcwd(),"approvalPolicy":"never","sandbox":"workspace-write","ephemeral":False}); thread_id=read(proc,2)["thread"]["id"]
+    send(proc,3,"thread/goal/set",{"threadId":thread_id,"objective":objective,"status":"active","tokenBudget":None}); read(proc,3)
+    send(proc,4,"thread/goal/get",{"threadId":thread_id}); got=goal_obj(read(proc,4))
+    first=str(got.get("objective","")).splitlines()[0]
+    if not first.startswith(prefix): raise RuntimeError("goal objective header missing after set/get")
+    if json.loads(first[len(prefix):]).get("run_id")!="preflight": raise RuntimeError("goal objective header mismatch after set/get")
+    raw=got.get("status"); status={"usageLimited":"usage_limited","budgetLimited":"budget_limited"}.get(raw, raw if raw in {"active","paused","blocked","complete"} else "unknown")
+    if status not in {"active","complete"}: raise RuntimeError(f"unexpected normalized goal status {status}")
+    print(f"thread_id={thread_id}; status={status}; cleanup=clear+archive")
+except Exception as exc:
+    print(str(exc), file=sys.stderr); sys.exit(1)
+finally:
+    if proc is not None and thread_id is not None and proc.poll() is None:
+        for i,method in ((900001,"thread/goal/clear"),(900002,"thread/archive")):
+            try: send(proc,i,method,{"threadId":thread_id}); read(proc,i,timeout=3)
+            except Exception: pass
+    if proc is not None:
+        try: proc.kill()
+        except Exception: pass
+PY
+}
+
 if out=$(git --version 2>&1); then add_check git pass true "$out"; else add_check git fail true "$out"; fi
 if codex_path=$(command -v codex 2>/dev/null); then add_check codex_binary pass true "$codex_path"; else add_check codex_binary fail true "codex not found"; fi
 if out=$(codex --version 2>&1); then
   if version_ge "$out" "$MIN_CODEX_VERSION"; then add_check codex_version pass true "$out"; else add_check codex_version fail true "$out < $MIN_CODEX_VERSION"; fi
 else add_check codex_version fail true "$out"; fi
 if out=$(codex login status 2>&1); then add_check codex_auth pass true "$out"; else add_check codex_auth fail true "$out"; fi
+if out=$(goal_rpc_probe 2>&1); then add_check codex_goal_rpc_probe pass true "$out"; else add_check codex_goal_rpc_probe fail true "$out"; fi
 if gh_path=$(command -v gh 2>/dev/null); then add_check gh_binary pass true "$gh_path"; else add_check gh_binary fail true "gh not found"; fi
 if out=$(gh auth status 2>&1); then add_check gh_auth pass true "gh auth status passed"; else add_check gh_auth fail true "$out"; fi
 

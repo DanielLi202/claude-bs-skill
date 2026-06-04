@@ -17,8 +17,16 @@ if sys.argv[1:3] == ['login', 'status']:
 if len(sys.argv) < 2 or sys.argv[1] != 'app-server':
     sys.exit(64)
 record = os.environ.get('FAKE_CODEX_RECORD')
+goal = None
 def emit(obj):
     print(json.dumps(obj), flush=True)
+def marker_from(text):
+    prefix = 'BS_OUTCOME_READ '
+    idx = text.find(prefix)
+    if idx < 0:
+        return ''
+    payload, _ = json.JSONDecoder().raw_decode(text[idx + len(prefix):].lstrip())
+    return prefix + json.dumps(payload, sort_keys=True, separators=(',', ':'))
 for line in sys.stdin:
     req = json.loads(line)
     method = req.get('method')
@@ -26,6 +34,17 @@ for line in sys.stdin:
         emit({'jsonrpc':'2.0','id':req['id'],'result':{}})
     elif method == 'thread/start':
         emit({'jsonrpc':'2.0','id':req['id'],'result':{'thread':{'id':'thread-1'}}})
+    elif method == 'thread/goal/get':
+        if goal is None:
+            emit({'jsonrpc':'2.0','id':req['id'],'result':{}})
+        else:
+            status = 'complete' if req['id'] == 800001 else goal.get('status', 'active')
+            emit({'jsonrpc':'2.0','id':req['id'],'result':{'goal':{'objective':goal['objective'],'status':status}}})
+    elif method == 'thread/goal/set':
+        goal = {'objective':req.get('params', {}).get('objective'), 'status':req.get('params', {}).get('status')}
+        emit({'jsonrpc':'2.0','id':req['id'],'result':{'goal':goal}})
+    elif method in ('thread/goal/clear', 'thread/archive'):
+        emit({'jsonrpc':'2.0','id':req['id'],'result':{}})
     elif method == 'turn/start':
         text = req.get('params', {}).get('input', [{}])[0].get('text', '')
         if record:
@@ -34,7 +53,7 @@ for line in sys.stdin:
         emit({'jsonrpc':'2.0','id':req['id'],'result':{'turn':{'id':'turn-1'}}})
         time.sleep(0.05)
         open('workspace-write.txt', 'w').write('done')
-        emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':'Done'}}})
+        emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':marker_from(text) + ' Done'}}})
         emit({'jsonrpc':'2.0','method':'turn/completed','params':{'turn':{'status':'completed'}}})
     else:
         emit({'jsonrpc':'2.0','id':req.get('id'),'result':{}})
@@ -108,7 +127,8 @@ class ConductFixRoundTests(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         recorded = json.loads(record.read_text(encoding='utf-8'))
         self.assertEqual(len(recorded), 1)
-        self.assertIn('/goal @', recorded[0]['text'])
+        self.assertNotIn('/goal @', recorded[0]['text'])
+        self.assertIn('BS_OUTCOME_READ', recorded[0]['text'])
         self.assertIn('outcome.md', recorded[0]['text'])
         self.assertTrue((cycle / 'evidence' / 'conduct_round_1' / 'rpc_requests.jsonl').exists())
 
