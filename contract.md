@@ -1,4 +1,4 @@
-# Bootstrap Development Workflow Contract v1.4.0
+# Bootstrap Development Workflow Contract v1.4.1
 
 > Universal workflow contract for bootstrap-driven repositories. The contract owns orchestration semantics; each repository owns only its binding, backlog, ledger, verification command, and red-line documents.
 
@@ -99,7 +99,7 @@ If the agent encounters a situation it considers concerning but not covered by t
 
 `step_events.jsonl` is append-only. Every step attempt emits exactly `started` and then either `completed` or `failed`. The state key is `(step, attempt)` where `attempt` defaults to `0`; retries must increment `attempt`. A terminal event without a matching start, nested start for the same `(step, attempt)`, or unclosed start is invalid. Semantic details go in `outcome`, `reason`, or the controlled `reason_code` vocabulary, never by inventing event names.
 
-Controlled `reason_code` values are: `semantic_blocked_final_answer`, `semantic_refusal_final_answer`, `semantic_required_effect_missing`, `transport_eof_before_completion`, `launch_transient`, `launch_fatal`, `verify_command_failed`, `verify_evidence_missing`, `wall_clock_policy_exceeded`. Terminal events may include machine-readable `driver_exit`, `conduct_result`, `workspace_delta_files`, `evidence_delta_files`, and `write_actions`. Do not add a separate `environment_blocked` step; represent retries with `(step, attempt)`.
+Controlled `reason_code` values are: `semantic_blocked_final_answer`, `semantic_refusal_final_answer`, `semantic_required_effect_missing`, `transport_eof_before_completion`, `launch_transient`, `launch_fatal`, `verify_command_failed`, `verify_evidence_missing`, `wall_clock_policy_exceeded`. Terminal events may include machine-readable `driver_exit`, `conduct_result`, `workspace_delta_files`, `evidence_delta_files`, `write_actions`, and `file_change_actions`. Do not add a separate `environment_blocked` step; represent retries with `(step, attempt)`. `${runtime}/validate_events.py` enforces this append-only pairing before close.
 
 `/bs resume` rebuilds state from `step_events.jsonl` with strict pairing, not last-write-wins. If a step attempt is started without terminal event, runtime requires a human decision: `--redo`, `--mark-completed`, or `--escalate`. It must not infer success for side-effecting steps.
 
@@ -137,7 +137,7 @@ Fix-round artifacts are conditional on fix rounds: `outcome.v<g>.md` archives fo
 
 ## 7. Step 10 atomic close
 
-Step 10 reads the cycle data, verifies the backlog task is still `in_progress`, prepares new ledger and backlog content in memory, writes both, stages both, and commits once:
+Step 10 first runs `${runtime}/validate_events.py <cycle-dir>/step_events.jsonl`. It then reads the cycle data, verifies the backlog task is still `in_progress`, prepares new ledger and backlog content in memory, writes both, stages both, and commits once:
 
 `ledger+backlog: close <cycle> <ID> <title>`
 
@@ -179,23 +179,25 @@ The driver emits a heartbeat every 30 seconds while waiting for turn completion.
 | file | sha256 |
 |---|---|
 | runtime/preflight.sh | d8dde7afbd5f59080af1672065cf4ed1b449afc1e604706db9249d30d62aae46 |
-| runtime/codex_driver.py | 5ba6928ec279305b7968f08f0dad7ac896edd53b626cf280a972dc9d85e57caa |
+| runtime/codex_driver.py | 155ceea9a94e519de59f64823b880596359ed39b9b45463b884e339a1d049653 |
 | runtime/codex_fix_driver.py | 0ba1be44f6ddf4f8ff8d40a8a661bd317c85752c5e9597f6c2ac13afb9d1ae4a |
 | runtime/reshape_fix_round.py | ce6caf0114102fc706798963f6756e75c90b2d7d12caa854eca6352e30f9a73a |
 | runtime/conduct.sh | 7f2f9530c20b1e06d12ddc5bb9b1e94047b542647ca3b2f85f3d6643df5b5e53 |
 | runtime/grade_lint.py | 5240666933aed85b6182b4ac15cb545f76dff6a70c5cc8c494ccc1f4d4371e5f |
 | runtime/grade_verify.py | cd7baca6f0102d8920408bfd03d18711f76ad003d353cded54c74935c223407f |
-| commands/bs.md | 0897b216e9bc891be51648c25a37c67c3073785f1f636033d627c8a3d8348d37 |
+| commands/bs.md | d82fe5506e887dee6da80f46795bc9e5af6f67f858b8dfa119b43b6e1760ea42 |
+| runtime/validate_events.py | 1263309e4d5c62e2cca079be3254a9221a46ae9c3e28a6ae97bc616faad84fc3 |
 
 The manifest locks runtime and slash-command surface by making file hashes part of the contract hash. Any listed file change requires updating this table and refreshing adopter bindings.
 
 ## 10. Non-goals
 
-No parallel cycles, enum extension, severity override, council-member override, multi-backlog, markdown-embedded backlog compatibility, automatic v1.2 ledger migration, `/bs gc`, repository-specific prompt override, text `/goal` conduct transport, second goal file, raw grade markdown paste into the capsule, universal heavy adversarial process for low-risk docs/spec tasks, or unbounded fix loop in v1.4.0.
+No parallel cycles, enum extension, severity override, council-member override, multi-backlog, markdown-embedded backlog compatibility, automatic v1.2 ledger migration, `/bs gc`, repository-specific prompt override, text `/goal` conduct transport, second goal file, raw grade markdown paste into the capsule, universal heavy adversarial process for low-risk docs/spec tasks, or unbounded fix loop in v1.4.1.
 
 
 ## 11. Changelog
 
+- v1.4.1: step_events append-only validator (`runtime/validate_events.py` + Step 10 close-gate wiring) and fileChange edit accounting in `codex_driver.py` (new `file_change_actions` field; `workspace_delta` remains authoritative success signal); manifest relocked. Tooling/observability patch; no transport-semantics change.
 - v1.4.0: Codex goal-RPC transport migration. Preserves v1.3.8 Grade verify/lint hardening while migrating Conduct to non-ephemeral `thread/goal/set`, `BS_GOAL_V1` objective headers, driver-side outcome sha integrity, task-content-free launcher with `BS_OUTCOME_READ` evidence, final `thread/goal/get == complete` success oracle, status normalization, cleanup clear+archive, and a mandatory preflight goal-RPC probe.
 - v1.3.8: unattended real-code workflow hardening after cycle-009. Adds semantic completion validation (exit 6 for refusal/missing required effect), non-interrupting long-running supervisor defaults, per-round typed Grade verify evidence via `grade_verify.py`, warning-only council quorum by default, controlled reason codes, terminal driver outcome fields, and buffered app-server notification handling so immediate final-answer/turn-completed events after `turn/start` are not lost. P0.2 `/goal` skill interception is explicitly split to a separate issue.
 - v1.3.7: TC-B adversarial acceptance and Grade lint gate. Medium/high code Shape outputs `risk_surface` + `adversarial_acceptance`; Grade outputs `adversarial_checks`, `trust_surface_inventory`, and `deferred_claims`; `runtime/grade_lint.py` deterministically blocks malformed/missing adversarial blocks, P0/P1 fail/unverified checks, P0/P1 unverified trust items, and untracked current-scope safety waivers. `/bs` runs grade lint before fix-loop decisions and auto-merge for applicable tasks. Low-risk docs/spec cycles stay lightweight.

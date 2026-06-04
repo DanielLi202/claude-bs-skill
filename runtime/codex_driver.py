@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Codex app-server driver for bs v1.4.0.
+"""Codex app-server driver for bs v1.4.1.
 
 Delegates a frozen outcome capsule through a persistent, non-ephemeral Codex
 app-server thread using `thread/goal/set`, not text `/goal`. The driver computes
@@ -62,6 +62,7 @@ class TurnObservation:
     workspace_delta_files: list[str] = field(default_factory=list)
     evidence_delta_files: list[str] = field(default_factory=list)
     outcome_read_markers: list[dict] = field(default_factory=list)
+    file_change_actions: int = 0
 
     @property
     def write_action_count(self) -> int:
@@ -274,6 +275,8 @@ def observe_event(obj: dict, obs: TurnObservation) -> None:
                 obs.command_actions[action["type"]] += 1
     phase = item.get("phase") or params.get("phase")
     typ = item.get("type") or params.get("type")
+    if method in {"item/started", "item/completed"} and typ == "fileChange":
+        obs.file_change_actions += 1
     text = item.get("text") or _content_text(item.get("content"))
     if isinstance(text, str) and text:
         obs.record_text(text)
@@ -368,7 +371,7 @@ def post_turn_validate(args: argparse.Namespace, obs: TurnObservation, meta: Tex
         reason = "semantic_refusal_final_answer"
     elif not present:
         reason = "semantic_required_effect_missing"
-    payload = dict(expected_effect_kind=args.expected_effect_kind, expected_effect_required=args.expected_effect_required, workspace_delta_files=obs.workspace_delta_files, evidence_delta_files=obs.evidence_delta_files, write_actions=obs.write_action_count, completion_event=completion_event, **fields)
+    payload = dict(expected_effect_kind=args.expected_effect_kind, expected_effect_required=args.expected_effect_required, workspace_delta_files=obs.workspace_delta_files, evidence_delta_files=obs.evidence_delta_files, write_actions=obs.write_action_count, file_change_actions=obs.file_change_actions, completion_event=completion_event, **fields)
     if reason:
         emit_meta(meta, event="turn_semantic_observation", reason_code=reason, marker=hard or soft, final_answer_seen=obs.final_answer_seen, **payload)
     emit_meta(meta, event=completion_event, semantic_validated=True, **payload)

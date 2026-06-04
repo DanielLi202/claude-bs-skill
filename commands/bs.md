@@ -49,6 +49,8 @@ Execute the next bootstrap backlog task end-to-end. Do not only describe the wor
    - append ledger entry to `${binding.ledger}`;
    - change backlog task to `completed` or `escalated`;
    - set `closed_in` and `closed_at`;
+   - before proceeding to the close commit, run `python3 ${runtime}/validate_events.py <cycle-dir>/step_events.jsonl`;
+   - if validation exits non-zero, do not close; repair the log append-only by appending a correcting or next-attempt event, never editing/inserting prior history, then re-run until it passes;
    - stage only ledger + backlog;
    - commit `ledger+backlog: close <cycle> <ID> <title>`;
    - push `origin main`;
