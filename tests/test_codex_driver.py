@@ -53,6 +53,10 @@ class CodexDriverUnitTests(unittest.TestCase):
         self.assertIn('turn_semantic_failed', source)
         self.assertIn('--expected-effect-kind', source)
         self.assertIn('--on-wall-clock-limit', source)
+        self.assertIn('--first-work-item-stale-sec', source)
+        self.assertIn('--first-work-item-terminate-sec', source)
+        self.assertIn('--on-no-work-items', source)
+        self.assertIn('turn_no_work_items_stale', source)
         self.assertNotIn('exec --json', source)
 
     def test_codex_bin_env_requires_test_gate(self):
@@ -73,6 +77,30 @@ class CodexDriverUnitTests(unittest.TestCase):
             dirty.write_text('changed now', encoding='utf-8')
             obs.finish()
             self.assertEqual(obs.workspace_delta_files, ['dirty.txt'])
+
+    def test_text_delta_does_not_disarm_first_work_item_gate(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            evidence = root / 'evidence'; evidence.mkdir()
+            obs = codex_driver.TurnObservation(root, evidence)
+            codex_driver.observe_event({'method': 'item/agentMessage/delta', 'params': {'itemId': 'a', 'delta': 'BS_OUTCOME_READ {}'}}, obs)
+            self.assertIsNone(obs.first_work_item_at)
+            self.assertEqual(len(obs.outcome_read_markers), 1)
+
+    def test_real_work_item_disarms_first_work_item_gate_and_counts_churn(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            evidence = root / 'evidence'; evidence.mkdir()
+            obs = codex_driver.TurnObservation(root, evidence)
+            codex_driver.observe_event({'method': 'mcpServer/startupStatus/updated', 'params': {'serverName': 'alpha'}}, obs)
+            codex_driver.observe_event({'method': 'skills/changed', 'params': {'skillName': 'beta'}}, obs)
+            codex_driver.observe_event({'method': 'item/started', 'params': {'item': {'type': 'fileChange'}}}, obs)
+            self.assertIsNotNone(obs.first_work_item_at)
+            self.assertEqual(obs.file_change_events, 1)
+            self.assertEqual(obs.mcp_events_seen, 1)
+            self.assertEqual(obs.skill_events_seen, 1)
+            self.assertEqual(obs.observed_mcp_servers, {'alpha'})
+            self.assertEqual(obs.observed_skills, {'beta'})
 
     def test_evidence_delta_ignores_preexisting_and_driver_logs(self):
         with tempfile.TemporaryDirectory() as td:
@@ -173,6 +201,22 @@ for line in sys.stdin:
             if marker:
                 emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':marker + ' Done'}}})
             emit({'jsonrpc':'2.0','method':'turn/completed','params':{'turn':{'status':'completed'}}})
+        elif mode == 'mcp_churn':
+            while True:
+                emit({'method':'mcpServer/startupStatus/updated','params':{'serverName':'alpha'}})
+                emit({'method':'skills/changed','params':{'skillName':'beta'}})
+                time.sleep(0.05)
+        elif mode == 'text_delta_only':
+            if marker:
+                emit({'method':'item/agentMessage/delta','params':{'itemId':'msg-1','delta':marker}})
+            while True:
+                emit({'method':'mcpServer/startupStatus/updated','params':{'serverName':'alpha'}})
+                time.sleep(0.05)
+        elif mode == 'real_work_then_wait':
+            emit({'method':'item/started','params':{'item':{'type':'command'}}})
+            while True:
+                emit({'method':'mcpServer/startupStatus/updated','params':{'serverName':'alpha'}})
+                time.sleep(0.05)
         elif mode == 'no_output':
             while True:
                 time.sleep(1)
@@ -289,6 +333,47 @@ class CodexDriverIntegrationTests(unittest.TestCase):
         rc, events, _requests, _record, _stderr = self.run_driver('stderr_noise', extra_args=['--timeout-sec', '1'])
         self.assertEqual(rc, 0, _stderr)
         self.assertNotIn('turn_total_timeout', [e['event'] for e in events])
+
+    def test_no_work_items_stale_then_terminate_exit_7(self):
+        rc, events, _requests, _record, _stderr = self.run_driver('mcp_churn', extra_args=['--first-work-item-stale-sec', '1', '--first-work-item-terminate-sec', '2', '--on-no-work-items', 'terminate'], timeout=6)
+        self.assertEqual(rc, 7, _stderr)
+        names = [e['event'] for e in events]
+        self.assertIn('turn_no_work_items_stale', names)
+        self.assertIn('turn_no_work_items_terminated', names)
+        stale = [e for e in events if e['event'] == 'turn_no_work_items_stale'][-1]
+        self.assertGreater(stale['mcp_events_seen'], 0)
+        self.assertGreater(stale['skill_events_seen'], 0)
+
+    def test_text_delta_marker_does_not_disarm_no_work_gate(self):
+        rc, events, _requests, _record, _stderr = self.run_driver('text_delta_only', extra_args=['--first-work-item-stale-sec', '1', '--first-work-item-terminate-sec', '2', '--on-no-work-items', 'terminate'], timeout=6)
+        self.assertEqual(rc, 7, _stderr)
+        self.assertIn('turn_no_work_items_stale', [e['event'] for e in events])
+
+    def test_real_work_item_disarms_no_work_gate(self):
+        rc, events, _requests, _record, _stderr = self.run_driver('real_work_then_wait', extra_args=['--first-work-item-stale-sec', '1', '--first-work-item-terminate-sec', '2', '--on-no-work-items', 'terminate', '--wall-clock-limit-sec', '3', '--on-wall-clock-limit', 'fail'], timeout=7)
+        self.assertEqual(rc, 2, _stderr)
+        names = [e['event'] for e in events]
+        self.assertNotIn('turn_no_work_items_stale', names)
+        self.assertIn('turn_wall_clock_limit', names)
+
+    def test_codex_env_snapshot_is_written(self):
+        rc, events, _requests, _record, _stderr = self.run_driver('ok', extra_args=['--mcp-policy', 'clean', '--clean-codex-home'])
+        self.assertEqual(rc, 0, _stderr)
+        # Re-run in a bespoke temp dir so we can inspect the generated evidence path.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            fake = root / 'fake_codex.py'
+            fake.write_text(FAKE_CODEX, encoding='utf-8')
+            fake.chmod(0o755)
+            outcome = root / 'outcome.md'; outcome.write_text('# Outcome\n', encoding='utf-8')
+            evidence = root / 'evidence'
+            env = os.environ.copy()
+            env.update({'BS_TEST_FAKE_CODEX': '1', 'CODEX_BIN': str(fake), 'FAKE_CODEX_MODE': 'ok'})
+            proc = subprocess.run([sys.executable, str(DRIVER), '--cwd', str(root), '--outcome-file', str(outcome), '--evidence-dir', str(evidence), '--launch-backoff', '0', '--mcp-policy', 'clean', '--clean-codex-home'], cwd=str(root), env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            payload = json.loads((evidence / 'codex_env.json').read_text())
+            self.assertTrue(payload['clean_codex_home'])
+            self.assertEqual(payload['mcp_policy'], 'clean')
 
 
 if __name__ == '__main__':

@@ -74,6 +74,16 @@ def validate_verify_config(data: dict) -> None:
     if not_required is not None and (not isinstance(not_required, list) or not all(isinstance(c, str) for c in not_required)): raise BindingError("verify.not_required must be list of task type strings")
 
 
+
+def validate_conduct_config(data: dict) -> None:
+    conduct = data.get("conduct")
+    if conduct is None: return
+    if not isinstance(conduct, dict): raise BindingError("conduct must be mapping")
+    policy = conduct.get("mcp_policy")
+    if policy is not None and policy not in {"clean", "allowlist", "full"}: raise BindingError("conduct.mcp_policy must be clean, allowlist, or full")
+    allow = conduct.get("mcp_allowlist")
+    if allow is not None and (not isinstance(allow, list) or not all(isinstance(x, str) and x for x in allow)): raise BindingError("conduct.mcp_allowlist must be list of non-empty strings")
+
 def validate_preflight_config(data: dict) -> None:
     preflight = data.get("preflight")
     if preflight is None: return
@@ -101,6 +111,7 @@ def validate(repo: Path, data: dict, skill_contract: Path) -> None:
     validate_runtime_manifest(skill_contract.parent, skill_contract.read_text(encoding="utf-8"))
     validate_verify_config(data)
     validate_preflight_config(data)
+    validate_conduct_config(data)
     for f in ["backlog", "ledger"]:
         if not (repo / data[f]).exists(): raise BindingError(f"path not found: {data[f]}")
     if data.get("workflow_dir") and not (repo / data["workflow_dir"]).exists():

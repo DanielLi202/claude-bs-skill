@@ -10,4 +10,15 @@ class CommandFlowTests(unittest.TestCase):
         self.assertIn('Run `${runtime}/grade_verify.py ... --round <g+1>` again before the fix Grade is authored', text)
         self.assertIn('citing `evidence/grade_verify_round_<g+1>.yaml`', text)
         self.assertIn('cannot substitute for per-round Grade verify helper invocation', text)
+
+    def test_mcp_policy_and_step10_event_contract_are_explicit(self):
+        text = COMMAND.read_text(encoding='utf-8')
+        self.assertIn('conduct.mcp_policy', text)
+        self.assertIn('--mcp-policy <policy>', text)
+        self.assertIn('MUST pass the resolved `--mcp-policy` explicitly', text)
+        self.assertIn('--allow-open-current step_10', text)
+        self.assertIn('post-close full validation', text)
+        self.assertIn('retry_kind', text)
+        self.assertIn('recorded_at', text)
+        self.assertIn('occurred_at', text)
 if __name__ == '__main__': unittest.main()

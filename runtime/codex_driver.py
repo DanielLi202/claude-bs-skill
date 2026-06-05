@@ -19,7 +19,9 @@ import select
 import signal
 import subprocess
 import sys
+import tempfile
 import time
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TextIO
@@ -36,7 +38,7 @@ class LaunchFatal(Exception):
 HARD_REFUSAL_MARKERS = ["Blocked: true", "required tools are unavailable", "goal-backed execution cannot start"]
 SOFT_REFUSAL_MARKERS = ["I can't proceed", "I cannot proceed", "unable to proceed"]
 WRITE_ACTIONS = {"write", "edit"}
-DRIVER_EVIDENCE_FILES = {"raw_vendor_output.jsonl", "rpc_requests.jsonl", "vendor_stderr.txt", "driver_events.jsonl"}
+DRIVER_EVIDENCE_FILES = {"raw_vendor_output.jsonl", "rpc_requests.jsonl", "vendor_stderr.txt", "driver_events.jsonl", "codex_env.json"}
 GOAL_HEADER_PREFIX = "BS_GOAL_V1 "
 OUTCOME_READ_PREFIX = "BS_OUTCOME_READ "
 ACTIVE_CLEANUP: dict[str, object] = {}
@@ -62,7 +64,13 @@ class TurnObservation:
     workspace_delta_files: list[str] = field(default_factory=list)
     evidence_delta_files: list[str] = field(default_factory=list)
     outcome_read_markers: list[dict] = field(default_factory=list)
-    file_change_actions: int = 0
+    file_change_events: int = 0
+    first_work_item_at: float | None = None
+    first_model_output_at: float | None = None
+    mcp_events_seen: int = 0
+    skill_events_seen: int = 0
+    observed_mcp_servers: set[str] = field(default_factory=set)
+    observed_skills: set[str] = field(default_factory=set)
 
     @property
     def write_action_count(self) -> int:
@@ -242,6 +250,66 @@ def emit_meta(meta: TextIO, **obj: object) -> None:
     meta.flush()
 
 
+def _codex_home() -> Path:
+    return Path(os.environ.get("CODEX_HOME") or Path.home() / ".codex").expanduser().resolve()
+
+
+def _toml_mcp_servers(config: Path) -> list[str]:
+    try:
+        data = tomllib.loads(config.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return []
+    servers = data.get("mcp_servers")
+    return sorted(servers.keys()) if isinstance(servers, dict) else []
+
+
+def _skill_names(home: Path) -> list[str]:
+    skills = home / "skills"
+    try:
+        return sorted(p.name for p in skills.iterdir() if not p.name.startswith("."))
+    except OSError:
+        return []
+
+
+def _instruction_sources(cwd: Path, home: Path) -> dict[str, object]:
+    out: dict[str, object] = {
+        "repo_agents_md": (cwd / "AGENTS.md").exists(),
+        "codex_config": (home / "config.toml").exists(),
+        "config_instruction_keys": [],
+    }
+    try:
+        data = tomllib.loads((home / "config.toml").read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return out
+    out["config_instruction_keys"] = sorted(k for k in data.keys() if "instruction" in str(k).lower())
+    return out
+
+
+def write_codex_env_snapshot(args: argparse.Namespace, obs: TurnObservation | None = None) -> None:
+    evidence = Path(args.evidence_dir).resolve()
+    home = _codex_home()
+    payload: dict[str, object] = {
+        "codex_home": str(home),
+        "config_mcp_servers": _toml_mcp_servers(home / "config.toml"),
+        "skills": _skill_names(home),
+        "clean_codex_home": bool(getattr(args, "clean_codex_home", False)),
+        "mcp_policy": getattr(args, "mcp_policy", None),
+        "mcp_allowlist": getattr(args, "mcp_allowlist", []),
+        "binding_mcp_policy": getattr(args, "binding_mcp_policy", None),
+        "suppressed_mcp_servers": getattr(args, "suppressed_mcp_servers", []),
+        "instruction_sources": _instruction_sources(Path(args.cwd).resolve(), home),
+    }
+    if obs is not None:
+        payload.update({
+            "observed_mcp_servers": sorted(obs.observed_mcp_servers),
+            "observed_skills": sorted(obs.observed_skills),
+            "mcp_events_seen": obs.mcp_events_seen,
+            "skill_events_seen": obs.skill_events_seen,
+        })
+    evidence.mkdir(parents=True, exist_ok=True)
+    (evidence / "codex_env.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def _content_text(value: object) -> str:
     if isinstance(value, str):
         return value
@@ -256,12 +324,38 @@ def _content_text(value: object) -> str:
     return ""
 
 
+def _name_from_params(params: dict, item: dict) -> str | None:
+    for source in (params, item):
+        for key in ("name", "server", "serverName", "skill", "skillName", "id"):
+            val = source.get(key)
+            if isinstance(val, str) and val:
+                return val
+    return None
+
+
+def _mark_work_item(obs: TurnObservation) -> None:
+    if obs.first_work_item_at is None:
+        obs.first_work_item_at = time.monotonic()
+
+
 def observe_event(obj: dict, obs: TurnObservation) -> None:
     method = obj.get("method")
     params = obj.get("params") or {}
+    params = params if isinstance(params, dict) else {}
     item = params.get("item") or {}
     item = item if isinstance(item, dict) else {}
+    if isinstance(method, str) and method.startswith("mcpServer/"):
+        obs.mcp_events_seen += 1
+        name = _name_from_params(params, item)
+        if name:
+            obs.observed_mcp_servers.add(name)
+    if method == "skills/changed":
+        obs.skill_events_seen += 1
+        name = _name_from_params(params, item)
+        if name:
+            obs.observed_skills.add(name)
     if method == "item/agentMessage/delta":
+        obs.first_model_output_at = obs.first_model_output_at or time.monotonic()
         iid = str(params.get("itemId") or "")
         delta = params.get("delta")
         if iid and isinstance(delta, str):
@@ -275,10 +369,13 @@ def observe_event(obj: dict, obs: TurnObservation) -> None:
                 obs.command_actions[action["type"]] += 1
     phase = item.get("phase") or params.get("phase")
     typ = item.get("type") or params.get("type")
+    if method in {"item/started", "item/completed"}:
+        _mark_work_item(obs)
     if method in {"item/started", "item/completed"} and typ == "fileChange":
-        obs.file_change_actions += 1
+        obs.file_change_events += 1
     text = item.get("text") or _content_text(item.get("content"))
     if isinstance(text, str) and text:
+        obs.first_model_output_at = obs.first_model_output_at or time.monotonic()
         obs.record_text(text)
     if method in {"item/completed", "item/started"} and phase == "final_answer" and typ in {"agentMessage", "message", "assistant_message"}:
         iid = str(item.get("id") or "")
@@ -371,7 +468,7 @@ def post_turn_validate(args: argparse.Namespace, obs: TurnObservation, meta: Tex
         reason = "semantic_refusal_final_answer"
     elif not present:
         reason = "semantic_required_effect_missing"
-    payload = dict(expected_effect_kind=args.expected_effect_kind, expected_effect_required=args.expected_effect_required, workspace_delta_files=obs.workspace_delta_files, evidence_delta_files=obs.evidence_delta_files, write_actions=obs.write_action_count, file_change_actions=obs.file_change_actions, completion_event=completion_event, **fields)
+    payload = dict(expected_effect_kind=args.expected_effect_kind, expected_effect_required=args.expected_effect_required, workspace_delta_files=obs.workspace_delta_files, evidence_delta_files=obs.evidence_delta_files, write_actions=obs.write_action_count, file_change_events=obs.file_change_events, completion_event=completion_event, **fields)
     if reason:
         emit_meta(meta, event="turn_semantic_observation", reason_code=reason, marker=hard or soft, final_answer_seen=obs.final_answer_seen, **payload)
     emit_meta(meta, event=completion_event, semantic_validated=True, **payload)
@@ -391,22 +488,34 @@ def wait_for_turn_completion(proc: subprocess.Popen, raw: TextIO, err: TextIO, m
     obs.start()
     assert proc.stdout is not None and proc.stderr is not None
     wall_limit = args.wall_clock_limit_sec or (args.timeout_sec if args.timeout_sec > 0 and args.on_wall_clock_limit in {"fail", "terminate"} else 0)
+    no_work_stale = False
     while True:
         now = time.monotonic()
         silent = now - last_stdout
         elapsed = now - start
         if proc.poll() is not None:
             emit_meta(meta, event="transport_failed", reason_code="transport_eof_before_completion", exit=proc.returncode)
+            write_codex_env_snapshot(args, obs)
             return 2
         if wall_limit > 0 and elapsed > wall_limit:
             if not wall:
                 emit_meta(meta, event="turn_wall_clock_limit", reason_code="wall_clock_policy_exceeded", limit_sec=wall_limit, policy=args.on_wall_clock_limit)
                 wall = True
             if args.on_wall_clock_limit in {"fail", "terminate"}:
+                write_codex_env_snapshot(args, obs)
                 kill_proc(proc)
                 return 2
+        if obs.first_work_item_at is None and args.first_work_item_stale_sec > 0 and not no_work_stale and elapsed > args.first_work_item_stale_sec:
+            emit_meta(meta, event="turn_no_work_items_stale", elapsed_sec=round(elapsed, 3), stale_sec=args.first_work_item_stale_sec, mcp_events_seen=obs.mcp_events_seen, skill_events_seen=obs.skill_events_seen)
+            no_work_stale = True
+        if obs.first_work_item_at is None and args.on_no_work_items == "terminate" and args.first_work_item_terminate_sec > 0 and elapsed > args.first_work_item_terminate_sec:
+            emit_meta(meta, event="turn_no_work_items_terminated", elapsed_sec=round(elapsed, 3), terminate_sec=args.first_work_item_terminate_sec, mcp_events_seen=obs.mcp_events_seen, skill_events_seen=obs.skill_events_seen)
+            write_codex_env_snapshot(args, obs)
+            kill_proc(proc)
+            return 7
         if args.idle_timeout_sec > 0 and silent > args.idle_timeout_sec:
             emit_meta(meta, event="turn_idle_timeout", idle_timeout_sec=args.idle_timeout_sec)
+            write_codex_env_snapshot(args, obs)
             kill_proc(proc)
             return 2
         if args.silent_soft_limit_sec > 0 and not soft and silent > args.silent_soft_limit_sec:
@@ -423,7 +532,9 @@ def wait_for_turn_completion(proc: subprocess.Popen, raw: TextIO, err: TextIO, m
             emit_meta(meta, event="heartbeat", idle_sec=round(silent, 3))
             last_heartbeat = now
         if inferred_at is not None and now - inferred_at >= args.inferred_completion_sec:
-            return post_turn_validate(args, obs, meta, "turn_completed_inferred", inferred_completion=True, reason=inferred_reason, armed_for_sec=args.inferred_completion_sec)
+            rc = post_turn_validate(args, obs, meta, "turn_completed_inferred", inferred_completion=True, reason=inferred_reason, armed_for_sec=args.inferred_completion_sec)
+            write_codex_env_snapshot(args, obs)
+            return rc
         ready, _, _ = select.select([proc.stdout, proc.stderr], [], [], 0.25)
         if not ready:
             continue
@@ -448,8 +559,11 @@ def wait_for_turn_completion(proc: subprocess.Popen, raw: TextIO, err: TextIO, m
                 if obj.get("method") == "turn/completed":
                     status = (obj.get("params") or {}).get("turn", {}).get("status")
                     if status == "completed":
-                        return post_turn_validate(args, obs, meta, "turn_completed_explicit", status=status)
+                        rc = post_turn_validate(args, obs, meta, "turn_completed_explicit", status=status)
+                        write_codex_env_snapshot(args, obs)
+                        return rc
                     emit_meta(meta, event="turn_completed_explicit", status=status)
+                    write_codex_env_snapshot(args, obs)
                     return 2
                 reason = detect_inferred_completion_signal(obj)
                 if reason and inferred_at is None:
@@ -523,7 +637,7 @@ def launch_and_handshake(args: argparse.Namespace, raw: TextIO, rpc: TextIO, err
     launcher = build_launcher_text(outcome_file, outcome_sha)
     try:
         proc = subprocess.Popen([codex_bin, "app-server", "--listen", "stdio://"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, cwd=str(cwd))
-        rpc_call(proc, raw, rpc, err, 1, "initialize", {"clientInfo": {"name": "bs-codex-driver", "version": "1.4.0"}, "capabilities": {"experimentalApi": True}}, args.handshake_timeout_sec)
+        rpc_call(proc, raw, rpc, err, 1, "initialize", {"clientInfo": {"name": "bs-codex-driver", "version": "1.4.2"}, "capabilities": {"experimentalApi": True}}, args.handshake_timeout_sec)
         params = {"cwd": str(cwd), "approvalPolicy": "never", "sandbox": "workspace-write", "ephemeral": False}
         if args.model:
             params["model"] = args.model
@@ -532,6 +646,7 @@ def launch_and_handshake(args: argparse.Namespace, raw: TextIO, rpc: TextIO, err
         ACTIVE_CLEANUP.update({"proc": proc, "raw": raw, "rpc": rpc, "err": err, "meta": meta, "thread_id": thread_id})
         install_signal_handlers()
         emit_meta(meta, event="thread_started", thread_id=thread_id, ephemeral=False, outcome_sha256=outcome_sha, run_id=run_id)
+        write_codex_env_snapshot(args)
         current = rpc_call(proc, raw, rpc, err, 3, "thread/goal/get", {"threadId": thread_id}, args.handshake_timeout_sec).get("result") or {}
         existing = parse_goal_header(extract_goal_objective(current))
         if existing and any(existing.get(k) != expected.get(k) for k in ("run_id", "outcome_sha256", "outcome_path")):
@@ -585,6 +700,9 @@ def main() -> int:
     ap.add_argument("--timeout-sec", type=int, default=0, help="legacy wall-clock limit; ignored unless on-wall-clock-limit is fail/terminate")
     ap.add_argument("--wall-clock-limit-sec", type=int, default=0)
     ap.add_argument("--on-wall-clock-limit", default="mark_stale", choices=["mark_stale", "fail", "terminate"])
+    ap.add_argument("--first-work-item-stale-sec", type=int, default=300, help="emit telemetry when no item/started, item/completed, or fileChange appears after this many seconds; 0 disables")
+    ap.add_argument("--first-work-item-terminate-sec", type=int, default=0, help="terminate with exit 7 when no work item appears after this many seconds and --on-no-work-items=terminate")
+    ap.add_argument("--on-no-work-items", default="mark_stale", choices=["mark_stale", "terminate"])
     ap.add_argument("--idle-timeout-sec", type=int, default=0, help="deprecated hard idle kill; default disabled")
     ap.add_argument("--silent-soft-limit-sec", type=int, default=120)
     ap.add_argument("--stale-notice-sec", type=int, default=1800)
@@ -598,8 +716,15 @@ def main() -> int:
     ap.add_argument("--expected-effect-required", default="true", choices=["true", "false"])
     ap.add_argument("--codex-bin", default=None)
     ap.add_argument("--run-id", default=None)
+    ap.add_argument("--clean-codex-home", action="store_true")
+    ap.add_argument("--mcp-policy", default=None)
+    ap.add_argument("--mcp-allowlist", default="")
+    ap.add_argument("--binding-mcp-policy", default=None)
+    ap.add_argument("--suppressed-mcp-servers", default="")
     args = ap.parse_args()
     args.expected_effect_required = args.expected_effect_required == "true"
+    args.mcp_allowlist = [x for x in str(args.mcp_allowlist).split(",") if x]
+    args.suppressed_mcp_servers = [x for x in str(args.suppressed_mcp_servers).split(",") if x]
     cwd = Path(args.cwd).resolve()
     outcome = Path(args.outcome_file).resolve()
     if not outcome.exists():

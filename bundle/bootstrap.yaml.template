@@ -1,7 +1,7 @@
 schema_version: 1
 contract:
-  source_url: "https://raw.githubusercontent.com/<owner>/claude-bs-skill/v1.4.0/contract.md"
-  source_tag: "v1.4.0"
+  source_url: "https://raw.githubusercontent.com/<owner>/claude-bs-skill/v1.4.2/contract.md"
+  source_tag: "v1.4.2"
   source_commit: "<40-hex-git-sha>"
   source_sha256: "<64-hex>"
   sha256_path: .bootstrap/contract.sha256
@@ -29,6 +29,9 @@ preflight:
   require_council: false
   council_quorum_min: 2
   council_required_when: {}
+conduct:
+  mcp_policy: clean
+  mcp_allowlist: []
 register_prefixes: []
 agent_prompts:
   shape_role: null

@@ -29,15 +29,21 @@ class BindingManifestTests(unittest.TestCase):
         data = {
             "verify": {"grade": {"code": ["cargo build"], "docs": ["bash scripts/verify-docs.sh"]}, "env": {"clear": ["RUSTC_WRAPPER"]}},
             "preflight": {"require_council": False, "council_quorum_min": 2, "council_required_when": {"risk_level": "high"}},
+            "conduct": {"mcp_policy": "allowlist", "mcp_allowlist": ["github"]},
         }
         binding.validate_verify_config(data)
         binding.validate_preflight_config(data)
+        binding.validate_conduct_config(data)
 
     def test_validate_verify_config_rejects_missing_command_list_shape(self):
         with self.assertRaises(binding.BindingError):
             binding.validate_verify_config({"verify": {"grade": {"code": []}}})
         with self.assertRaises(binding.BindingError):
             binding.validate_preflight_config({"preflight": {"require_council": "false"}})
+        with self.assertRaises(binding.BindingError):
+            binding.validate_conduct_config({"conduct": {"mcp_policy": "weird"}})
+        with self.assertRaises(binding.BindingError):
+            binding.validate_conduct_config({"conduct": {"mcp_allowlist": "github"}})
 
 
 if __name__ == '__main__':

@@ -68,6 +68,58 @@ class EventStateTests(unittest.TestCase):
         with self.assertRaisesRegex(EventError, 'workspace_delta_files must be list'):
             step_states(path)
 
+    def test_occurred_recorded_are_accepted_and_legacy_ts_is_accepted(self):
+        path = self.write('\n'.join([
+            '{"step":"step_1","event":"started","occurred_at":"2026-06-05T00:00:00Z","recorded_at":"2026-06-05T00:00:10Z"}',
+            '{"step":"step_1","event":"completed","occurred_at":"2026-06-05T00:00:01Z","recorded_at":"2026-06-05T00:00:11Z"}',
+            '{"step":"step_2","event":"started","ts":"2026-06-05T00:00:12Z"}',
+            '{"step":"step_2","event":"completed","ts":"2026-06-05T00:00:13Z"}',
+        ]))
+        self.assertEqual(step_states(path), {'step_1': 'completed', 'step_2': 'completed'})
+
+    def test_invalid_recorded_at_is_rejected(self):
+        path = self.write('\n'.join([
+            '{"step":"step_1","event":"started","recorded_at":"2026-06-05T00:00:00+00:00","occurred_at":"2026-06-05T00:00:00Z"}',
+        ]))
+        with self.assertRaisesRegex(EventError, 'invalid recorded_at'):
+            step_states(path)
+
+    def test_retry_kind_enum_and_changed_note(self):
+        for retry_kind, changed in [
+            ('launch_retry', 'CODEX_HOME'),
+            ('semantic_fix_round', 'outcome sha'),
+            ('transport_retry', 'model'),
+        ]:
+            with self.subTest(retry_kind=retry_kind):
+                path = self.write('\n'.join([
+                    '{"step":"step_3","event":"started"}',
+                    '{"step":"step_3","event":"failed"}',
+                    f'{{"step":"step_3","attempt":1,"event":"started","retry_kind":"{retry_kind}","changed":"{changed}"}}',
+                    f'{{"step":"step_3","attempt":1,"event":"completed","retry_kind":"{retry_kind}","changed":"{changed}"}}',
+                ]))
+                self.assertEqual(step_states(path), {'step_3': 'completed'})
+
+    def test_retry_kind_on_attempt_zero_is_rejected(self):
+        path = self.write('\n'.join([
+            '{"step":"step_3","event":"started","retry_kind":"launch_retry","changed":"CODEX_HOME"}',
+        ]))
+        with self.assertRaisesRegex(EventError, 'only valid on non-zero attempts'):
+            step_states(path)
+
+    def test_retry_kind_requires_changed_note(self):
+        path = self.write('\n'.join([
+            '{"step":"step_3","attempt":1,"event":"started","retry_kind":"launch_retry"}',
+        ]))
+        with self.assertRaisesRegex(EventError, 'changed must be non-empty'):
+            step_states(path)
+
+    def test_invalid_retry_kind_is_rejected(self):
+        path = self.write('\n'.join([
+            '{"step":"step_3","attempt":1,"event":"started","retry_kind":"bad","changed":"x"}',
+        ]))
+        with self.assertRaisesRegex(EventError, 'invalid retry_kind'):
+            step_states(path)
+
 
 if __name__ == '__main__':
     unittest.main()

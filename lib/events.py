@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import json
+import re
 
 class EventError(ValueError):
     pass
@@ -10,6 +11,8 @@ class EventError(ValueError):
 TERMINAL = {"completed", "failed"}
 VALID_EVENTS = {"started", "completed", "failed"}
 VALID_REASON_CODES = {"semantic_blocked_final_answer", "semantic_refusal_final_answer", "semantic_required_effect_missing", "transport_eof_before_completion", "launch_transient", "launch_fatal", "verify_command_failed", "verify_evidence_missing", "wall_clock_policy_exceeded"}
+VALID_RETRY_KINDS = {"transport_retry", "semantic_fix_round", "launch_retry"}
+ISO_Z_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
 
 @dataclass(frozen=True)
 class EventKey:
@@ -48,9 +51,27 @@ def iter_events(path: Path):
         step = event.get('step')
         if not isinstance(step, str) or not step:
             raise EventError(f"line {n}: missing step")
+        for field in ("recorded_at", "occurred_at", "ts"):
+            value = event.get(field)
+            if value is not None and (not isinstance(value, str) or not ISO_Z_RE.match(value)):
+                raise EventError(f"line {n}: invalid {field} {value!r}")
+        if "recorded_at" in event and "occurred_at" not in event:
+            raise EventError(f"line {n}: occurred_at required when recorded_at is present")
+        if "occurred_at" in event and "recorded_at" not in event:
+            raise EventError(f"line {n}: recorded_at required when occurred_at is present")
         reason_code = event.get('reason_code')
         if reason_code is not None and reason_code not in VALID_REASON_CODES:
             raise EventError(f"line {n}: invalid reason_code {reason_code!r}")
+        retry_kind = event.get('retry_kind')
+        attempt = _attempt(event)
+        if retry_kind is not None and retry_kind not in VALID_RETRY_KINDS:
+            raise EventError(f"line {n}: invalid retry_kind {retry_kind!r}")
+        if retry_kind is not None and attempt == 0:
+            raise EventError(f"line {n}: retry_kind is only valid on non-zero attempts")
+        if attempt > 0 and retry_kind is not None:
+            changed = event.get('changed')
+            if not isinstance(changed, str) or not changed.strip():
+                raise EventError(f"line {n}: changed must be non-empty string when retry_kind is present")
         if name in TERMINAL:
             for field in ("workspace_delta_files", "evidence_delta_files"):
                 if field in event and not isinstance(event[field], list):
@@ -61,7 +82,7 @@ def iter_events(path: Path):
                 raise EventError(f"line {n}: driver_exit must be int")
             if "conduct_result" in event and (not isinstance(event["conduct_result"], str) or not event["conduct_result"]):
                 raise EventError(f"line {n}: conduct_result must be non-empty string")
-        yield n, EventKey(step, _attempt(event)), name, event
+        yield n, EventKey(step, attempt), name, event
 
 
 def attempt_states(path: Path) -> dict[EventKey, str]:
