@@ -185,7 +185,7 @@ The driver emits a heartbeat every 30 seconds while waiting for turn completion.
 | runtime/codex_driver.py | ba046376ff8cd69344245919b3636171b91ec46a40b6a540f8092b07cb72aa15 |
 | runtime/codex_fix_driver.py | 0ba1be44f6ddf4f8ff8d40a8a661bd317c85752c5e9597f6c2ac13afb9d1ae4a |
 | runtime/reshape_fix_round.py | ce6caf0114102fc706798963f6756e75c90b2d7d12caa854eca6352e30f9a73a |
-| runtime/conduct.sh | f6fc4db6092e6bd6a6a3e61e35cb6c0d998c14f487d8497beca1fcc29f9269e4 |
+| runtime/conduct.sh | 36362ad730cfc8ab9291f7e357f69d3fa3ca0a2198bb685b37ba22edad773364 |
 | runtime/grade_lint.py | 5240666933aed85b6182b4ac15cb545f76dff6a70c5cc8c494ccc1f4d4371e5f |
 | runtime/grade_verify.py | cd7baca6f0102d8920408bfd03d18711f76ad003d353cded54c74935c223407f |
 | commands/bs.md | c50c7eaf20f267fa23be655e8e38015e731082dc95a41ca5f899ad200f3bddea |

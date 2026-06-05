@@ -119,6 +119,41 @@ class ConductFixRoundTests(unittest.TestCase):
         self.assertIn('reshape_missing', proc.stdout)
         self.assertFalse(record.exists())
 
+    def test_fix_round_refuses_incomplete_html_marker_without_failed_list(self):
+        root, cycle, outcome, fake_dir = self.setup_repo()
+        (cycle / 'outcome.v0.md').write_text('# Archived\n', encoding='utf-8')
+        outcome.write_text(
+            '# Outcome\n\n<!-- bs-fix-round: 1; archive=outcome.v0.md; grade=grade_round_0.md; -->\n',
+            encoding='utf-8',
+        )
+        proc, record = self.run_conduct(root, cycle, outcome, fake_dir)
+        self.assertEqual(proc.returncode, 5, proc.stdout + proc.stderr)
+        self.assertIn('reshape_missing', proc.stdout)
+        self.assertFalse(record.exists())
+
+    def test_fix_round_refuses_unclosed_html_marker(self):
+        root, cycle, outcome, fake_dir = self.setup_repo()
+        (cycle / 'outcome.v0.md').write_text('# Archived\n', encoding='utf-8')
+        outcome.write_text(
+            '# Outcome\n\n<!-- bs-fix-round: 1; archive=outcome.v0.md; grade=grade_round_0.md; failed=[]\n',
+            encoding='utf-8',
+        )
+        proc, record = self.run_conduct(root, cycle, outcome, fake_dir)
+        self.assertEqual(proc.returncode, 5, proc.stdout + proc.stderr)
+        self.assertIn('reshape_missing', proc.stdout)
+        self.assertFalse(record.exists())
+
+    def test_fix_round_accepts_full_html_marker_with_whitespace(self):
+        root, cycle, outcome, fake_dir = self.setup_repo()
+        (cycle / 'outcome.v0.md').write_text('# Archived\n', encoding='utf-8')
+        outcome.write_text(
+            '# Outcome\n\n<!--   bs-fix-round:   1;   archive=outcome.v0.md;   grade=grade_round_0.md;   failed=[]   -->\n',
+            encoding='utf-8',
+        )
+        proc, record = self.run_conduct(root, cycle, outcome, fake_dir)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertTrue(record.exists())
+
     def test_fix_round_launches_after_helper_reshape_with_one_goal_and_round_evidence(self):
         root, cycle, outcome, fake_dir = self.setup_repo()
         prep = subprocess.run([sys.executable, str(HELPER), '--cycle-dir', str(cycle), '--outcome-file', str(outcome), '--grade-file', 'grade_round_0.md', '--round', '1'], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
