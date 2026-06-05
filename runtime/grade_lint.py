@@ -1,18 +1,169 @@
 #!/usr/bin/env python3
 """Deterministic lint for bs Grade artifacts."""
 from __future__ import annotations
-import argparse, json
+import argparse, json, re
 from pathlib import Path
 from typing import Any
-try:
-    import yaml
-except Exception:  # pragma: no cover
-    yaml = None
 BLOCKING={"P0","P1"}
-SURFACES={"process","background_process","runtime_files","identity_sentinel","network_probe","auth_or_secret","file_modes","concurrency_or_locking","destructive_operation","external_subprocess"}
+SURFACES={"process","background_process","runtime_files","identity_sentinel","network_probe","auth_or_secret","file_modes","concurrency_or_locking","destructive_operation","external_subprocess","string_boundary","input_validation_or_schema"}
+OPTIONAL_CURRENT_HINT_PATTERNS=(
+    (re.compile(r"\boptional\b", re.I), "optional"),
+    (re.compile(r"\bdefer(?:red|ral|s|ring)?\b", re.I), "deferred"),
+    (re.compile(r"\bfuture\b", re.I), "future"),
+    (re.compile(r"\bnot[-\s]?reachable\b", re.I), "not-reachable"),
+    (re.compile(r"\bunreachable\b", re.I), "unreachable"),
+    (re.compile(r"\bnot\s+required\b", re.I), "not required"),
+    (re.compile(r"\bcan\s+skip\b", re.I), "can skip"),
+    (re.compile(r"\bif\s+possible\b", re.I), "if possible"),
+    (re.compile(r"\blater\b", re.I), "later"),
+    (re.compile(r"\bfollow[-\s]?up\b", re.I), "follow-up"),
+)
+CONCURRENCY_TERMS=re.compile(r"\bconcurrent(?:ly|cy)?\b|lost\s+update|same[-\s]?revision|\bone\s+2xx\b|\b409\b|if[-\s]?match", re.I)
+CONCURRENCY_EVIDENCE={"concurrency_test","atomicity_proof"}
+BOUNDARY_TERMS=re.compile(r"<=\s*\d+\s*chars?\b|\b\d+\s*chars?\b|\blength\s+(?:cap|limit|boundary)\b|\bchar[-_\s]?boundary\b|\bstring[-_\s]?boundary\b|\btruncate(?:d|s|ion)?\b|\buser\s+text\b|\bmalformed\s+(?:input|json)\b|\bnon[-_\s]?ascii\b|\bboundary\s+(?:probe|test|risk|case)\b", re.I)
+BOUNDARY_SURFACES={"string_boundary","input_validation_or_schema"}
+BOUNDARY_EVIDENCE={"non_ascii_boundary_test","malformed_input_test","length_boundary_test","json_boundary_test","schema_validation_test"}
+PANIC_TERMS=re.compile(r"\bno[-\s]?panic\b|\bpanic(?:s|ked|king)?\b|\bunwrap\b|\bexpect\b", re.I)
+PANIC_EVIDENCE={"panic_audit","implicit_panic_audit"}
 class LintError(ValueError): pass
+
+def split_top_level(text, sep=','):
+    parts=[]; cur=[]; depth=0; quote=''
+    for ch in text:
+        if quote:
+            cur.append(ch)
+            if ch==quote: quote=''
+            continue
+        if ch in ('"', "'"):
+            quote=ch; cur.append(ch); continue
+        if ch in '[{(': depth+=1
+        elif ch in ']})' and depth>0: depth-=1
+        if ch==sep and depth==0:
+            parts.append(''.join(cur).strip()); cur=[]
+        else:
+            cur.append(ch)
+    if cur or text.strip(): parts.append(''.join(cur).strip())
+    return parts
+
+def parse_scalar(value):
+    value=value.strip()
+    if value in ('', 'null', 'Null', 'NULL', '~'): return None
+    if value in ('true','True','TRUE'): return True
+    if value in ('false','False','FALSE'): return False
+    if (value.startswith('"') and value.endswith('"')) or (value.startswith("'") and value.endswith("'")):
+        return value[1:-1]
+    if value.startswith('{') and value.endswith('}'):
+        out={}
+        inner=value[1:-1].strip()
+        if not inner: return out
+        for part in split_top_level(inner):
+            if ':' not in part: raise LintError(f'malformed inline mapping item: {part}')
+            k,v=part.split(':',1); out[k.strip()]=parse_scalar(v)
+        return out
+    if value.startswith('[') and value.endswith(']'):
+        inner=value[1:-1].strip()
+        return [] if not inner else [parse_scalar(part) for part in split_top_level(inner)]
+    if re.fullmatch(r'-?\d+', value):
+        return int(value)
+    return value
+
+
+def is_block_scalar(value):
+    return value in {'>', '>-', '>+', '|', '|-', '|+'}
+
+def parse_block_scalar(lines, start, parent_indent, marker):
+    collected=[]; i=start
+    while i<len(lines):
+        if not lines[i].strip():
+            collected.append(''); i+=1; continue
+        cur_indent=indent_of(lines[i])
+        if cur_indent<=parent_indent: break
+        collected.append(lines[i].strip())
+        i+=1
+    if marker.startswith('>'):
+        return ' '.join(part for part in collected if part), i
+    return '\n'.join(collected), i
+
+def indent_of(line):
+    return len(line)-len(line.lstrip(' '))
+
+def next_content(lines, start):
+    i=start
+    while i<len(lines) and not lines[i].strip(): i+=1
+    return i
+
+def parse_key_value(content):
+    if ':' not in content: raise LintError(f'malformed yaml line: {content}')
+    key,value=content.split(':',1)
+    return key.strip(), value.strip()
+
+def parse_mapping(lines, start, indent):
+    out={}; i=start
+    while i<len(lines):
+        if not lines[i].strip(): i+=1; continue
+        cur_indent=indent_of(lines[i])
+        if cur_indent<indent: break
+        if cur_indent>indent: break
+        content=lines[i].strip()
+        if content.startswith('- '): break
+        key,value=parse_key_value(content)
+        if value:
+            if is_block_scalar(value):
+                out[key], i = parse_block_scalar(lines, i+1, cur_indent, value)
+            else:
+                out[key]=parse_scalar(value); i+=1
+            continue
+        j=next_content(lines,i+1)
+        if j>=len(lines) or indent_of(lines[j])<=cur_indent:
+            out[key]=None; i=i+1; continue
+        if lines[j].strip().startswith('- '):
+            out[key],i=parse_list(lines,j,indent_of(lines[j]))
+        else:
+            out[key],i=parse_mapping(lines,j,indent_of(lines[j]))
+    return out,i
+
+def parse_list(lines, start, indent):
+    out=[]; i=start
+    while i<len(lines):
+        if not lines[i].strip(): i+=1; continue
+        cur_indent=indent_of(lines[i])
+        if cur_indent<indent: break
+        if cur_indent!=indent or not lines[i].strip().startswith('- '): break
+        item=lines[i].strip()[2:].strip()
+        if not item:
+            parsed,i=parse_mapping(lines,next_content(lines,i+1),indent+2)
+            out.append(parsed); continue
+        if item.startswith('{') and item.endswith('}'):
+            out.append(parse_scalar(item)); i+=1; continue
+        if ':' in item:
+            key,value=parse_key_value(item)
+            if value and is_block_scalar(value):
+                parsed_value, next_i = parse_block_scalar(lines, i+1, cur_indent, value)
+                out.append({key: parsed_value})
+                i = next_i
+                continue
+            row={key: parse_scalar(value) if value else None}
+            j=next_content(lines,i+1)
+            if j<len(lines) and indent_of(lines[j])>cur_indent and not lines[j].strip().startswith('- '):
+                extra,i=parse_mapping(lines,j,indent_of(lines[j]))
+                row.update(extra)
+            else:
+                i+=1
+            out.append(row); continue
+        out.append(parse_scalar(item)); i+=1
+    return out,i
+
+def parse_yaml_fence(fence_lines):
+    lines=[line.rstrip() for line in fence_lines]
+    start=next_content(lines,0)
+    if start>=len(lines): return None
+    if lines[start].strip().startswith('- '):
+        data,_=parse_list(lines,start,indent_of(lines[start]))
+        return data
+    data,_=parse_mapping(lines,start,indent_of(lines[start]))
+    return data
+
 def blocks(path:Path)->list[dict[str,Any]]:
-    if yaml is None: raise LintError("PyYAML is required")
     if not path.exists(): raise LintError(f"file missing: {path}")
     out=[]; lines=path.read_text(encoding='utf-8').splitlines(); i=0
     while i<len(lines):
@@ -20,7 +171,7 @@ def blocks(path:Path)->list[dict[str,Any]]:
             j=i+1
             while j<len(lines) and lines[j].strip()!='```': j+=1
             if j>=len(lines): raise LintError(f"unterminated yaml fence in {path}")
-            data=yaml.safe_load('\n'.join(lines[i+1:j]) or 'null')
+            data=parse_yaml_fence(lines[i+1:j])
             if isinstance(data,dict): out.append(data)
             i=j
         i+=1
@@ -36,6 +187,42 @@ def sev(row):
     return v if v in {'P0','P1','P2'} else None
 def has_ref(row):
     return any(isinstance(row.get(k),str) and row.get(k).strip() for k in ('evidence_ref','acceptance_id','acceptance_ref','tracked_waiver_ref','maintainer_waiver_ref','user_waiver_ref'))
+def has_tracked_waiver_or_scope_basis(row):
+    return any(isinstance(row.get(k),str) and row.get(k).strip() for k in ('tracked_waiver_ref','maintainer_waiver_ref','user_waiver_ref','scope_basis_ref'))
+def text_values(value):
+    if isinstance(value,str):
+        return [value]
+    if isinstance(value,dict):
+        out=[]
+        for k,v in value.items():
+            if isinstance(k,str): out.append(k)
+            out.extend(text_values(v))
+        return out
+    if isinstance(value,list):
+        out=[]
+        for item in value: out.extend(text_values(item))
+        return out
+    return []
+def text_blob(*values):
+    return ' '.join(text_values(list(values)))
+def row_surfaces(row):
+    if not isinstance(row,dict): return set()
+    return set(strs(row.get('surface'))+strs(row.get('surfaces')))
+def evidence_kind(row):
+    return row.get('evidence_kind') if isinstance(row.get('evidence_kind'),str) else ''
+def references_any_id(row, ids):
+    blob=text_blob(row)
+    return any(re.search(rf"(?<![A-Za-z0-9_-]){re.escape(item)}(?![A-Za-z0-9_-])", blob) for item in ids)
+def method_is_mere_grep(row):
+    for k in ('method','evidence_method','audit_method'):
+        v=row.get(k)
+        if isinstance(v,str) and re.search(r"^(grep|regex|search)$|\b(mere|only|just)\s+grep\b|\bgrep\s+only\b", v.strip(), re.I):
+            return True
+    for k in ('evidence_ref','evidence_summary','evidence_note','summary','note'):
+        v=row.get(k)
+        if isinstance(v,str) and re.search(r"grep\s+(?:-[A-Za-z]*R|-[A-Za-z]+)|\bgrep\b.*\b(?:no hits|found no hits|only|mere)\b|\b(?:no hits|found no hits)\b.*\bgrep\b", v, re.I):
+            return True
+    return False
 def validate_required(summary, acceptance, errors):
     if not isinstance(summary,dict): errors.append('missing or malformed grade_summary block')
     else:
@@ -47,6 +234,14 @@ def validate_required(summary, acceptance, errors):
         if not isinstance(row.get('id'),str) or not row.get('id'): errors.append(f'acceptance_status[{i}].id is required')
         if row.get('status') not in {'pass','fail'}: errors.append(f'acceptance_status[{i}].status must be pass|fail')
         if row.get('status')=='fail' and row.get('severity') not in {'P0','P1','P2'}: errors.append(f'acceptance_status[{i}].severity is required for fail')
+def adversarial_acceptance_metadata(bs):
+    meta={}
+    adv=first(bs,'adversarial_acceptance')
+    if isinstance(adv,list):
+        for row in adv:
+            if isinstance(row,dict) and isinstance(row.get('id'),str) and row.get('id'):
+                meta[row['id']]={'severity':row.get('severity'),'surfaces':row_surfaces(row),'text':text_blob(row),'row':row}
+    return meta
 def validate_outcome(bs,errors):
     rs=first(bs,'risk_surface'); adv=first(bs,'adversarial_acceptance')
     if not isinstance(rs,dict): errors.append('medium/high code outcome missing parseable risk_surface block'); return
@@ -62,23 +257,30 @@ def validate_outcome(bs,errors):
     if isinstance(adv,list):
         for i,row in enumerate(adv):
             if not isinstance(row,dict): errors.append(f'adversarial_acceptance[{i}] must be an object'); continue
-            if not isinstance(row.get('id'),str) or not row.get('id'): errors.append(f'adversarial_acceptance[{i}].id is required')
-            if row.get('severity') not in {'P0','P1','P2'}: errors.append(f'adversarial_acceptance[{i}].severity must be P0|P1|P2')
-            covered.update(set(strs(row.get('surface') or row.get('surfaces'))) & present)
-            if not isinstance(row.get('verification_hint'),str) or not row.get('verification_hint').strip(): errors.append(f'adversarial_acceptance[{i}].verification_hint is required')
+            row_id=row.get('id')
+            row_sev=row.get('severity')
+            hint=row.get('verification_hint')
+            if not isinstance(row_id,str) or not row_id: errors.append(f'adversarial_acceptance[{i}].id is required')
+            if row_sev not in {'P0','P1','P2'}: errors.append(f'adversarial_acceptance[{i}].severity must be P0|P1|P2')
+            surfaces_for_row=row_surfaces(row)
+            covered.update(surfaces_for_row & present)
+            if not isinstance(hint,str) or not hint.strip(): errors.append(f'adversarial_acceptance[{i}].verification_hint is required')
+            elif row_sev in BLOCKING:
+                for pattern,label in OPTIONAL_CURRENT_HINT_PATTERNS:
+                    if pattern.search(hint):
+                        errors.append(f'adversarial_acceptance[{i}] {row_id} P0/P1 verification_hint makes current validation optional via {label} wording')
+                        break
+            row_text=text_blob(row)
+            if BOUNDARY_TERMS.search(row_text) and not (surfaces_for_row & BOUNDARY_SURFACES):
+                errors.append(f'adversarial_acceptance[{i}] {row_id} boundary/input risk must use string_boundary or input_validation_or_schema surface')
     missing=sorted(present-covered)
     if missing: errors.append('present risk surfaces without adversarial_acceptance coverage: '+','.join(missing))
 
 def adversarial_acceptance_ids(outcome_file: Path) -> set[str]:
-    ids: set[str] = set()
-    adv = first(blocks(outcome_file), 'adversarial_acceptance')
-    if isinstance(adv, list):
-        for row in adv:
-            if isinstance(row, dict) and isinstance(row.get('id'), str) and row.get('id'):
-                ids.add(row['id'])
-    return ids
+    return set(adversarial_acceptance_metadata(blocks(outcome_file)))
 
-def validate_adv(summary,bs,errors,required_acceptance_ids=None):
+def validate_adv(summary,bs,errors,required_acceptance=None):
+    required_acceptance=required_acceptance or {}
     checks=first(bs,'adversarial_checks'); inv=first(bs,'trust_surface_inventory'); deferred=first(bs,'deferred_claims')
     if not isinstance(checks,list): errors.append('medium/high code grade missing parseable adversarial_checks block'); checks=[]
     if not isinstance(inv,dict): errors.append('medium/high code grade missing parseable trust_surface_inventory block'); inv={}
@@ -88,14 +290,28 @@ def validate_adv(summary,bs,errors,required_acceptance_ids=None):
     for i,row in enumerate(checks):
         if not isinstance(row,dict): errors.append(f'adversarial_checks[{i}] must be an object'); continue
         st=row.get('status'); sv=row.get('severity_if_fail')
-        for k in ('id','acceptance_id','acceptance_ref'):
-            if isinstance(row.get(k), str) and row.get(k): covered_acceptance_ids.add(row.get(k))
+        row_refs=[]
+        for k in ('acceptance_id','acceptance_ref','adversarial_id','adversarial_ref'):
+            if isinstance(row.get(k), str) and row.get(k): row_refs.append(row.get(k)); covered_acceptance_ids.add(row.get(k))
         if not isinstance(row.get('id'),str) or not row.get('id'): errors.append(f'adversarial_checks[{i}].id is required')
         if st not in {'pass','fail','unverified','not_applicable'}: errors.append(f'adversarial_checks[{i}].status must be pass|fail|unverified|not_applicable'); continue
         if sv not in {'P0','P1','P2'}: errors.append(f'adversarial_checks[{i}].severity_if_fail must be P0|P1|P2'); continue
         if st in {'fail','unverified'} and sv in BLOCKING: calc[sv]+=1; errors.append(f"adversarial_checks[{i}] {row.get('id')} is blocking: {st}/{sv}")
         if st!='not_applicable' and not isinstance(row.get('evidence_ref'),str): errors.append(f'adversarial_checks[{i}].evidence_ref is required unless not_applicable')
-    missing_acceptance=sorted((required_acceptance_ids or set())-covered_acceptance_ids)
+        referenced=[required_acceptance[x] for x in row_refs if x in required_acceptance]
+        combined_text=text_blob(row, referenced)
+        combined_surfaces=set(row_surfaces(row))
+        for ref in referenced: combined_surfaces |= set(ref.get('surfaces') or set())
+        if st!='not_applicable' and 'concurrency_or_locking' in combined_surfaces and CONCURRENCY_TERMS.search(combined_text) and evidence_kind(row) not in CONCURRENCY_EVIDENCE:
+            errors.append(f'adversarial_checks[{i}] {row.get("id")} concurrency_or_locking check requires evidence_kind concurrency_test|atomicity_proof')
+        if st!='not_applicable' and ((combined_surfaces & BOUNDARY_SURFACES) or BOUNDARY_TERMS.search(combined_text)) and evidence_kind(row) not in BOUNDARY_EVIDENCE:
+            errors.append(f'adversarial_checks[{i}] {row.get("id")} boundary/input check requires evidence_kind non_ascii_boundary_test|malformed_input_test|length_boundary_test|json_boundary_test|schema_validation_test')
+        if st!='not_applicable' and PANIC_TERMS.search(combined_text):
+            if evidence_kind(row) not in PANIC_EVIDENCE:
+                errors.append(f'adversarial_checks[{i}] {row.get("id")} panic/no-panic audit requires evidence_kind panic_audit|implicit_panic_audit')
+            if method_is_mere_grep(row):
+                errors.append(f'adversarial_checks[{i}] {row.get("id")} panic/no-panic audit cannot be mere grep')
+    missing_acceptance=sorted(set(required_acceptance)-covered_acceptance_ids)
     if missing_acceptance: errors.append('adversarial_checks missing shaped adversarial_acceptance IDs: '+','.join(missing_acceptance))
     for k in ('adversarial_p0_count','adversarial_p1_count'):
         if not nni(summary.get(k)): errors.append(f'grade_summary.{k} must be a non-negative integer for medium/high code')
@@ -109,17 +325,21 @@ def validate_adv(summary,bs,errors,required_acceptance_ids=None):
     else:
         for i,item in enumerate(uv):
             if sev(item) in BLOCKING: errors.append(f'trust_surface_inventory.unverified_items[{i}] is blocking: {sev(item)}')
+    blocking_ids={k for k,v in required_acceptance.items() if v.get('severity') in BLOCKING}
     for i,row in enumerate(deferred):
         if not isinstance(row,dict): errors.append(f'deferred_claims[{i}] must be an object'); continue
         if row.get('current_scope_implementable') is True and not has_ref(row): errors.append(f'deferred_claims[{i}] current-scope item lacks evidence_ref or acceptance/waiver ref')
         if row.get('current_scope_implementable') is True and row.get('waiver') is True and sev(row) in BLOCKING and not any(isinstance(row.get(k),str) and row.get(k).strip() for k in ('tracked_waiver_ref','maintainer_waiver_ref','user_waiver_ref')): errors.append(f'deferred_claims[{i}] blocking current-scope waiver lacks tracked maintainer/user waiver ref')
+        if blocking_ids and references_any_id(row, blocking_ids) and not has_tracked_waiver_or_scope_basis(row):
+            errors.append(f'deferred_claims[{i}] defers current P0/P1 adversarial acceptance without tracked waiver or scope_basis_ref')
 def lint(task_type,risk_level,grade_file,outcome_file):
     errors=[]; gbs=blocks(grade_file); summary=first(gbs,'grade_summary'); acceptance=first(gbs,'acceptance_status')
     validate_required(summary,acceptance,errors); gated=is_gate(task_type,risk_level)
     if gated:
-        validate_outcome(blocks(outcome_file),errors)
-        required_ids=adversarial_acceptance_ids(outcome_file)
-        validate_adv(summary,gbs,errors,required_ids) if isinstance(summary,dict) else errors.append('cannot validate adversarial grade without grade_summary')
+        obs=blocks(outcome_file)
+        validate_outcome(obs,errors)
+        required=adversarial_acceptance_metadata(obs)
+        validate_adv(summary,gbs,errors,required) if isinstance(summary,dict) else errors.append('cannot validate adversarial grade without grade_summary')
     return {'grade_lint':{'status':'fail' if errors else 'pass','task_type':task_type,'risk_level':risk_level,'medium_high_code_gate':gated,'grade_file':str(grade_file),'outcome_file':str(outcome_file),'errors':errors}}
 def main(argv=None):
     ap=argparse.ArgumentParser(); ap.add_argument('--task-type',required=True,choices=['code','docs','infra','refactor','spec']); ap.add_argument('--risk-level',required=True,choices=['low','medium','high']); ap.add_argument('--grade-file',required=True); ap.add_argument('--outcome-file',required=True); ap.add_argument('--evidence-file')
