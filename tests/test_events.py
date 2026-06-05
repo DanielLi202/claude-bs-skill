@@ -5,7 +5,7 @@ import unittest
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
 
-from events import EventError, step_states
+from events import EventError, append_completed, append_started, step_states
 
 
 class EventStateTests(unittest.TestCase):
@@ -76,6 +76,16 @@ class EventStateTests(unittest.TestCase):
             '{"step":"step_2","event":"completed","ts":"2026-06-05T00:00:13Z"}',
         ]))
         self.assertEqual(step_states(path), {'step_1': 'completed', 'step_2': 'completed'})
+
+    def test_append_helpers_machine_stamp_new_events(self):
+        path = self.write('')
+        append_started(path, 'step_1')
+        append_completed(path, 'step_1')
+        text = path.read_text(encoding='utf-8')
+        self.assertIn('"event": "started"', text)
+        self.assertIn('"recorded_at":', text)
+        self.assertIn('"occurred_at":', text)
+        self.assertEqual(step_states(path), {'step_1': 'completed'})
 
     def test_invalid_recorded_at_is_rejected(self):
         path = self.write('\n'.join([

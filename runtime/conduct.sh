@@ -3,13 +3,14 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-usage: conduct.sh --cycle-dir ABS --outcome-file PATH --evidence-dir PATH [--fix-round N] [--model M] [--effort E] [--mcp-policy clean|allowlist|full] [--mcp-allow a,b,c]
+usage: conduct.sh --cycle-dir ABS --outcome-file PATH --evidence-dir PATH [--worktree PATH] [--fix-round N] [--model M] [--effort E] [--mcp-policy clean|allowlist|full] [--mcp-allow a,b,c]
 EOF
 }
 
 CYCLE_DIR=""
 OUTCOME_FILE=""
 EVIDENCE_DIR=""
+WORKTREE_CWD=""
 FIX_ROUND=""
 MODEL=""
 EFFORT="low"
@@ -32,6 +33,7 @@ while [[ $# -gt 0 ]]; do
     --cycle-dir) CYCLE_DIR="${2:-}"; shift 2 ;;
     --outcome-file) OUTCOME_FILE="${2:-}"; shift 2 ;;
     --evidence-dir) EVIDENCE_DIR="${2:-}"; shift 2 ;;
+    --worktree) WORKTREE_CWD="${2:-}"; shift 2 ;;
     --fix-round) FIX_ROUND="${2:-}"; shift 2 ;;
     --model) MODEL="${2:-}"; shift 2 ;;
     --effort) EFFORT="${2:-}"; shift 2 ;;
@@ -56,6 +58,12 @@ done
 [[ -n "$CYCLE_DIR" && -n "$OUTCOME_FILE" && -n "$EVIDENCE_DIR" ]] || { usage; exit 64; }
 case "$MCP_POLICY" in clean|allowlist|full) ;; *) echo "invalid --mcp-policy: $MCP_POLICY" >&2; exit 64 ;; esac
 case "$ON_NO_WORK_ITEMS" in mark_stale|terminate) ;; *) echo "invalid --on-no-work-items: $ON_NO_WORK_ITEMS" >&2; exit 64 ;; esac
+if [[ -n "$WORKTREE_CWD" ]]; then
+  [[ -d "$WORKTREE_CWD" ]] || { echo "invalid --worktree: not a directory: $WORKTREE_CWD" >&2; exit 64; }
+  DRIVER_CWD="$(git -C "$WORKTREE_CWD" rev-parse --show-toplevel 2>/dev/null)" || { echo "invalid --worktree: not a git worktree: $WORKTREE_CWD" >&2; exit 64; }
+else
+  DRIVER_CWD="$(git rev-parse --show-toplevel)"
+fi
 
 ROUND="0"
 if [[ -n "$FIX_ROUND" ]]; then
@@ -163,7 +171,7 @@ PY
 }
 
 common_args() {
-  ARGS=("$DRIVER" --cwd "$(git rev-parse --show-toplevel)" --outcome-file "$OUTCOME_FILE" --evidence-dir "$ROUND_EVIDENCE_DIR" --effort "$EFFORT" --expected-effect-kind "$EXPECTED_EFFECT_KIND" --expected-effect-required "$EXPECTED_EFFECT_REQUIRED" --on-wall-clock-limit "$ON_WALL_CLOCK_LIMIT" --mcp-policy "$1" --mcp-allowlist "$MCP_ALLOW" --binding-mcp-policy "$MCP_POLICY")
+  ARGS=("$DRIVER" --cwd "$DRIVER_CWD" --outcome-file "$OUTCOME_FILE" --evidence-dir "$ROUND_EVIDENCE_DIR" --effort "$EFFORT" --expected-effect-kind "$EXPECTED_EFFECT_KIND" --expected-effect-required "$EXPECTED_EFFECT_REQUIRED" --on-wall-clock-limit "$ON_WALL_CLOCK_LIMIT" --mcp-policy "$1" --mcp-allowlist "$MCP_ALLOW" --binding-mcp-policy "$MCP_POLICY")
   [[ "$1" == "clean" || "$1" == "allowlist" ]] && ARGS+=(--clean-codex-home)
   [[ -z "$MODEL" ]] || ARGS+=(--model "$MODEL")
   [[ -z "$WALL_CLOCK_LIMIT_SEC" ]] || ARGS+=(--wall-clock-limit-sec "$WALL_CLOCK_LIMIT_SEC")

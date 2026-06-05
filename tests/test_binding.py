@@ -45,6 +45,26 @@ class BindingManifestTests(unittest.TestCase):
         with self.assertRaises(binding.BindingError):
             binding.validate_conduct_config({"conduct": {"mcp_allowlist": "github"}})
 
+    def test_version_skew_warnings_compare_binding_title_driver_and_skill(self):
+        data = {"contract": {"source_tag": "v1.4.4"}}
+        contract = "# Bootstrap Development Workflow Contract v1.4.2\n"
+        warnings = binding.version_skew_warnings(
+            data,
+            contract,
+            driver_client_version="1.4.2",
+            skill_version="1.4.2",
+        )
+        self.assertEqual(len(warnings), 3)
+        self.assertIn("contract title v1.4.2", warnings[0])
+
+    def test_version_skew_warnings_empty_when_aligned(self):
+        data = {"contract": {"source_tag": "v1.4.4"}}
+        contract = "# Bootstrap Development Workflow Contract v1.4.4\n"
+        self.assertEqual(
+            binding.version_skew_warnings(data, contract, driver_client_version="1.4.4", skill_version="1.4.4"),
+            [],
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

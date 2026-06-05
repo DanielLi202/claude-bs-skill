@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 import json
 import re
@@ -20,10 +21,30 @@ class EventKey:
     attempt: int
 
 
+def utc_now_z() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
 def append_event(path: Path, **event):
+    if "recorded_at" not in event and "ts" not in event:
+        event["recorded_at"] = utc_now_z()
+    if "recorded_at" in event and "occurred_at" not in event:
+        event["occurred_at"] = event["recorded_at"]
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open('a', encoding='utf-8') as f:
         f.write(json.dumps(event, ensure_ascii=False, sort_keys=True) + '\n')
+
+
+def append_started(path: Path, step: str, attempt: int = 0, **fields):
+    append_event(path, step=step, attempt=attempt, event="started", **fields)
+
+
+def append_completed(path: Path, step: str, attempt: int = 0, **fields):
+    append_event(path, step=step, attempt=attempt, event="completed", **fields)
+
+
+def append_failed(path: Path, step: str, attempt: int = 0, **fields):
+    append_event(path, step=step, attempt=attempt, event="failed", **fields)
 
 
 def _attempt(event: dict) -> int:

@@ -8,6 +8,7 @@ except Exception:
 class BindingError(ValueError): pass
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 MANIFEST_ROW = re.compile(r"^\|\s*([^|`][^|]*?)\s*\|\s*([0-9a-f]{64})\s*\|\s*$")
+CONTRACT_TITLE_VERSION = re.compile(r"^#\s+Bootstrap Development Workflow Contract v([0-9]+\.[0-9]+\.[0-9]+)\s*$", re.M)
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -83,6 +84,22 @@ def validate_conduct_config(data: dict) -> None:
     if policy is not None and policy not in {"clean", "allowlist", "full"}: raise BindingError("conduct.mcp_policy must be clean, allowlist, or full")
     allow = conduct.get("mcp_allowlist")
     if allow is not None and (not isinstance(allow, list) or not all(isinstance(x, str) and x for x in allow)): raise BindingError("conduct.mcp_allowlist must be list of non-empty strings")
+
+def extract_contract_title_version(contract_text: str) -> str | None:
+    match = CONTRACT_TITLE_VERSION.search(contract_text)
+    return match.group(1) if match else None
+
+def version_skew_warnings(data: dict, contract_text: str, *, driver_client_version: str | None = None, skill_version: str | None = None) -> list[str]:
+    warnings: list[str] = []
+    tag = str(data.get("contract", {}).get("source_tag", "")).lstrip("v")
+    title_version = extract_contract_title_version(contract_text)
+    if tag and title_version and tag != title_version:
+        warnings.append(f"contract.source_tag v{tag} differs from contract title v{title_version}")
+    if tag and driver_client_version and tag != driver_client_version.lstrip("v"):
+        warnings.append(f"contract.source_tag v{tag} differs from driver client v{driver_client_version.lstrip('v')}")
+    if tag and skill_version and tag != skill_version.lstrip("v"):
+        warnings.append(f"contract.source_tag v{tag} differs from skill.yaml version v{skill_version.lstrip('v')}")
+    return warnings
 
 def validate_preflight_config(data: dict) -> None:
     preflight = data.get("preflight")

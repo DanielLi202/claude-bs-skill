@@ -1,4 +1,4 @@
-# Bootstrap Development Workflow Contract v1.4.2
+# Bootstrap Development Workflow Contract v1.4.4
 
 > Universal workflow contract for bootstrap-driven repositories. The contract owns orchestration semantics; each repository owns only its binding, backlog, ledger, verification command, and red-line documents.
 
@@ -92,13 +92,13 @@ If the agent encounters a situation it considers concerning but not covered by t
 4. Run the startup (pre-start) gate via `${runtime}/preflight.sh` before the start commit or cycle directory. Non-zero exit escalates with no cycle artifacts.
 5. Run Step 1 self-containment gate: required fields, status precondition, closed enums, dependency closure, `spec_refs` length, and file/dir existence for `spec_refs` after stripping informational anchors.
 6. On main with clean working tree, change the task to `in_progress`, commit `bs: start <ID> <title>`, push `origin main`, and verify remote main equals local HEAD.
-7. Create the cycle directory and worktree branch from that pushed commit; write `cycle.yaml`, binding snapshot, the captured startup gate output as `preflight_initial.yaml`, and strict `step_events.jsonl` started/terminal attempt pairs.
+7. Create the cycle directory and worktree branch from that pushed commit; write `cycle.yaml`, binding snapshot, the captured startup gate output as `preflight_initial.yaml`, and strict `step_events.jsonl` started/terminal attempt pairs using the runtime event helpers so append-time `recorded_at` is machine-emitted.
 8. Run the 11-step cycle: ingest, identify, shape, conduct, per-round machine verify, grade, fix loop, PR, auto-merge, escalation handling, reflection, ledger close.
 9. Step 10 closes with one atomic commit on main containing both ledger append and backlog writeback.
 
 ## 5. Step events and resume
 
-`step_events.jsonl` is append-only. Every step attempt emits exactly `started` and then either `completed` or `failed`. The state key is `(step, attempt)` where `attempt` defaults to `0`; retries must increment `attempt`. A terminal event without a matching start, nested start for the same `(step, attempt)`, or unclosed start is invalid. Semantic details go in `outcome`, `reason`, or the controlled `reason_code` vocabulary, never by inventing event names.
+`step_events.jsonl` is append-only. Every step attempt emits exactly `started` and then either `completed` or `failed`. New writes SHOULD use the runtime event helpers (`append_started`, `append_completed`, `append_failed`) rather than hand-authored JSON so append-time `recorded_at` is machine-emitted. The state key is `(step, attempt)` where `attempt` defaults to `0`; retries must increment `attempt`. A terminal event without a matching start, nested start for the same `(step, attempt)`, or unclosed start is invalid. Semantic details go in `outcome`, `reason`, or the controlled `reason_code` vocabulary, never by inventing event names.
 
 Every newly-written step event uses two canonical ISO-8601 UTC fields: `recorded_at` (the append time, monotonic non-decreasing across the log) and `occurred_at` (when the step actually happened; may be earlier for honest backfill and is not required to be monotonic). Canonical format is `YYYY-MM-DDTHH:MM:SS[.fraction]Z`. Readers and validators keep legacy `ts` fallback only when `recorded_at` is absent.
 
@@ -108,7 +108,7 @@ Controlled `reason_code` values are: `semantic_blocked_final_answer`, `semantic_
 
 ## 6. Required artifacts
 
-Every cycle produces `outcome.md`, `shape_critic.yaml`, `preflight_initial.yaml`, `step_events.jsonl`, `grade_round_0.md`, `grade_result.md`, `auto_merge_gate.yaml`, `task_knowledge.yaml`, `workflow_reflection.yaml`, and evidence files: `raw_vendor_output.jsonl`, `rpc_requests.jsonl`, `vendor_stderr.txt`, `driver_events.jsonl`, `git_diff.patch`, `git_status.txt`. Every Grade round also produces and cites `evidence/grade_verify_round_<N>.yaml` before `grade_round_<N>.md` is authored; the file records pass/fail/not_required plus per-command logs when commands run. Medium/high code Grade rounds also produce `evidence/grade_lint_round_<N>.json`.
+Every cycle produces `outcome.md`, `shape_critic.yaml`, `preflight_initial.yaml`, `step_events.jsonl`, `grade_round_0.md`, `grade_result.md`, `auto_merge_gate.yaml`, `task_knowledge.yaml`, `workflow_reflection.yaml`, and evidence files: `git_diff.patch`, `git_status.txt`. Every Conduct round, including round 0, produces round-scoped evidence under `evidence/conduct_round_<N>/`: `raw_vendor_output.jsonl`, `rpc_requests.jsonl`, `vendor_stderr.txt`, `driver_events.jsonl`, and `codex_env.json`. Every Grade round also produces and cites `evidence/grade_verify_round_<N>.yaml` before `grade_round_<N>.md` is authored; the file records pass/fail/not_required plus per-command logs when commands run. Medium/high code Grade rounds also produce `evidence/grade_lint_round_<N>.json`.
 
 Each `grade_round_<N>.md` MUST contain parseable fenced YAML blocks for both:
 
@@ -165,7 +165,7 @@ The driver emits a heartbeat every 30 seconds while waiting for turn completion.
 ## Conduct invariants (normative)
 
 - A startup (pre-start) gate MUST run `${runtime}/preflight.sh` BEFORE the `bs: start` commit / cycle dir creation / step_0 ingest. Non-zero exit MUST escalate with no artifacts created (fail-fast on dependency failure). Codex and gh remain hard dependencies. External council quorum is warning-only by default and hard-required only when binding policy explicitly requires it. This gate is distinct from the cycle's step_0 ingest; preflight detail is recorded post-start in `preflight_initial.yaml`.
-- Conduct (Step 3) and Fix (Step 5) MUST resolve `conduct.mcp_policy` / `conduct.mcp_allowlist` from the binding (default `clean`) and invoke `${runtime}/conduct.sh --mcp-policy <resolved> [--mcp-allow <comma-list>]` explicitly. They MUST NOT rely on `conduct.sh`'s shell default when the binding declares `full` or `allowlist`. They MUST NOT invoke `codex_driver.py` / `codex_fix_driver.py` / `codex` directly, MUST NOT use `codex exec --json`, and MUST NOT substitute any other vendor binary path. Bootstrap is intentionally stricter than the product's DA-24 transport fallback because bootstrap exists partly to validate the app-server path.
+- Conduct (Step 3) and Fix (Step 5) MUST resolve `conduct.mcp_policy` / `conduct.mcp_allowlist` from the binding (default `clean`) and invoke `${runtime}/conduct.sh --worktree <worktree> --mcp-policy <resolved> [--mcp-allow <comma-list>]` explicitly. The `--worktree` path is the git worktree where product changes should land; cycle artifacts may still live elsewhere by absolute path. They MUST NOT rely on `conduct.sh`'s shell default when the binding declares `full` or `allowlist`. They MUST NOT invoke `codex_driver.py` / `codex_fix_driver.py` / `codex` directly, MUST NOT use `codex exec --json`, and MUST NOT substitute any other vendor binary path. Bootstrap is intentionally stricter than the product's DA-24 transport fallback because bootstrap exists partly to validate the app-server path.
 - Goal mode is mandatory and RPC-backed: the driver MUST use `thread/goal/set` on an `ephemeral:false` thread, MUST NOT send text `/goal @<outcome.md>`, and MUST NOT silently fall back to inline prompt transport or `codex exec`. The agent MUST pass `--outcome-file`; the driver computes the capsule sha out-of-band and places it in the `BS_GOAL_V1` objective header.
 - The launcher is task-content-free: it may contain only the absolute outcome path, the sha256, and the required compact JSON `BS_OUTCOME_READ` marker instruction. The marker is model-visible read evidence only; the driver-computed sha is the integrity anchor.
 - Terminal goal status is the success oracle. `thread/goal/updated` notifications are observability; exit 0 requires turn liveness to reach explicit or inferred completion, final `thread/goal/get` normalized status `complete`, and a matching `BS_OUTCOME_READ` marker. `blocked`, `usage_limited`, `budget_limited`, `paused`, `unknown`, and still-`active` statuses are non-success and map to `conduct_result=semantic_failed`. Raw vendor statuses such as `usageLimited` and `budgetLimited` are preserved in evidence while branching uses snake_case canonical statuses.
@@ -181,25 +181,27 @@ The driver emits a heartbeat every 30 seconds while waiting for turn completion.
 
 | file | sha256 |
 |---|---|
-| runtime/preflight.sh | d8dde7afbd5f59080af1672065cf4ed1b449afc1e604706db9249d30d62aae46 |
-| runtime/codex_driver.py | ba046376ff8cd69344245919b3636171b91ec46a40b6a540f8092b07cb72aa15 |
+| runtime/preflight.sh | fe137b4f345d25df350c2d0b8c6fc605fa7518f668bb9f1607295da95f721920 |
+| runtime/codex_driver.py | 6498c6a0ebc6ff899c19cbc90b6dfaf816d82aab8587c67d58eaff10a8ac8577 |
 | runtime/codex_fix_driver.py | 0ba1be44f6ddf4f8ff8d40a8a661bd317c85752c5e9597f6c2ac13afb9d1ae4a |
 | runtime/reshape_fix_round.py | ce6caf0114102fc706798963f6756e75c90b2d7d12caa854eca6352e30f9a73a |
-| runtime/conduct.sh | 36362ad730cfc8ab9291f7e357f69d3fa3ca0a2198bb685b37ba22edad773364 |
+| runtime/conduct.sh | b0e0a0add0e9551c795dabdf909c07f353c1b3d374fc53a304c63e7f0d5d2f60 |
 | runtime/grade_lint.py | 5240666933aed85b6182b4ac15cb545f76dff6a70c5cc8c494ccc1f4d4371e5f |
 | runtime/grade_verify.py | cd7baca6f0102d8920408bfd03d18711f76ad003d353cded54c74935c223407f |
-| commands/bs.md | c50c7eaf20f267fa23be655e8e38015e731082dc95a41ca5f899ad200f3bddea |
+| commands/bs.md | 6cc5599b9f7888f748364e01d6854915b9b0b3d6f678714ed64c46e09f822ae9 |
 | runtime/validate_events.py | 303f06c2d3bd3053291827cc0fea40a86ef6a20b41168d02a26f40e9646baceb |
 
 The manifest locks runtime and slash-command surface by making file hashes part of the contract hash. Any listed file change requires updating this table and refreshing adopter bindings.
 
 ## 10. Non-goals
 
-No parallel cycles, enum extension, severity override, council-member override, multi-backlog, markdown-embedded backlog compatibility, automatic v1.2 ledger migration, `/bs gc`, repository-specific prompt override, text `/goal` conduct transport, second goal file, raw grade markdown paste into the capsule, universal heavy adversarial process for low-risk docs/spec tasks, or unbounded fix loop in v1.4.2.
+No parallel cycles, enum extension, severity override, council-member override, multi-backlog, markdown-embedded backlog compatibility, automatic v1.2 ledger migration, `/bs gc`, repository-specific prompt override, text `/goal` conduct transport, second goal file, raw grade markdown paste into the capsule, universal heavy adversarial process for low-risk docs/spec tasks, or unbounded fix loop in v1.4.4.
 
 
 ## 11. Changelog
 
+- v1.4.4: Process-evidence hardening after the first medium/code adopter cycle. Adds machine timestamp defaults and helper APIs for `step_events.jsonl`, first-class `conduct.sh --worktree` execution, `/bs init` guidance for required `verify.grade.<type>` setup, `/bs doctor` version-skew diagnostics, round-scoped Conduct evidence path clarification, deterministic auto-merge-gate authoring guidance, and release label/client-version alignment.
+- v1.4.3: Fix-round marker guard hotfix over v1.4.2; contract-body-neutral in the v1.4.3 tag.
 - v1.4.2: Conduct no-first-work-item telemetry/optional exit 7, Codex environment snapshots, default clean/allowlist/full MCP exposure policy with binding passthrough, validator canonical timestamp hardening plus `--allow-open-current`, `occurred_at`/`recorded_at` evidence split, `retry_kind` attempt metadata, hard rename to `file_change_events`, version skew fix, and manifest relock. Resilience/observability/evidence-honesty patch; no goal-RPC transport-semantics change.
 - v1.4.1: step_events append-only validator (`runtime/validate_events.py` + Step 10 close-gate wiring) and fileChange edit accounting in `codex_driver.py` (new `file_change_events` field; `workspace_delta` remains authoritative success signal); manifest relocked. Tooling/observability patch; no transport-semantics change.
 - v1.4.0: Codex goal-RPC transport migration. Preserves v1.3.8 Grade verify/lint hardening while migrating Conduct to non-ephemeral `thread/goal/set`, `BS_GOAL_V1` objective headers, driver-side outcome sha integrity, task-content-free launcher with `BS_OUTCOME_READ` evidence, final `thread/goal/get == complete` success oracle, status normalization, cleanup clear+archive, and a mandatory preflight goal-RPC probe.

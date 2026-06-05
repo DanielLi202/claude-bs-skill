@@ -103,7 +103,7 @@ class ConductPolicyTests(unittest.TestCase):
             env.update(extra_env)
         cmd = [str(CONDUCT), '--cycle-dir', str(root / 'cycle'), '--outcome-file', str(root / 'outcome.md'), '--evidence-dir', str(root / 'evidence')]
         if extra_args:
-            cmd.extend(extra_args)
+            cmd.extend(str(arg).format(root=root) for arg in extra_args)
         proc = subprocess.run(cmd, cwd=root, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
         env_dir = root / 'evidence' / 'conduct_round_0'
         payload = json.loads((env_dir / 'codex_env.json').read_text()) if (env_dir / 'codex_env.json').exists() else None
@@ -113,6 +113,7 @@ class ConductPolicyTests(unittest.TestCase):
         text = CONDUCT.read_text(encoding='utf-8')
         self.assertIn('--mcp-policy', text)
         self.assertIn('--mcp-allow', text)
+        self.assertIn('--worktree', text)
         self.assertIn('--first-work-item-stale-sec', text)
         self.assertIn('--on-no-work-items', text)
         self.assertIn('result="no_work_items"', text)
@@ -151,6 +152,13 @@ class ConductPolicyTests(unittest.TestCase):
         self.assertFalse(before['clean_codex_home'])
         self.assertEqual(before['mcp_policy'], 'full')
         self.assertEqual(Path(before['codex_home']), real_home.resolve())
+
+    def test_worktree_flag_sets_driver_cwd(self):
+        proc, _payload, _real_home, root = self.run_conduct(['--worktree', '{root}'])
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        requests = (root / 'evidence' / 'conduct_round_0' / 'rpc_requests.jsonl').read_text(encoding='utf-8').splitlines()
+        turn_start = [json.loads(line) for line in requests if json.loads(line).get('method') == 'turn/start'][0]
+        self.assertEqual(Path(turn_start['params']['cwd']), root.resolve())
 
 
 if __name__ == '__main__':
