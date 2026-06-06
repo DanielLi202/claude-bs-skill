@@ -1,4 +1,4 @@
-# Bootstrap Development Workflow Contract v1.4.5
+# Bootstrap Development Workflow Contract v1.4.6
 
 > Universal workflow contract for bootstrap-driven repositories. The contract owns orchestration semantics; each repository owns only its binding, backlog, ledger, verification command, and red-line documents.
 
@@ -24,6 +24,7 @@ Required binding fields:
 - optional `workflow_dir` override; null means use skill bundled runtime
 - optional `register_prefixes` and `agent_prompts.*`
 - optional `conduct.mcp_policy` (`clean`, `allowlist`, or `full`; default `clean`) and `conduct.mcp_allowlist` (list of existing MCP server names allowed only when policy is `allowlist`)
+- optional `status_marker` (v1.4.6): `status_marker.file` (the doc holding the pointer), `status_marker.next_task_marker` (the HTML-comment token, e.g. `§1-next-bs-task`, rewritten as `<!-- <token>: B-NNN -->`), optional `status_marker.next_task_line` (`start`/`end` sentinel strings + a `template` rendered from `{id}`/`{title}`), and optional `status_marker.post_sync_command` (shell run in repo root after a change, e.g. a CLAUDE.md re-sync). When present, Step 10 advances this pointer in the atomic close commit; when absent the close stages only ledger + backlog.
 
 Contract verification is three-way: `.bootstrap.yaml.contract.source_sha256`, `.bootstrap/contract.sha256`, and the local skill `contract.md` sha256 must match. Semver compatibility uses `contract.compatible_range`; floating latest is forbidden. If the contract contains a Runtime manifest, every listed runtime or command-surface file must match its locked sha256 during binding validation.
 
@@ -142,11 +143,11 @@ Fix-round artifacts are conditional on fix rounds: `outcome.v<g>.md` archives fo
 
 ## 7. Step 10 atomic close
 
-Step 10 appends `step_10 started`, then runs the pre-close gate `python3 ${runtime}/validate_events.py <cycle-dir>/step_events.jsonl --allow-open-current step_10`. That flag tolerates exactly the current open `step_10` pair and nothing else. It then reads the cycle data, verifies the backlog task is still `in_progress`, prepares new ledger and backlog content in memory, writes both, stages both, and commits once:
+Step 10 appends `step_10 started`, then runs the pre-close gate `python3 ${runtime}/validate_events.py <cycle-dir>/step_events.jsonl --allow-open-current step_10`. That flag tolerates exactly the current open `step_10` pair and nothing else. It then reads the cycle data, verifies the backlog task is still `in_progress`, prepares new ledger and backlog content in memory, writes both, and — if the binding declares `status_marker` — runs `python3 ${runtime}/sync_status_marker.py --binding-file <binding-file> --repo-root <repo>` after the backlog writeback so it reads the freshly-completed task and resolves the *next* selectable task, advancing the declared pointer (and any `post_sync_command` output). It stages ledger + backlog plus any `status_marker`-touched files, and commits once:
 
 `ledger+backlog: close <cycle> <ID> <title>`
 
-After the close commit, Step 10 appends `step_10 completed` and runs the post-close full re-validation without `--allow-open-current`; that complete-log validation is the real close gate. If the commit or post-close validation fails, runtime reverts both files where possible and escalates.
+When the binding has no `status_marker`, the close stages only ledger + backlog and is otherwise identical (backward compatible). After the close commit, Step 10 appends `step_10 completed` and runs the post-close full re-validation without `--allow-open-current`; that complete-log validation is the real close gate. If the commit or post-close validation fails, runtime reverts the close-commit files where possible and escalates.
 
 ## 8. Commands
 
@@ -183,25 +184,27 @@ The driver emits a heartbeat every 30 seconds while waiting for turn completion.
 
 | file | sha256 |
 |---|---|
-| runtime/preflight.sh | c768ea9f8f80717a9cb6019709aa4e766263b4f76e1174c46cf6b3c7dbb2a9de |
-| runtime/codex_driver.py | 4b1a9bb7db4af108092c7016c5514cdfcb1b163fdefe06b766d1da90b5771a15 |
+| runtime/preflight.sh | 7e1cb4f9855b88621853ef52ae4b083c8148032289624574a1e6b6ad9d9332bd |
+| runtime/codex_driver.py | a5c3a1c05904caeb2340bc7d6caaf3cb51a24704c8d11f1da3855bc97b631933 |
 | runtime/codex_fix_driver.py | 0ba1be44f6ddf4f8ff8d40a8a661bd317c85752c5e9597f6c2ac13afb9d1ae4a |
 | runtime/reshape_fix_round.py | ce6caf0114102fc706798963f6756e75c90b2d7d12caa854eca6352e30f9a73a |
 | runtime/conduct.sh | b0e0a0add0e9551c795dabdf909c07f353c1b3d374fc53a304c63e7f0d5d2f60 |
 | runtime/grade_lint.py | 2b8817a96b78629ee542ca9f91f48fba306f167227a9bc9272568af3d53a81a7 |
 | runtime/grade_verify.py | cd7baca6f0102d8920408bfd03d18711f76ad003d353cded54c74935c223407f |
-| commands/bs.md | 6cc5599b9f7888f748364e01d6854915b9b0b3d6f678714ed64c46e09f822ae9 |
+| runtime/sync_status_marker.py | d4367100f4ad8565291d5d332d86daafaff8a9bf7258da53495c137229aba061 |
+| commands/bs.md | 10b801e83ada80d6a73bca42898f756740127de03e935db605795165ed4634aa |
 | runtime/validate_events.py | 303f06c2d3bd3053291827cc0fea40a86ef6a20b41168d02a26f40e9646baceb |
 
 The manifest locks runtime and slash-command surface by making file hashes part of the contract hash. Any listed file change requires updating this table and refreshing adopter bindings.
 
 ## 10. Non-goals
 
-No parallel cycles, enum extension, severity override, council-member override, multi-backlog, markdown-embedded backlog compatibility, automatic v1.2 ledger migration, `/bs gc`, repository-specific prompt override, text `/goal` conduct transport, second goal file, raw grade markdown paste into the capsule, universal heavy adversarial process for low-risk docs/spec tasks, or unbounded fix loop in v1.4.5.
+No parallel cycles, enum extension, severity override, council-member override, multi-backlog, markdown-embedded backlog compatibility, automatic v1.2 ledger migration, `/bs gc`, repository-specific prompt override, text `/goal` conduct transport, second goal file, raw grade markdown paste into the capsule, universal heavy adversarial process for low-risk docs/spec tasks, or unbounded fix loop in v1.4.6. The optional `status_marker` advance (v1.4.6) is the only status-doc write Step 10 performs; it never rewrites narrative prose or any file beyond the binding-declared `status_marker.file` (plus its `post_sync_command` output), and is a no-op when unconfigured.
 
 
 ## 11. Changelog
 
+- v1.4.6: Optional Step-10 `status_marker` advance. A new opt-in binding block (`status_marker.file` + `next_task_marker`, optional `next_task_line` sentinels + `template`, optional `post_sync_command`) lets the atomic close commit advance a repo's "next /bs task" pointer from the freshly-written backlog via `runtime/sync_status_marker.py` (the in_progress task if a cycle is open, else the next pending-unblocked task). Eliminates the per-cycle manual marker refresh / drift-warning. Backward compatible: absent `status_marker` ⇒ close stages only ledger + backlog, unchanged. New hash-locked runtime helper; `lib/binding.py` validates the block; runtime manifest relocked; no transport-semantics change.
 - v1.4.5: Adversarial-lint hardening over v1.4.4. Adds high-risk surfaces `string_boundary` and `input_validation_or_schema`, requires risk-specific `adversarial_checks[*].evidence_kind` (concurrency/atomicity, boundary, panic-audit classes) where generic evidence is ambiguous, and forbids deferring a current P0/P1 adversarial acceptance by assertion (must cite a tracked waiver or `scope_basis_ref`). Grade-lint (`runtime/grade_lint.py`) tightening; no transport-semantics change; runtime manifest relocked.
 - v1.4.4: Process-evidence hardening after the first medium/code adopter cycle. Adds machine timestamp defaults and helper APIs for `step_events.jsonl`, first-class `conduct.sh --worktree` execution, `/bs init` guidance for required `verify.grade.<type>` setup, `/bs doctor` version-skew diagnostics, round-scoped Conduct evidence path clarification, deterministic auto-merge-gate authoring guidance, and release label/client-version alignment.
 - v1.4.3: Fix-round marker guard hotfix over v1.4.2; contract-body-neutral in the v1.4.3 tag.

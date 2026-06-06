@@ -85,6 +85,21 @@ def validate_conduct_config(data: dict) -> None:
     allow = conduct.get("mcp_allowlist")
     if allow is not None and (not isinstance(allow, list) or not all(isinstance(x, str) and x for x in allow)): raise BindingError("conduct.mcp_allowlist must be list of non-empty strings")
 
+def validate_status_marker_config(data: dict) -> None:
+    sm = data.get("status_marker")
+    if sm is None: return
+    if not isinstance(sm, dict): raise BindingError("status_marker must be mapping")
+    for f in ("file", "next_task_marker"):
+        if not isinstance(sm.get(f), str) or not sm.get(f): raise BindingError(f"status_marker.{f} must be a non-empty string")
+    psc = sm.get("post_sync_command")
+    if psc is not None and (not isinstance(psc, str) or not psc.strip()): raise BindingError("status_marker.post_sync_command must be a non-empty string")
+    line = sm.get("next_task_line")
+    if line is not None:
+        if not isinstance(line, dict): raise BindingError("status_marker.next_task_line must be mapping")
+        for f in ("start", "end"):
+            if not isinstance(line.get(f), str) or not line.get(f): raise BindingError(f"status_marker.next_task_line.{f} must be a non-empty string")
+        if line.get("template") is not None and not isinstance(line.get("template"), str): raise BindingError("status_marker.next_task_line.template must be a string")
+
 def extract_contract_title_version(contract_text: str) -> str | None:
     match = CONTRACT_TITLE_VERSION.search(contract_text)
     return match.group(1) if match else None
@@ -129,6 +144,7 @@ def validate(repo: Path, data: dict, skill_contract: Path) -> None:
     validate_verify_config(data)
     validate_preflight_config(data)
     validate_conduct_config(data)
+    validate_status_marker_config(data)
     for f in ["backlog", "ledger"]:
         if not (repo / data[f]).exists(): raise BindingError(f"path not found: {data[f]}")
     if data.get("workflow_dir") and not (repo / data["workflow_dir"]).exists():

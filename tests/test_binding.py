@@ -65,6 +65,29 @@ class BindingManifestTests(unittest.TestCase):
             [],
         )
 
+    def test_validate_status_marker_config_accepts_valid_and_absent(self):
+        binding.validate_status_marker_config({})  # absent -> ok
+        binding.validate_status_marker_config({
+            "status_marker": {
+                "file": "AGENTS.md",
+                "next_task_marker": "§1-next-bs-task",
+                "post_sync_command": "scripts/sync-claude-md.sh",
+                "next_task_line": {"start": "<!-- a -->", "end": "<!-- b -->", "template": "{id} {title}"},
+            }
+        })
+
+    def test_validate_status_marker_config_rejects_bad_shapes(self):
+        for bad in (
+            {"status_marker": "AGENTS.md"},                                  # not a mapping
+            {"status_marker": {"next_task_marker": "x"}},                    # missing file
+            {"status_marker": {"file": "AGENTS.md"}},                        # missing marker
+            {"status_marker": {"file": "AGENTS.md", "next_task_marker": ""}},# empty marker
+            {"status_marker": {"file": "AGENTS.md", "next_task_marker": "x", "post_sync_command": "  "}},
+            {"status_marker": {"file": "AGENTS.md", "next_task_marker": "x", "next_task_line": {"start": "a"}}},  # missing end
+        ):
+            with self.assertRaises(binding.BindingError):
+                binding.validate_status_marker_config(bad)
+
 
 if __name__ == '__main__':
     unittest.main()

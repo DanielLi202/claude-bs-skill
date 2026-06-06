@@ -52,7 +52,7 @@ Execute the next bootstrap backlog task end-to-end. Do not only describe the wor
    - append `step_10 started` before the close gate;
    - before proceeding to the close commit, run `python3 ${runtime}/validate_events.py <cycle-dir>/step_events.jsonl --allow-open-current step_10`;
    - if validation exits non-zero, do not close; repair the log append-only by appending a correcting or next-attempt event, never editing/inserting prior history, then re-run until it passes;
-   - stage only ledger + backlog;
+   - if the binding declares `status_marker`, after writing ledger + backlog run `python3 ${runtime}/sync_status_marker.py --binding-file <binding-file> --repo-root <repo>` so it reads the freshly-completed backlog and advances the next-task pointer (and runs any `post_sync_command`); stage ledger + backlog plus any `status_marker`-touched files. When `status_marker` is absent, stage only ledger + backlog;
    - commit `ledger+backlog: close <cycle> <ID> <title>`;
    - push `origin main`;
    - append `step_10 completed` with the close commit using `recorded_at` (append time) and `occurred_at` (close happened time);
