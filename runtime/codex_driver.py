@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Codex app-server driver for bs v1.4.1.
+"""Codex app-server driver for bs v1.4.7.
 
 Delegates a frozen outcome capsule through a persistent, non-ephemeral Codex
 app-server thread using `thread/goal/set`, not text `/goal`. The driver computes
@@ -8,6 +8,11 @@ content-free launcher that asks the model to emit `BS_OUTCOME_READ`, and exits 0
 only when final `thread/goal/get` normalizes to `complete` and read evidence
 matches the driver hash. Cleanup best-effort clears the goal and archives the
 thread on every thread-owned exit path.
+
+The app-server is spawned in its own POSIX process group (start_new_session) and
+every exit path reaps the whole group (SIGTERM then SIGKILL after a grace) so a
+runaway grandchild (e.g. a vendor `find` across $HOME) cannot survive as an
+orphan after the leader dies (cycle-015 self-hang hardening, v1.4.7).
 """
 from __future__ import annotations
 
@@ -126,6 +131,7 @@ def build_goal_objective(outcome_file: Path, outcome_sha: str, run_id: str) -> s
     objective = (
         build_goal_header(run_id, outcome_sha, outcome_file)
         + "\nImplement the frozen bs outcome capsule exactly. The absolute outcome file is the single source of truth; read it before changing files and continue until the goal status is complete."
+        + " Resolve dependencies only through the project package manager/registry (cargo, npm, pip, go, etc.); never run broad filesystem searches. Do not run find or recursive scans across $HOME, the home directory, caches, or any tree outside the worktree to locate cached packages, and never block waiting on such a search."
     )
     if len(objective) > 4000:
         raise LaunchFatal("goal objective exceeds Codex 4000 character limit")
@@ -432,12 +438,81 @@ def read_response(proc: subprocess.Popen, raw: TextIO, err: TextIO, target: int,
     raise LaunchTransient(f"timed out waiting for response id={target}")
 
 
-def kill_proc(proc: subprocess.Popen | None) -> None:
-    if proc is None:
+_PGID_ATTR = "_bs_pgid"
+
+
+def _stash_pgid(proc: subprocess.Popen) -> None:
+    """Record the app-server's process-group id at spawn time so the whole group
+    can be reaped later even if the leader has already exited (orphaned grandchild
+    case). Only stash a group distinct from our own — never signal the driver's
+    own group."""
+    if not hasattr(os, "getpgid"):
         return
     try:
+        pgid = os.getpgid(proc.pid)
+    except (ProcessLookupError, OSError):
+        return
+    try:
+        own = os.getpgid(0)
+    except OSError:
+        own = None
+    if own is None or pgid != own:
+        setattr(proc, _PGID_ATTR, pgid)
+
+
+def _proc_group(proc: subprocess.Popen) -> int | None:
+    if not hasattr(os, "killpg"):
+        return None
+    pgid = getattr(proc, _PGID_ATTR, None)
+    if pgid is not None:
+        return pgid
+    if not hasattr(os, "getpgid"):
+        return None
+    try:
+        pgid = os.getpgid(proc.pid)
+    except (ProcessLookupError, OSError):
+        return None
+    try:
+        own = os.getpgid(0)
+    except OSError:
+        own = None
+    if own is not None and pgid == own:
+        return None
+    return pgid
+
+
+def _signal_group(pgid: int, sig: int) -> None:
+    try:
+        os.killpg(pgid, sig)
+    except (ProcessLookupError, PermissionError, OSError):
+        pass
+
+
+def kill_proc(proc: subprocess.Popen | None, grace: float = 2.0) -> None:
+    """Reap the app-server and any descendants left in its process group.
+
+    SIGTERM the whole group (so orphaned grandchildren such as a runaway `find`
+    are signalled even after the leader exits), wait a grace period, then SIGKILL
+    the group and the direct child. Falls back to a plain child kill when no safe
+    distinct process group is available (e.g. non-POSIX)."""
+    if proc is None:
+        return
+    pgid = _proc_group(proc)
+    if pgid is not None:
+        _signal_group(pgid, signal.SIGTERM)
+    try:
+        proc.terminate()
+    except Exception:
+        pass
+    try:
+        proc.wait(timeout=grace)
+    except Exception:
+        pass
+    if pgid is not None:
+        _signal_group(pgid, signal.SIGKILL)
+    try:
         proc.kill()
-        proc.wait(timeout=2)
+        proc.wait(timeout=grace)
     except Exception:
         pass
 
@@ -485,6 +560,7 @@ def wait_for_turn_completion(proc: subprocess.Popen, raw: TextIO, err: TextIO, m
     soft = False
     stale = False
     wall = False
+    terminal_candidate = False
     obs.start()
     assert proc.stdout is not None and proc.stderr is not None
     wall_limit = args.wall_clock_limit_sec or (args.timeout_sec if args.timeout_sec > 0 and args.on_wall_clock_limit in {"fail", "terminate"} else 0)
@@ -518,6 +594,17 @@ def wait_for_turn_completion(proc: subprocess.Popen, raw: TextIO, err: TextIO, m
             write_codex_env_snapshot(args, obs)
             kill_proc(proc)
             return 2
+        if args.terminal_candidate_idle_sec > 0 and not terminal_candidate and silent > args.terminal_candidate_idle_sec:
+            obs.finish()
+            delta = obs.workspace_delta_files
+            if delta:
+                terminal_candidate = True
+                emit_meta(meta, event="turn_terminal_candidate", reason_code="post_delta_idle", idle_sec=round(silent, 3), threshold_sec=args.terminal_candidate_idle_sec, workspace_delta_files=delta, final_answer_seen=obs.final_answer_seen, inferred_completion_armed=inferred_at is not None, policy=args.on_terminal_candidate)
+                if args.on_terminal_candidate == "terminate":
+                    write_codex_env_snapshot(args, obs)
+                    kill_proc(proc)
+                    emit_meta(meta, event="turn_terminal_candidate_terminated", reason_code="post_delta_idle", workspace_delta_files=delta)
+                    return 8
         if args.silent_soft_limit_sec > 0 and not soft and silent > args.silent_soft_limit_sec:
             emit_meta(meta, event="turn_silent_soft_limit", silent_for_sec=round(silent, 3), soft_limit_sec=args.silent_soft_limit_sec)
             soft = True
@@ -636,8 +723,9 @@ def launch_and_handshake(args: argparse.Namespace, raw: TextIO, rpc: TextIO, err
     expected = parse_goal_header(objective) or {}
     launcher = build_launcher_text(outcome_file, outcome_sha)
     try:
-        proc = subprocess.Popen([codex_bin, "app-server", "--listen", "stdio://"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, cwd=str(cwd))
-        rpc_call(proc, raw, rpc, err, 1, "initialize", {"clientInfo": {"name": "bs-codex-driver", "version": "1.4.6"}, "capabilities": {"experimentalApi": True}}, args.handshake_timeout_sec)
+        proc = subprocess.Popen([codex_bin, "app-server", "--listen", "stdio://"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, cwd=str(cwd), start_new_session=(os.name == "posix"))
+        _stash_pgid(proc)
+        rpc_call(proc, raw, rpc, err, 1, "initialize", {"clientInfo": {"name": "bs-codex-driver", "version": "1.4.7"}, "capabilities": {"experimentalApi": True}}, args.handshake_timeout_sec)
         params = {"cwd": str(cwd), "approvalPolicy": "never", "sandbox": "workspace-write", "ephemeral": False}
         if args.model:
             params["model"] = args.model
@@ -707,6 +795,8 @@ def main() -> int:
     ap.add_argument("--silent-soft-limit-sec", type=int, default=120)
     ap.add_argument("--stale-notice-sec", type=int, default=1800)
     ap.add_argument("--progress-report-sec", type=int, default=900)
+    ap.add_argument("--terminal-candidate-idle-sec", type=int, default=0, help="when >0, emit turn_terminal_candidate once a turn is silent this long AND a workspace delta already exists (post-answer/post-delta idle deadlock); 0 disables. Distinct from genuinely-long active work with no delta yet.")
+    ap.add_argument("--on-terminal-candidate", default="observe", choices=["observe", "terminate"], help="observe (default) only emits telemetry and keeps waiting (silence is not failure); terminate reaps the process group and exits 8 (interrupted_with_delta) for the orchestrator's verify-and-accept path.")
     ap.add_argument("--heartbeat-sec", type=int, default=30)
     ap.add_argument("--inferred-completion-sec", type=int, default=5)
     ap.add_argument("--handshake-timeout-sec", type=int, default=20)

@@ -3,7 +3,11 @@ set -euo pipefail
 
 usage() {
   cat >&2 <<'EOF'
-usage: conduct.sh --cycle-dir ABS --outcome-file PATH --evidence-dir PATH [--worktree PATH] [--fix-round N] [--model M] [--effort E] [--mcp-policy clean|allowlist|full] [--mcp-allow a,b,c]
+usage: conduct.sh --cycle-dir ABS --outcome-file PATH --evidence-dir PATH [--worktree PATH] [--fix-round N] [--model M] [--effort E] [--mcp-policy clean|allowlist|full] [--mcp-allow a,b,c] [--terminal-candidate-idle-sec N] [--on-terminal-candidate observe|terminate]
+
+Long Conduct turns can outlive the caller's session; run this detached so an
+external SIGTERM of the launching turn does not abandon a near-complete turn,
+e.g.:  setsid conduct.sh ... &   or   tmux new -d 'conduct.sh ...'
 EOF
 }
 
@@ -25,6 +29,8 @@ IDLE_KILL_SEC=""
 SILENT_SOFT_LIMIT_SEC=""
 STALE_NOTICE_SEC=""
 PROGRESS_REPORT_SEC=""
+TERMINAL_CANDIDATE_IDLE_SEC=""
+ON_TERMINAL_CANDIDATE=""
 MCP_POLICY="clean"
 MCP_ALLOW=""
 
@@ -48,6 +54,8 @@ while [[ $# -gt 0 ]]; do
     --silent-soft-limit-sec) SILENT_SOFT_LIMIT_SEC="${2:-}"; shift 2 ;;
     --stale-notice-sec) STALE_NOTICE_SEC="${2:-}"; shift 2 ;;
     --progress-report-sec) PROGRESS_REPORT_SEC="${2:-}"; shift 2 ;;
+    --terminal-candidate-idle-sec) TERMINAL_CANDIDATE_IDLE_SEC="${2:-}"; shift 2 ;;
+    --on-terminal-candidate) ON_TERMINAL_CANDIDATE="${2:-}"; shift 2 ;;
     --mcp-policy) MCP_POLICY="${2:-}"; shift 2 ;;
     --mcp-allow|--mcp-allowlist) MCP_ALLOW="${2:-}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
@@ -58,6 +66,7 @@ done
 [[ -n "$CYCLE_DIR" && -n "$OUTCOME_FILE" && -n "$EVIDENCE_DIR" ]] || { usage; exit 64; }
 case "$MCP_POLICY" in clean|allowlist|full) ;; *) echo "invalid --mcp-policy: $MCP_POLICY" >&2; exit 64 ;; esac
 case "$ON_NO_WORK_ITEMS" in mark_stale|terminate) ;; *) echo "invalid --on-no-work-items: $ON_NO_WORK_ITEMS" >&2; exit 64 ;; esac
+case "$ON_TERMINAL_CANDIDATE" in ""|observe|terminate) ;; *) echo "invalid --on-terminal-candidate: $ON_TERMINAL_CANDIDATE" >&2; exit 64 ;; esac
 if [[ -n "$WORKTREE_CWD" ]]; then
   [[ -d "$WORKTREE_CWD" ]] || { echo "invalid --worktree: not a directory: $WORKTREE_CWD" >&2; exit 64; }
   DRIVER_CWD="$(git -C "$WORKTREE_CWD" rev-parse --show-toplevel 2>/dev/null)" || { echo "invalid --worktree: not a git worktree: $WORKTREE_CWD" >&2; exit 64; }
@@ -182,6 +191,8 @@ common_args() {
   [[ -z "$SILENT_SOFT_LIMIT_SEC" ]] || ARGS+=(--silent-soft-limit-sec "$SILENT_SOFT_LIMIT_SEC")
   [[ -z "$STALE_NOTICE_SEC" ]] || ARGS+=(--stale-notice-sec "$STALE_NOTICE_SEC")
   [[ -z "$PROGRESS_REPORT_SEC" ]] || ARGS+=(--progress-report-sec "$PROGRESS_REPORT_SEC")
+  [[ -z "$TERMINAL_CANDIDATE_IDLE_SEC" ]] || ARGS+=(--terminal-candidate-idle-sec "$TERMINAL_CANDIDATE_IDLE_SEC")
+  [[ -z "$ON_TERMINAL_CANDIDATE" ]] || ARGS+=(--on-terminal-candidate "$ON_TERMINAL_CANDIDATE")
 }
 
 run_driver_once() {
@@ -229,6 +240,7 @@ case "$rc" in
   4) result="launch_fatal" ;;
   6) result="semantic_failed" ;;
   7) result="no_work_items" ;;
+  8) result="interrupted_with_delta" ;;
   *) result="failed" ;;
 esac
 printf '{"conduct_result":"%s","exit":%s,"round":%s,"mcp_policy":"%s"}\n' "$result" "$rc" "$ROUND" "$MCP_POLICY"

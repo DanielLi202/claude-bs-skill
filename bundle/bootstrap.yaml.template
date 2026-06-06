@@ -1,7 +1,7 @@
 schema_version: 1
 contract:
-  source_url: "https://raw.githubusercontent.com/<owner>/claude-bs-skill/v1.4.6/contract.md"
-  source_tag: "v1.4.6"
+  source_url: "https://raw.githubusercontent.com/<owner>/claude-bs-skill/v1.4.7/contract.md"
+  source_tag: "v1.4.7"
   source_commit: "<40-hex-git-sha>"
   source_sha256: "<64-hex>"
   sha256_path: .bootstrap/contract.sha256

@@ -7,6 +7,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
@@ -117,6 +118,66 @@ class CodexDriverUnitTests(unittest.TestCase):
             obs.finish()
             self.assertEqual(obs.evidence_delta_files, ['grade_verify_round_0.yaml'])
 
+    def test_goal_objective_forbids_broad_filesystem_scans(self):
+        objective = codex_driver.build_goal_objective(Path('/tmp/cycle/outcome.md'), 'a' * 64, 'cycle-015')
+        low = objective.lower()
+        self.assertIn('never run broad filesystem searches', low)
+        self.assertIn('$home', low)
+        self.assertIn('package manager/registry', low)
+        # The integrity header must still parse and the cap must hold.
+        self.assertIsNotNone(codex_driver.parse_goal_header(objective))
+        self.assertLessEqual(len(objective), 4000)
+
+    def test_driver_spawns_app_server_in_own_process_group(self):
+        source = DRIVER.read_text(encoding='utf-8')
+        self.assertIn('start_new_session=(os.name == "posix")', source)
+        self.assertIn('_stash_pgid(proc)', source)
+        self.assertIn('os.killpg', source)
+        self.assertIn('"version": "1.4.7"', source)
+        self.assertIn('--terminal-candidate-idle-sec', source)
+        self.assertIn('--on-terminal-candidate', source)
+
+    def test_kill_proc_reaps_orphaned_grandchild_via_process_group(self):
+        # Reproduces the cycle-015 shape: a leader spawns a long-lived grandchild
+        # then the leader exits, orphaning the grandchild. The driver must still
+        # reap the grandchild via the stashed process group.
+        script = (
+            "import os, sys, subprocess, time\n"
+            "p = subprocess.Popen(['sleep', '120'])\n"
+            "open(sys.argv[1], 'w').write(str(p.pid))\n"
+            "sys.exit(0)\n"
+        )
+        with tempfile.TemporaryDirectory() as td:
+            pidfile = Path(td) / 'gc.pid'
+            proc = subprocess.Popen([sys.executable, '-c', script, str(pidfile)], start_new_session=True)
+            codex_driver._stash_pgid(proc)
+            proc.wait(timeout=5)  # leader exits; grandchild is now orphaned
+            gc_pid = None
+            for _ in range(50):
+                if pidfile.exists() and pidfile.read_text().strip():
+                    gc_pid = int(pidfile.read_text().strip())
+                    break
+                time.sleep(0.1)
+            self.assertIsNotNone(gc_pid, 'grandchild pid was never written')
+
+            def _safe_kill():
+                try:
+                    os.kill(gc_pid, signal.SIGKILL)
+                except OSError:
+                    pass
+            self.addCleanup(_safe_kill)
+            os.kill(gc_pid, 0)  # alive before reaping (raises if not)
+            codex_driver.kill_proc(proc)
+            reaped = False
+            for _ in range(50):
+                try:
+                    os.kill(gc_pid, 0)
+                    time.sleep(0.1)
+                except ProcessLookupError:
+                    reaped = True
+                    break
+            self.assertTrue(reaped, 'orphaned grandchild survived process-group reaping')
+
     def test_signal_handler_invokes_cleanup_before_exit(self):
         meta = io.StringIO()
         proc = object()
@@ -133,7 +194,7 @@ class CodexDriverUnitTests(unittest.TestCase):
 
 
 FAKE_CODEX = r'''#!/usr/bin/env python3
-import json, os, sys, time
+import json, os, subprocess, sys, time
 mode = os.environ.get('FAKE_CODEX_MODE', 'ok')
 if len(sys.argv) < 2 or sys.argv[1] != 'app-server':
     sys.exit(64)
@@ -220,6 +281,23 @@ for line in sys.stdin:
         elif mode == 'no_output':
             while True:
                 time.sleep(1)
+        elif mode == 'delta_then_idle':
+            if marker:
+                emit({'method':'item/agentMessage/delta','params':{'itemId':'msg-1','delta':marker}})
+            emit({'method':'item/started','params':{'item':{'type':'fileChange'}}})
+            # Write the workspace delta AFTER the driver's turn-start snapshot so it
+            # registers as an in-turn delta, then go silent (post-delta deadlock).
+            time.sleep(0.6)
+            open('workspace-write.txt', 'w').write('done')
+            while True:
+                time.sleep(1)
+        elif mode == 'grandchild_then_complete':
+            gc = subprocess.Popen(['sleep', '120'])
+            open('grandchild.pid', 'w').write(str(gc.pid))
+            open('workspace-write.txt', 'w').write('done')
+            if marker:
+                emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':marker + ' Done'}}})
+            emit({'jsonrpc':'2.0','method':'turn/completed','params':{'turn':{'status':'completed'}}})
         else:
             time.sleep(0.1)
             open('workspace-write.txt', 'w').write('done')
@@ -355,6 +433,69 @@ class CodexDriverIntegrationTests(unittest.TestCase):
         names = [e['event'] for e in events]
         self.assertNotIn('turn_no_work_items_stale', names)
         self.assertIn('turn_wall_clock_limit', names)
+
+    def test_terminal_candidate_terminate_returns_exit_8_with_delta(self):
+        rc, events, _requests, _record, _stderr = self.run_driver(
+            'delta_then_idle',
+            extra_args=['--terminal-candidate-idle-sec', '1', '--on-terminal-candidate', 'terminate'],
+            timeout=10,
+        )
+        self.assertEqual(rc, 8, _stderr)
+        cand = [e for e in events if e['event'] == 'turn_terminal_candidate']
+        self.assertTrue(cand, 'expected a turn_terminal_candidate event')
+        self.assertEqual(cand[-1]['reason_code'], 'post_delta_idle')
+        self.assertIn('workspace-write.txt', cand[-1]['workspace_delta_files'])
+        self.assertIn('turn_terminal_candidate_terminated', [e['event'] for e in events])
+
+    def test_terminal_candidate_observe_does_not_terminate(self):
+        # observe mode emits the decision-point telemetry but keeps waiting
+        # (silence is not failure); the turn ends here only via opt-in wall clock.
+        rc, events, _requests, _record, _stderr = self.run_driver(
+            'delta_then_idle',
+            extra_args=['--terminal-candidate-idle-sec', '1', '--on-terminal-candidate', 'observe', '--wall-clock-limit-sec', '4', '--on-wall-clock-limit', 'fail'],
+            timeout=10,
+        )
+        self.assertEqual(rc, 2, _stderr)
+        names = [e['event'] for e in events]
+        self.assertIn('turn_terminal_candidate', names)
+        self.assertNotIn('turn_terminal_candidate_terminated', names)
+        self.assertIn('turn_wall_clock_limit', names)
+
+    def test_no_terminal_candidate_when_idle_threshold_unset(self):
+        # default (disabled) keeps prior behavior: no terminal-candidate events
+        rc, events, _requests, _record, _stderr = self.run_driver('ok')
+        self.assertEqual(rc, 0, _stderr)
+        self.assertNotIn('turn_terminal_candidate', [e['event'] for e in events])
+
+    def test_turn_completion_reaps_grandchild_process_group(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            fake = root / 'fake_codex.py'
+            fake.write_text(FAKE_CODEX, encoding='utf-8')
+            fake.chmod(0o755)
+            outcome = root / 'outcome.md'; outcome.write_text('# Outcome\n', encoding='utf-8')
+            evidence = root / 'evidence'
+            env = os.environ.copy()
+            env.update({'BS_TEST_FAKE_CODEX': '1', 'CODEX_BIN': str(fake), 'FAKE_CODEX_MODE': 'grandchild_then_complete'})
+            proc = subprocess.run([sys.executable, str(DRIVER), '--cwd', str(root), '--outcome-file', str(outcome), '--evidence-dir', str(evidence), '--launch-backoff', '0', '--inferred-completion-sec', '1'], cwd=str(root), env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=15)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            gc_pid = int((root / 'grandchild.pid').read_text().strip())
+
+            def _safe_kill():
+                try:
+                    os.kill(gc_pid, signal.SIGKILL)
+                except OSError:
+                    pass
+            self.addCleanup(_safe_kill)
+            reaped = False
+            for _ in range(50):
+                try:
+                    os.kill(gc_pid, 0)
+                    time.sleep(0.1)
+                except ProcessLookupError:
+                    reaped = True
+                    break
+            self.assertTrue(reaped, 'grandchild survived driver exit-path reaping')
 
     def test_codex_env_snapshot_is_written(self):
         rc, events, _requests, _record, _stderr = self.run_driver('ok', extra_args=['--mcp-policy', 'clean', '--clean-codex-home'])

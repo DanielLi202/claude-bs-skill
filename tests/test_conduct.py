@@ -18,6 +18,7 @@ if len(sys.argv) < 2 or sys.argv[1] != 'app-server':
 goal = None
 real_home = os.environ.get('REAL_CODEX_HOME_FOR_TEST')
 full_no_work = os.environ.get('FAKE_FULL_NO_WORK') == '1' and os.environ.get('CODEX_HOME') == real_home
+delta_then_idle = os.environ.get('FAKE_DELTA_THEN_IDLE') == '1'
 
 def emit(obj):
     print(json.dumps(obj), flush=True)
@@ -54,6 +55,15 @@ for line in sys.stdin:
             while True:
                 emit({'method':'mcpServer/startupStatus/updated','params':{'serverName':'alpha'}})
                 time.sleep(0.05)
+        if delta_then_idle:
+            marker = marker_from(text)
+            if marker:
+                emit({'method':'item/agentMessage/delta','params':{'itemId':'msg-1','delta':marker}})
+            emit({'method':'item/started','params':{'item':{'type':'fileChange'}}})
+            time.sleep(0.6)
+            open('workspace-write.txt', 'w').write('done')
+            while True:
+                time.sleep(1)
         marker = marker_from(text)
         if marker:
             emit({'method':'item/agentMessage/delta','params':{'itemId':'msg-1','delta':marker}})
@@ -117,6 +127,32 @@ class ConductPolicyTests(unittest.TestCase):
         self.assertIn('--first-work-item-stale-sec', text)
         self.assertIn('--on-no-work-items', text)
         self.assertIn('result="no_work_items"', text)
+
+    def test_source_exposes_terminal_candidate_and_interrupted_result(self):
+        text = CONDUCT.read_text(encoding='utf-8')
+        self.assertIn('--terminal-candidate-idle-sec', text)
+        self.assertIn('--on-terminal-candidate', text)
+        self.assertIn('result="interrupted_with_delta"', text)
+        # kill-resistant launch recommendation for long Conduct turns
+        self.assertIn('detached', text)
+        self.assertIn('tmux', text)
+
+    def test_terminal_candidate_terminate_exit_8_maps_to_interrupted_with_delta(self):
+        proc, _payload, _real_home, root = self.run_conduct(
+            ['--terminal-candidate-idle-sec', '1', '--on-terminal-candidate', 'terminate'],
+            extra_env={'FAKE_DELTA_THEN_IDLE': '1'},
+            timeout=15,
+        )
+        self.assertEqual(proc.returncode, 8, proc.stderr)
+        result = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(result['conduct_result'], 'interrupted_with_delta')
+        self.assertEqual(result['exit'], 8)
+        events = (root / 'evidence' / 'conduct_round_0' / 'driver_events.jsonl').read_text(encoding='utf-8')
+        self.assertIn('turn_terminal_candidate', events)
+
+    def test_invalid_on_terminal_candidate_is_rejected(self):
+        proc, _payload, _real_home, _root = self.run_conduct(['--on-terminal-candidate', 'bogus'])
+        self.assertEqual(proc.returncode, 64, proc.stderr)
 
     def test_default_clean_builds_auth_only_home_with_zero_mcp_servers(self):
         proc, payload, real_home, _root = self.run_conduct()

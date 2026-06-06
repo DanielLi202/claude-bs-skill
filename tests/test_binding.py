@@ -1,9 +1,12 @@
 from pathlib import Path
 import hashlib
+import re
 import tempfile
 import unittest
 
 from lib import binding
+
+SKILL_ROOT = Path(__file__).resolve().parents[1]
 
 
 class BindingManifestTests(unittest.TestCase):
@@ -87,6 +90,58 @@ class BindingManifestTests(unittest.TestCase):
         ):
             with self.assertRaises(binding.BindingError):
                 binding.validate_status_marker_config(bad)
+
+
+class ReleaseSelfConsistencyTests(unittest.TestCase):
+    """Locks the v1.4.x release invariants: the real Runtime manifest must match
+    the real bundled files, and every version string must agree so that an
+    adopter pinned to the matching tag gets zero version_skew_warnings."""
+
+    def _client_versions(self):
+        out = {}
+        for rel in ("runtime/codex_driver.py", "runtime/preflight.sh"):
+            text = (SKILL_ROOT / rel).read_text(encoding="utf-8")
+            m = re.search(r'clientInfo[^}]*?"version"\s*:\s*"([0-9]+\.[0-9]+\.[0-9]+)"', text)
+            self.assertIsNotNone(m, f"clientInfo version not found in {rel}")
+            out[rel] = m.group(1)
+        return out
+
+    def _skill_version(self):
+        for line in (SKILL_ROOT / "skill.yaml").read_text(encoding="utf-8").splitlines():
+            m = re.match(r'\s*version:\s*"([0-9]+\.[0-9]+\.[0-9]+)"', line)
+            if m:
+                return m.group(1)
+        self.fail("version not found in skill.yaml")
+
+    def test_real_runtime_manifest_matches_bundled_files(self):
+        contract = (SKILL_ROOT / "contract.md").read_text(encoding="utf-8")
+        # Raises BindingError on any drift between the locked table and real files.
+        binding.validate_runtime_manifest(SKILL_ROOT, contract)
+
+    def test_all_version_strings_are_aligned_and_skew_free(self):
+        contract = (SKILL_ROOT / "contract.md").read_text(encoding="utf-8")
+        title = binding.extract_contract_title_version(contract)
+        skill = self._skill_version()
+        clients = self._client_versions()
+        self.assertEqual({title, skill, *clients.values()}, {title},
+                         f"version mismatch: title={title} skill={skill} clients={clients}")
+        # An adopter pinned to the matching tag must see no skew warnings.
+        data = {"contract": {"source_tag": f"v{title}"}}
+        self.assertEqual(
+            binding.version_skew_warnings(data, contract, driver_client_version=clients["runtime/codex_driver.py"], skill_version=skill),
+            [],
+        )
+
+    def test_release_facing_locators_track_the_release_version(self):
+        # The bundled init template's locator and the README version line are
+        # release-facing: an adopter initialized/refreshed from this release must
+        # land on the matching tag, not a stale one (cycle-015 follow-up GOV/DOC).
+        title = binding.extract_contract_title_version((SKILL_ROOT / "contract.md").read_text(encoding="utf-8"))
+        tmpl = (SKILL_ROOT / "bundle" / "bootstrap.yaml.template").read_text(encoding="utf-8")
+        self.assertRegex(tmpl, rf'source_tag:\s*"v{re.escape(title)}"')
+        self.assertIn(f"/v{title}/contract.md", tmpl)
+        readme = (SKILL_ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn(f"skill v{title}", readme)
 
 
 if __name__ == '__main__':

@@ -24,4 +24,22 @@ class CommandFlowTests(unittest.TestCase):
         self.assertIn('occurred_at', text)
         self.assertIn('lib.events.append_started/append_completed/append_failed', text)
         self.assertIn('generate `auto_merge_gate.yaml` from parsed Grade summary', text)
+
+    def test_conduct_self_hang_hardening_guidance_is_present(self):
+        text = COMMAND.read_text(encoding='utf-8')
+        # #2 forbid broad filesystem dependency hunts in the capsule
+        self.assertIn('non-goals MUST forbid broad filesystem dependency hunts', text)
+        self.assertIn('outside the worktree', text)
+        # #1 process-group reaping described
+        self.assertIn('own POSIX process group', text)
+        # #4 kill-resistant launch recommendation
+        self.assertIn('detached', text)
+        self.assertIn('tmux', text)
+        # #3 terminal-candidate opt-in flags
+        self.assertIn('--terminal-candidate-idle-sec', text)
+        self.assertIn('--on-terminal-candidate', text)
+        # #5 interrupted-with-delta verify-and-accept path
+        self.assertIn('Interrupted-with-delta verify-and-accept', text)
+        self.assertIn('interrupted_with_delta', text)
+        self.assertIn('workflow_reflection.yaml', text)
 if __name__ == '__main__': unittest.main()
