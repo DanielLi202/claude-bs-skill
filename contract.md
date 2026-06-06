@@ -1,4 +1,4 @@
-# Bootstrap Development Workflow Contract v1.4.4
+# Bootstrap Development Workflow Contract v1.4.5
 
 > Universal workflow contract for bootstrap-driven repositories. The contract owns orchestration semantics; each repository owns only its binding, backlog, ledger, verification command, and red-line documents.
 
@@ -183,8 +183,8 @@ The driver emits a heartbeat every 30 seconds while waiting for turn completion.
 
 | file | sha256 |
 |---|---|
-| runtime/preflight.sh | fe137b4f345d25df350c2d0b8c6fc605fa7518f668bb9f1607295da95f721920 |
-| runtime/codex_driver.py | 6498c6a0ebc6ff899c19cbc90b6dfaf816d82aab8587c67d58eaff10a8ac8577 |
+| runtime/preflight.sh | c768ea9f8f80717a9cb6019709aa4e766263b4f76e1174c46cf6b3c7dbb2a9de |
+| runtime/codex_driver.py | 4b1a9bb7db4af108092c7016c5514cdfcb1b163fdefe06b766d1da90b5771a15 |
 | runtime/codex_fix_driver.py | 0ba1be44f6ddf4f8ff8d40a8a661bd317c85752c5e9597f6c2ac13afb9d1ae4a |
 | runtime/reshape_fix_round.py | ce6caf0114102fc706798963f6756e75c90b2d7d12caa854eca6352e30f9a73a |
 | runtime/conduct.sh | b0e0a0add0e9551c795dabdf909c07f353c1b3d374fc53a304c63e7f0d5d2f60 |
@@ -197,11 +197,12 @@ The manifest locks runtime and slash-command surface by making file hashes part 
 
 ## 10. Non-goals
 
-No parallel cycles, enum extension, severity override, council-member override, multi-backlog, markdown-embedded backlog compatibility, automatic v1.2 ledger migration, `/bs gc`, repository-specific prompt override, text `/goal` conduct transport, second goal file, raw grade markdown paste into the capsule, universal heavy adversarial process for low-risk docs/spec tasks, or unbounded fix loop in v1.4.4.
+No parallel cycles, enum extension, severity override, council-member override, multi-backlog, markdown-embedded backlog compatibility, automatic v1.2 ledger migration, `/bs gc`, repository-specific prompt override, text `/goal` conduct transport, second goal file, raw grade markdown paste into the capsule, universal heavy adversarial process for low-risk docs/spec tasks, or unbounded fix loop in v1.4.5.
 
 
 ## 11. Changelog
 
+- v1.4.5: Adversarial-lint hardening over v1.4.4. Adds high-risk surfaces `string_boundary` and `input_validation_or_schema`, requires risk-specific `adversarial_checks[*].evidence_kind` (concurrency/atomicity, boundary, panic-audit classes) where generic evidence is ambiguous, and forbids deferring a current P0/P1 adversarial acceptance by assertion (must cite a tracked waiver or `scope_basis_ref`). Grade-lint (`runtime/grade_lint.py`) tightening; no transport-semantics change; runtime manifest relocked.
 - v1.4.4: Process-evidence hardening after the first medium/code adopter cycle. Adds machine timestamp defaults and helper APIs for `step_events.jsonl`, first-class `conduct.sh --worktree` execution, `/bs init` guidance for required `verify.grade.<type>` setup, `/bs doctor` version-skew diagnostics, round-scoped Conduct evidence path clarification, deterministic auto-merge-gate authoring guidance, and release label/client-version alignment.
 - v1.4.3: Fix-round marker guard hotfix over v1.4.2; contract-body-neutral in the v1.4.3 tag.
 - v1.4.2: Conduct no-first-work-item telemetry/optional exit 7, Codex environment snapshots, default clean/allowlist/full MCP exposure policy with binding passthrough, validator canonical timestamp hardening plus `--allow-open-current`, `occurred_at`/`recorded_at` evidence split, `retry_kind` attempt metadata, hard rename to `file_change_events`, version skew fix, and manifest relock. Resilience/observability/evidence-honesty patch; no goal-RPC transport-semantics change.
