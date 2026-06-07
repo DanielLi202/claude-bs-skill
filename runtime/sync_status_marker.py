@@ -17,6 +17,10 @@ Binding shape (all under `status_marker`):
         start: "<!-- next-task:start -->"
         end: "<!-- next-task:end -->"
         template: "**{id}** — {title}"
+      stale_id_guard:                        # optional: fail if the old dynamic ID remains in a bounded status block
+        enabled: true
+        start: "<!-- status:start -->"
+        end: "<!-- status:end -->"
       post_sync_command: "scripts/sync-claude-md.sh"  # optional: shell, run in repo root
 
 The marker rewritten in `file` looks like:  <!-- §1-next-bs-task: B-NNN -->
@@ -56,9 +60,36 @@ def rewrite_marker(text: str, token: str, task_id: str):
     return pat.subn(lambda m: m.group(1) + task_id + m.group(3), text)
 
 
+def current_marker_id(text: str, token: str) -> str | None:
+    pat = re.compile(r"<!--\s*" + re.escape(token) + r":\s*(" + ID_TOKEN + r")\s*-->")
+    m = pat.search(text)
+    return m.group(1) if m else None
+
+
 def rewrite_line(text: str, start: str, end: str, rendered: str):
     pat = re.compile(re.escape(start) + r".*?" + re.escape(end), re.S)
     return pat.subn(lambda _m: start + rendered + end, text)
+
+
+def stale_id_hits(text: str, old_id: str, token: str, cfg: dict) -> list[int]:
+    guard = cfg.get("stale_id_guard")
+    if not isinstance(guard, dict) or guard.get("enabled") is not True:
+        return []
+    scope = text
+    start, end = guard.get("start"), guard.get("end")
+    if isinstance(start, str) and isinstance(end, str):
+        pat = re.compile(re.escape(start) + r"(.*?)" + re.escape(end), re.S)
+        m = pat.search(text)
+        if not m:
+            return [-1]
+        scope = m.group(1)
+    marker_pat = re.compile(r"<!--\s*" + re.escape(token) + r":\s*" + re.escape(old_id) + r"\s*-->")
+    hits = []
+    for lineno, line in enumerate(scope.splitlines(), 1):
+        cleaned = marker_pat.sub("", line)
+        if re.search(r"\b" + re.escape(old_id) + r"\b", cleaned):
+            hits.append(lineno)
+    return hits
 
 
 def main(argv=None) -> int:
@@ -102,6 +133,7 @@ def main(argv=None) -> int:
         return emit({"status": "error", "error": f"status_marker.file not found: {fpath}", "next": target.id}, 2)
 
     original = target_path.read_text(encoding="utf-8")
+    old_marker_id = current_marker_id(original, token)
     text, n_marker = rewrite_marker(original, token, target.id)
     if n_marker == 0:
         return emit({"status": "error", "error": f"marker token not found: <!-- {token}: ... -->", "file": fpath, "next": target.id}, 3)
@@ -116,6 +148,14 @@ def main(argv=None) -> int:
             text, n_line = rewrite_line(text, start, end, rendered)
 
     changed = text != original
+    if old_marker_id and old_marker_id != target.id:
+        hits = stale_id_hits(text, old_marker_id, token, cfg)
+        if hits:
+            if hits == [-1]:
+                detail = "stale_id_guard start/end block not found"
+            else:
+                detail = f"old task id {old_marker_id} still appears in guarded status prose at scoped lines {hits}"
+            return emit({"status": "error", "error": detail, "file": fpath, "next": target.id, "previous": old_marker_id}, 5)
     if changed:
         target_path.write_text(text, encoding="utf-8")
 

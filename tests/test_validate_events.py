@@ -1,4 +1,5 @@
 from pathlib import Path
+import hashlib
 import subprocess
 import sys
 import tempfile
@@ -65,6 +66,41 @@ class ValidateEventsTests(unittest.TestCase):
         ])
         self.assertEqual(proc.returncode, 1)
         self.assertIn('terminal_without_started', proc.stderr)
+
+    def test_append_only_repair_allows_orphan_terminal_without_insertion(self):
+        terminal = ev('step_9', 'completed', '2026-06-05T00:00:00Z')
+        digest = hashlib.sha256(terminal.encode("utf-8")).hexdigest()
+        repair = '{"event":"repair","repair_kind":"missing_started","target_step":"step_9","target_attempt":0,"target_line":1,"target_event_hash":"' + digest + '","reason":"helper failure","recorded_at":"2026-06-05T00:00:01Z","occurred_at":"2026-06-05T00:00:01Z"}'
+        proc = self.run_log([terminal, repair])
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+
+    def test_repair_hash_mismatch_is_rejected(self):
+        terminal = ev('step_9', 'completed', '2026-06-05T00:00:00Z')
+        repair = '{"event":"repair","repair_kind":"missing_started","target_step":"step_9","target_attempt":0,"target_line":1,"target_event_hash":"' + ('0' * 64) + '","reason":"helper failure","recorded_at":"2026-06-05T00:00:01Z","occurred_at":"2026-06-05T00:00:01Z"}'
+        proc = self.run_log([terminal, repair])
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn('repair_hash_mismatch', proc.stderr)
+
+    def test_repair_cannot_mask_duplicate_terminal_after_completed_attempt(self):
+        duplicate = ev('step_1', 'failed', '2026-06-05T00:00:02Z')
+        digest = hashlib.sha256(duplicate.encode("utf-8")).hexdigest()
+        repair = '{"event":"repair","repair_kind":"missing_started","target_step":"step_1","target_attempt":0,"target_line":3,"target_event_hash":"' + digest + '","reason":"bad duplicate repair","recorded_at":"2026-06-05T00:00:03Z","occurred_at":"2026-06-05T00:00:03Z"}'
+        proc = self.run_log([
+            ev('step_1', 'started', '2026-06-05T00:00:00Z'),
+            ev('step_1', 'completed', '2026-06-05T00:00:01Z'),
+            duplicate,
+            repair,
+        ])
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn('duplicate_terminal', proc.stderr)
+
+    def test_terminal_metadata_schema_matches_event_helper(self):
+        proc = self.run_log([
+            ev('step_3', 'started', '2026-06-05T00:00:00Z'),
+            ev('step_3', 'completed', '2026-06-05T00:00:01Z', workspace_delta_files=14, file_change_events=None),
+        ])
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn('schema_invalid', proc.stderr)
 
     def test_allow_open_current_tolerates_only_step_10(self):
         lines = [

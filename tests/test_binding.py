@@ -76,6 +76,7 @@ class BindingManifestTests(unittest.TestCase):
                 "next_task_marker": "§1-next-bs-task",
                 "post_sync_command": "scripts/sync-claude-md.sh",
                 "next_task_line": {"start": "<!-- a -->", "end": "<!-- b -->", "template": "{id} {title}"},
+                "stale_id_guard": {"enabled": True, "start": "<!-- status:start -->", "end": "<!-- status:end -->"},
             }
         })
 
@@ -87,6 +88,9 @@ class BindingManifestTests(unittest.TestCase):
             {"status_marker": {"file": "AGENTS.md", "next_task_marker": ""}},# empty marker
             {"status_marker": {"file": "AGENTS.md", "next_task_marker": "x", "post_sync_command": "  "}},
             {"status_marker": {"file": "AGENTS.md", "next_task_marker": "x", "next_task_line": {"start": "a"}}},  # missing end
+            {"status_marker": {"file": "AGENTS.md", "next_task_marker": "x", "stale_id_guard": "yes"}},
+            {"status_marker": {"file": "AGENTS.md", "next_task_marker": "x", "stale_id_guard": {"enabled": "true"}}},
+            {"status_marker": {"file": "AGENTS.md", "next_task_marker": "x", "stale_id_guard": {"start": "a"}}},
         ):
             with self.assertRaises(binding.BindingError):
                 binding.validate_status_marker_config(bad)

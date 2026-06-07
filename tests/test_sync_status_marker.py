@@ -54,6 +54,16 @@ SM = (
     '  next_task_marker: "§1-next-bs-task"\n'
 )
 
+SM_GUARD = (
+    "status_marker:\n"
+    "  file: AGENTS.md\n"
+    '  next_task_marker: "§1-next-bs-task"\n'
+    "  stale_id_guard:\n"
+    "    enabled: true\n"
+    '    start: "<!-- status:start -->"\n'
+    '    end: "<!-- status:end -->"\n'
+)
+
 
 class SyncStatusMarkerTests(unittest.TestCase):
     def test_marker_advances_to_next_pending_unblocked(self):
@@ -107,6 +117,31 @@ class SyncStatusMarkerTests(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertEqual(out["line_rewrites"], 1)
             self.assertIn("<!-- nt:start -->B-002 — CLI thin client<!-- nt:end -->", (root / "AGENTS.md").read_text())
+
+    def test_stale_id_guard_blocks_old_dynamic_prose(self):
+        with tempfile.TemporaryDirectory() as td:
+            tasks = task("B-001", "completed", closed_in="cycle-001") + "\n" + task("B-002", "pending", blocked_by=["B-001"])
+            agents = "<!-- status:start -->\ncurrent: B-001\n<!-- §1-next-bs-task: B-001 -->\n<!-- status:end -->\n"
+            root = write_repo(td, tasks, agents, SM_GUARD)
+            rc, out = run(root)
+            self.assertEqual(rc, 5)
+            self.assertIn("B-001", out["error"])
+            self.assertIn("<!-- §1-next-bs-task: B-001 -->", (root / "AGENTS.md").read_text())
+
+    def test_stale_id_guard_passes_when_managed_line_rewrites_all_dynamic_text(self):
+        with tempfile.TemporaryDirectory() as td:
+            tasks = task("B-001", "completed", closed_in="cycle-001") + "\n" + task("B-002", "pending", blocked_by=["B-001"], title="next")
+            sm = SM_GUARD + (
+                "  next_task_line:\n"
+                '    start: "<!-- next:start -->"\n'
+                '    end: "<!-- next:end -->"\n'
+                '    template: "current: {id}"\n'
+            )
+            agents = "<!-- status:start -->\n<!-- next:start -->current: B-001<!-- next:end -->\n<!-- §1-next-bs-task: B-001 -->\n<!-- status:end -->\n"
+            root = write_repo(td, tasks, agents, sm)
+            rc, out = run(root)
+            self.assertEqual(rc, 0, out)
+            self.assertIn("current: B-002", (root / "AGENTS.md").read_text())
 
     def test_error_when_marker_absent(self):
         with tempfile.TemporaryDirectory() as td:

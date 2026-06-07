@@ -99,6 +99,14 @@ def validate_status_marker_config(data: dict) -> None:
         for f in ("start", "end"):
             if not isinstance(line.get(f), str) or not line.get(f): raise BindingError(f"status_marker.next_task_line.{f} must be a non-empty string")
         if line.get("template") is not None and not isinstance(line.get("template"), str): raise BindingError("status_marker.next_task_line.template must be a string")
+    guard = sm.get("stale_id_guard")
+    if guard is not None:
+        if not isinstance(guard, dict): raise BindingError("status_marker.stale_id_guard must be mapping")
+        enabled = guard.get("enabled")
+        if enabled is not None and not isinstance(enabled, bool): raise BindingError("status_marker.stale_id_guard.enabled must be bool")
+        for f in ("start", "end"):
+            if guard.get(f) is not None and not isinstance(guard.get(f), str): raise BindingError(f"status_marker.stale_id_guard.{f} must be a string")
+        if (guard.get("start") is None) != (guard.get("end") is None): raise BindingError("status_marker.stale_id_guard.start and end must be provided together")
 
 def extract_contract_title_version(contract_text: str) -> str | None:
     match = CONTRACT_TITLE_VERSION.search(contract_text)

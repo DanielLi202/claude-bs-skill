@@ -189,6 +189,14 @@ class GradeLintTests(unittest.TestCase):
         proc,p=self.run_lint('code','low',LOW_CODE_COMPLETE,LOW_CODE_OUTCOME)
         self.assertEqual(proc.returncode,0,p)
 
+    def test_yaml_parser_accepts_colon_containing_scalar_lists(self):
+        grade=LOW_CODE_COMPLETE.replace(
+            'checked_surfaces: [debug, display, errors, logs]',
+            'checked_surfaces:\n  - "Authorization: Bearer redaction"\n  - "Debug: no secret echo"\n  - logs'
+        )
+        proc,p=self.run_lint('code','low',grade,LOW_CODE_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
     def test_low_risk_code_requires_p1_negative_test_coverage(self):
         grade=LOW_CODE_COMPLETE.replace('  - acceptance_id: CFG\n    status: pass\n    severity_if_fail: P1\n    scenario: malformed secret-bearing YAML does not echo the secret and locked dependency is present\n    evidence_ref: tests/config.rs::malformed_secret_yaml_is_redacted\n','')
         proc,p=self.run_lint('code','low',grade,LOW_CODE_OUTCOME)

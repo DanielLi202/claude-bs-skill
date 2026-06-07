@@ -28,7 +28,7 @@ Execute the next bootstrap backlog task end-to-end. Do not only describe the wor
 3. Create the cycle directory under `${binding.cycle_dir_root}/cycle-<NNN>/` and a worktree branch `bootstrap/cycle-<NNN>` from the pushed start commit.
 4. Write initial artifacts:
    - `cycle.yaml` with binding snapshot, task snapshot, start commit, branch, timestamps;
-   - `step_events.jsonl` using `lib.events.append_started/append_completed/append_failed` so new events get machine append-time `recorded_at` plus matching default `occurred_at`; keep long human summaries in sibling artifacts where possible, not in the event state machine;
+   - `step_events.jsonl` using `lib.events.append_started/append_completed/append_failed` so new events get machine append-time `recorded_at` plus matching default `occurred_at`; event-helper exceptions are blocking and their stderr must be preserved in evidence; keep long human summaries in sibling artifacts where possible, not in the event state machine;
    - `outcome.md`, evidence directory, and `preflight_initial.yaml` copied from the pre-start gate output (record only; this is not `step_0`).
 5. Run the 11-step cycle from the contract:
    - Shape outcome and acceptance. The capsule's non-goals MUST forbid broad filesystem dependency hunts: the vendor resolves dependencies only via the project package manager/registry (cargo/npm/pip/go/…) and MUST NOT run `find`/recursive scans across `$HOME`, the home directory, caches, or any tree outside the worktree to locate cached packages (the cycle-015 self-hang trigger). The conduct driver also injects this operating rule into the goal objective, but Shape should make it an explicit capsule non-goal;
@@ -45,7 +45,7 @@ Execute the next bootstrap backlog task end-to-end. Do not only describe the wor
    - Re-grade as `grade_round_<g+1>.md`, citing `evidence/grade_verify_round_<g+1>.yaml` when required, then re-run applicable `grade_lint.py` for round `<g+1>`. Escalate if the helper refuses because `R > 3`, P0+P1 did not strictly decrease, lint remains failing, or if P0+P1 remains > 0 after round 3.
    - run `${binding.verify_command}` in the worktree before PR as deprecated compatibility/final smoke;
    - create PR from the worktree branch;
-   - generate `auto_merge_gate.yaml` from parsed Grade summary, `grade_verify_round_<N>.yaml`, latest applicable `grade_lint_round_<N>.json`, optional `recovery_decision.yaml`, final smoke output, and PR mergeability; use balanced auto-merge only when P0/P1 counts are zero, required Grade verify evidence passes, checks pass, latest applicable `grade_lint.py` evidence is pass, and any interrupted-with-delta acceptance has a structured recovery decision;
+   - generate `auto_merge_gate.yaml` from parsed Grade summary, `grade_verify_round_<N>.yaml`, latest applicable `grade_lint_round_<N>.json`, optional `recovery_decision.yaml`, final smoke output, and PR mergeability; use balanced auto-merge only when P0/P1 counts are zero, required Grade verify evidence passes, checks pass, latest applicable `grade_lint.py` evidence is pass, any interrupted-with-delta acceptance has a structured recovery decision, and raw smoke output contains no unexplained negative markers such as `NO`, `FAIL`, or `MISMATCH` contradicting a green summary;
    - merge PR, pull latest `main`, then close.
 6. Step 10 close is one atomic commit on `main` after PR merge:
    - append ledger entry to `${binding.ledger}`;
@@ -53,7 +53,7 @@ Execute the next bootstrap backlog task end-to-end. Do not only describe the wor
    - set `closed_in` and `closed_at`;
    - append `step_10 started` before the close gate;
    - before proceeding to the close commit, if any Conduct attempt failed/interrupted and the cycle continued by accepting a delta, verify `recovery_decision.yaml` exists and cites the selected option, approver/timestamp, passing Grade verify, latest applicable Grade lint, workspace delta, waiver scope, and followups; then run `python3 ${runtime}/validate_events.py <cycle-dir>/step_events.jsonl --allow-open-current step_10`;
-   - if validation exits non-zero, do not close; repair the log append-only by appending a correcting or next-attempt event, never editing/inserting prior history, then re-run until it passes;
+   - if validation exits non-zero, do not close. For `terminal_without_started`, append a first-class `repair` event (`repair_kind: missing_started`, target step/attempt/line, sha256 of the exact orphan terminal line, reason, optional operator) or escalate; never edit/insert prior history and call it append-only. For other failures, append a new attempt only when the state machine permits it, then re-run validation;
    - if the binding declares `status_marker`, after writing ledger + backlog run `python3 ${runtime}/sync_status_marker.py --binding-file <binding-file> --repo-root <repo>` so it reads the freshly-completed backlog and advances the next-task pointer (and runs any `post_sync_command`); stage ledger + backlog plus any `status_marker`-touched files. When `status_marker` is absent, stage only ledger + backlog;
    - commit `ledger+backlog: close <cycle> <ID> <title>`;
    - push `origin main`;

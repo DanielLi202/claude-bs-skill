@@ -79,13 +79,58 @@ class EventStateTests(unittest.TestCase):
 
     def test_append_helpers_machine_stamp_new_events(self):
         path = self.write('')
-        append_started(path, 'step_1')
+        append_started(str(path), 'step_1')
         append_completed(path, 'step_1')
         text = path.read_text(encoding='utf-8')
         self.assertIn('"event": "started"', text)
         self.assertIn('"recorded_at":', text)
         self.assertIn('"occurred_at":', text)
         self.assertEqual(step_states(path), {'step_1': 'completed'})
+
+    def test_repair_event_can_append_only_ack_missing_started(self):
+        import hashlib
+        terminal = '{"step":"step_9","event":"completed"}'
+        digest = hashlib.sha256(terminal.encode("utf-8")).hexdigest()
+        path = self.write('\n'.join([
+            terminal,
+            '{"event":"repair","repair_kind":"missing_started","target_step":"step_9","target_attempt":0,"target_line":1,"target_event_hash":"' + digest + '","reason":"helper failed before started append"}',
+        ]))
+        self.assertEqual(step_states(path), {'step_9': 'completed'})
+
+    def test_repair_event_hash_must_match_target_line(self):
+        terminal = '{"step":"step_9","event":"completed"}'
+        path = self.write('\n'.join([
+            terminal,
+            '{"event":"repair","repair_kind":"missing_started","target_step":"step_9","target_attempt":0,"target_line":1,"target_event_hash":"' + ('0' * 64) + '","reason":"helper failed before started append"}',
+        ]))
+        with self.assertRaisesRegex(EventError, 'target_event_hash does not match'):
+            step_states(path)
+
+    def test_unrepaired_orphan_terminal_is_clean_event_error(self):
+        path = self.write('{"step":"step_9","event":"completed"}')
+        with self.assertRaisesRegex(EventError, 'without matching started'):
+            step_states(path)
+
+    def test_repair_cannot_mask_duplicate_terminal_after_completed_attempt(self):
+        import hashlib
+        duplicate = '{"step":"step_1","event":"failed"}'
+        digest = hashlib.sha256(duplicate.encode("utf-8")).hexdigest()
+        path = self.write('\n'.join([
+            '{"step":"step_1","event":"started"}',
+            '{"step":"step_1","event":"completed"}',
+            duplicate,
+            '{"event":"repair","repair_kind":"missing_started","target_step":"step_1","target_attempt":0,"target_line":3,"target_event_hash":"' + digest + '","reason":"bad duplicate repair"}',
+        ]))
+        with self.assertRaisesRegex(EventError, 'duplicate terminal|already has terminal'):
+            step_states(path)
+
+    def test_terminal_counts_reject_null_and_count_list_ambiguity(self):
+        path = self.write('\n'.join([
+            '{"step":"step_3","event":"started"}',
+            '{"step":"step_3","event":"completed","workspace_delta_files":14,"file_change_events":null}',
+        ]))
+        with self.assertRaisesRegex(EventError, 'workspace_delta_files must be list|file_change_events must be non-negative'):
+            step_states(path)
 
     def test_invalid_recorded_at_is_rejected(self):
         path = self.write('\n'.join([

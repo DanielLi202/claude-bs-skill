@@ -4,6 +4,10 @@ from __future__ import annotations
 import argparse, json, re
 from pathlib import Path
 from typing import Any
+try:
+    import yaml
+except Exception:  # pragma: no cover
+    yaml = None
 BLOCKING={"P0","P1"}
 SURFACES={"process","background_process","runtime_files","identity_sentinel","network_probe","auth_or_secret","file_modes","concurrency_or_locking","destructive_operation","external_subprocess","string_boundary","input_validation_or_schema"}
 OPTIONAL_CURRENT_HINT_PATTERNS=(
@@ -154,6 +158,16 @@ def parse_list(lines, start, indent):
     return out,i
 
 def parse_yaml_fence(fence_lines):
+    if yaml is not None:
+        text = '\n'.join(fence_lines)
+        try:
+            return yaml.safe_load(text)
+        except yaml.YAMLError as exc:
+            # Backward compatibility: older Grade artifacts sometimes used
+            # unquoted prose scalars containing ": ". Prefer PyYAML for valid
+            # YAML, but fall back to the legacy permissive parser for those
+            # artifacts instead of failing before lint semantics can run.
+            pass
     lines=[line.rstrip() for line in fence_lines]
     start=next_content(lines,0)
     if start>=len(lines): return None
