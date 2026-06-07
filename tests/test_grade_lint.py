@@ -30,6 +30,84 @@ adversarial_acceptance:
     verification_hint: inspect code and run fault probe
 ```
 '''
+LOW_CODE_OUTCOME='''# Outcome
+```yaml
+acceptance:
+  - id: CFG
+    severity: P1
+    statement: use locked crate dependency and reject malformed config safely
+  - id: INIT
+    severity: P2
+    statement: init writes files
+```
+'''
+BASIC_CODE_SECTIONS='''```yaml
+spec_compliance_matrix:
+  - acceptance_id: CFG
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/spec.md#config
+    evidence_ref: tests/config.rs::locked_dependency_and_yaml_comments
+  - acceptance_id: INIT
+    status: pass
+    severity_if_fail: P2
+    spec_ref: docs/spec.md#init
+    evidence_ref: tests/init.rs::init_smoke
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: CFG
+    status: pass
+    severity_if_fail: P1
+    scenario: malformed secret-bearing YAML does not echo the secret and locked dependency is present
+    evidence_ref: tests/config.rs::malformed_secret_yaml_is_redacted
+```
+```yaml
+secret_leakage_audit:
+  status: pass
+  checked_surfaces: [debug, display, errors, logs]
+  cleartext_secret_probe: pass
+  evidence_ref: tests/config.rs::malformed_secret_yaml_is_redacted
+```
+```yaml
+dependency_spec_review:
+  - dependency: serde_yaml_bw
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/architecture/tech-stack.yaml
+    evidence_ref: cargo tree -p symphony-config
+```
+'''
+A1_CODE_SECTIONS='''```yaml
+spec_compliance_matrix:
+  - acceptance_id: A1
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/spec.md#a1
+    evidence_ref: tests/a1.rs::covers_a1
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: A1
+    status: pass
+    severity_if_fail: P1
+    scenario: malformed or stale input does not pass the A1 invariant
+    evidence_ref: tests/a1.rs::rejects_stale_input
+```
+```yaml
+secret_leakage_audit:
+  status: pass
+  checked_surfaces: [debug, display, errors, logs]
+  cleartext_secret_probe: pass
+  evidence_ref: tests/a1.rs::secrets_are_redacted
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: no dependency changes in this fixture
+```
+'''
 COMPLETE='''# Grade
 ```yaml
 grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0, adversarial_p0_count: 0, adversarial_p1_count: 0}
@@ -55,8 +133,18 @@ deferred_claims:
   - {item: header, deferred_to: B-002, current_scope_implementable: false, rationale: future}
   - {item: body.instance_id comparison, current_scope_implementable: true, evidence_ref: src/status.rs}
 ```
-'''
+''' + A1_CODE_SECTIONS
 WAIVER=COMPLETE.replace('{item: body.instance_id comparison, current_scope_implementable: true, evidence_ref: src/status.rs}','{item: body.instance_id comparison, current_scope_implementable: true, waiver: true, severity_if_fail: P1, reason: defer current-scope safety}')
+LOW_CODE_COMPLETE='''# Grade
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: CFG, status: pass, severity: P1}
+  - {id: INIT, status: pass, severity: P2}
+```
+''' + BASIC_CODE_SECTIONS
 class GradeLintTests(unittest.TestCase):
     def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME):
         with tempfile.TemporaryDirectory() as td:
@@ -78,6 +166,34 @@ class GradeLintTests(unittest.TestCase):
 
     def test_current_scope_blocking_waiver_without_tracked_ref_fails(self):
         proc,p=self.run_lint(grade=WAIVER); self.assertEqual(proc.returncode,1); self.assertIn('tracked maintainer/user waiver ref','\n'.join(p['grade_lint']['errors']))
+
+    def test_low_risk_code_requires_baseline_evidence_blocks(self):
+        proc,p=self.run_lint('code','low',BASIC,LOW_CODE_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertIn('spec_compliance_matrix',errors)
+        self.assertIn('negative_regression_tests',errors)
+        self.assertIn('secret_leakage_audit',errors)
+        self.assertIn('dependency_spec_review',errors)
+        self.assertTrue(p['grade_lint']['code_baseline_gate'])
+        self.assertFalse(p['grade_lint']['medium_high_code_gate'])
+
+    def test_low_risk_code_prose_only_outcome_still_requires_baseline_blocks(self):
+        proc,p=self.run_lint('code','low',BASIC,'# Outcome\n\nAcceptance: A1 must pass.\n')
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertIn('code grade missing parseable spec_compliance_matrix block', errors)
+        self.assertIn('spec_compliance_matrix missing outcome acceptance IDs: A1', errors)
+
+    def test_low_risk_code_complete_baseline_passes(self):
+        proc,p=self.run_lint('code','low',LOW_CODE_COMPLETE,LOW_CODE_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_low_risk_code_requires_p1_negative_test_coverage(self):
+        grade=LOW_CODE_COMPLETE.replace('  - acceptance_id: CFG\n    status: pass\n    severity_if_fail: P1\n    scenario: malformed secret-bearing YAML does not echo the secret and locked dependency is present\n    evidence_ref: tests/config.rs::malformed_secret_yaml_is_redacted\n','')
+        proc,p=self.run_lint('code','low',grade,LOW_CODE_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn('negative_regression_tests missing P0/P1 outcome acceptance IDs: CFG','\n'.join(p['grade_lint']['errors']))
 
     def test_missing_shaped_adversarial_acceptance_check_fails(self):
         grade=COMPLETE.replace('acceptance_id: ADV-TRUST, ', '')
@@ -192,7 +308,7 @@ trust_surface_inventory:
 ```yaml
 deferred_claims: []
 ```
-"""
+""" + A1_CODE_SECTIONS
         proc,p=self.run_lint(grade=grade,outcome=outcome)
         self.assertEqual(proc.returncode,0,p)
 

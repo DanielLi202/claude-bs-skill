@@ -279,6 +279,127 @@ def validate_outcome(bs,errors):
 def adversarial_acceptance_ids(outcome_file: Path) -> set[str]:
     return set(adversarial_acceptance_metadata(blocks(outcome_file)))
 
+def outcome_acceptance_metadata(bs):
+    meta={}
+    acc=first(bs,'acceptance')
+    if isinstance(acc,list):
+        for row in acc:
+            if isinstance(row,dict) and isinstance(row.get('id'),str) and row.get('id'):
+                meta[row['id']]={'severity':row.get('severity'),'text':text_blob(row),'row':row}
+    return meta
+
+def acceptance_status_metadata(acceptance):
+    meta={}
+    if isinstance(acceptance,list):
+        for row in acceptance:
+            if isinstance(row,dict) and isinstance(row.get('id'),str) and row.get('id'):
+                meta[row['id']]={'severity':row.get('severity'),'text':text_blob(row),'row':row}
+    return meta
+
+def row_acceptance_ref(row):
+    if not isinstance(row,dict): return ''
+    for k in ('acceptance_id','acceptance_ref','id'):
+        v=row.get(k)
+        if isinstance(v,str) and v.strip(): return v.strip()
+    return ''
+
+def list_of_strs(value):
+    return isinstance(value,list) and all(isinstance(x,str) and x.strip() for x in value)
+
+def outcome_dependency_terms(required_acceptance):
+    blob=text_blob([v.get('text','') for v in required_acceptance.values()])
+    return bool(re.search(r"\b(dependenc(?:y|ies)|crate|package|cargo|npm|pip|go\.mod|version|lock(?:ed)?|Cargo\.toml|Cargo\.lock|forbidden\s+dependency|no\s+new\s+dependency)\b", blob, re.I))
+
+def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_status):
+    """All code tasks need replayable spec/security/negative-test evidence."""
+    required_acceptance = required_acceptance or acceptance_status_metadata(acceptance_status)
+    required_ids=set(required_acceptance)
+    blocking_ids={k for k,v in required_acceptance.items() if v.get('severity') in BLOCKING}
+    calc={'P0':0,'P1':0}
+
+    spec=first(bs,'spec_compliance_matrix')
+    if not isinstance(spec,list) or not spec:
+        errors.append('code grade missing parseable spec_compliance_matrix block'); spec=[]
+    covered=set()
+    for i,row in enumerate(spec):
+        if not isinstance(row,dict): errors.append(f'spec_compliance_matrix[{i}] must be an object'); continue
+        rid=row_acceptance_ref(row); st=row.get('status'); sv=row.get('severity_if_fail') or required_acceptance.get(rid,{}).get('severity')
+        if not rid: errors.append(f'spec_compliance_matrix[{i}].acceptance_id is required')
+        else: covered.add(rid)
+        if st not in {'pass','fail','unverified','not_applicable'}: errors.append(f'spec_compliance_matrix[{i}].status must be pass|fail|unverified|not_applicable'); continue
+        if sv not in {'P0','P1','P2'}: errors.append(f'spec_compliance_matrix[{i}].severity_if_fail must be P0|P1|P2'); continue
+        if st in {'fail','unverified'} and sv in BLOCKING:
+            calc[sv]+=1; errors.append(f"spec_compliance_matrix[{i}] {rid} is blocking: {st}/{sv}")
+        if st!='not_applicable':
+            if not isinstance(row.get('evidence_ref'),str) or not row.get('evidence_ref').strip(): errors.append(f'spec_compliance_matrix[{i}].evidence_ref is required unless not_applicable')
+            if not (list_of_strs(row.get('spec_refs')) or isinstance(row.get('spec_ref'),str)): errors.append(f'spec_compliance_matrix[{i}] requires spec_ref or spec_refs')
+        elif not (isinstance(row.get('rationale'),str) and row.get('rationale').strip()):
+            errors.append(f'spec_compliance_matrix[{i}].rationale is required when not_applicable')
+    missing=sorted(required_ids-covered)
+    if missing: errors.append('spec_compliance_matrix missing outcome acceptance IDs: '+','.join(missing))
+
+    neg=first(bs,'negative_regression_tests')
+    if not isinstance(neg,list) or not neg:
+        errors.append('code grade missing parseable negative_regression_tests block'); neg=[]
+    neg_covered=set()
+    for i,row in enumerate(neg):
+        if not isinstance(row,dict): errors.append(f'negative_regression_tests[{i}] must be an object'); continue
+        rid=row_acceptance_ref(row); st=row.get('status'); sv=row.get('severity_if_fail') or required_acceptance.get(rid,{}).get('severity')
+        if not rid: errors.append(f'negative_regression_tests[{i}].acceptance_id is required')
+        else: neg_covered.add(rid)
+        if st not in {'pass','fail','unverified','not_applicable'}: errors.append(f'negative_regression_tests[{i}].status must be pass|fail|unverified|not_applicable'); continue
+        if sv not in {'P0','P1','P2'}: errors.append(f'negative_regression_tests[{i}].severity_if_fail must be P0|P1|P2'); continue
+        if st in {'fail','unverified'} and sv in BLOCKING:
+            calc[sv]+=1; errors.append(f"negative_regression_tests[{i}] {rid} is blocking: {st}/{sv}")
+        if st=='pass':
+            if not isinstance(row.get('evidence_ref'),str) or not row.get('evidence_ref').strip(): errors.append(f'negative_regression_tests[{i}].evidence_ref is required when pass')
+            if not isinstance(row.get('scenario'),str) or not row.get('scenario').strip(): errors.append(f'negative_regression_tests[{i}].scenario is required when pass')
+        if st=='not_applicable' and rid in blocking_ids and not any(isinstance(row.get(k),str) and row.get(k).strip() for k in ('scope_basis_ref','tracked_waiver_ref','maintainer_waiver_ref','user_waiver_ref')):
+            errors.append(f'negative_regression_tests[{i}] {rid} P0/P1 not_applicable requires scope_basis_ref or tracked waiver')
+    missing_neg=sorted(blocking_ids-neg_covered)
+    if missing_neg: errors.append('negative_regression_tests missing P0/P1 outcome acceptance IDs: '+','.join(missing_neg))
+
+    secret=first(bs,'secret_leakage_audit')
+    if not isinstance(secret,dict):
+        errors.append('code grade missing parseable secret_leakage_audit block')
+    else:
+        st=secret.get('status')
+        if st not in {'pass','fail','unverified','not_applicable'}:
+            errors.append('secret_leakage_audit.status must be pass|fail|unverified|not_applicable')
+        elif st in {'fail','unverified'}:
+            calc['P1']+=1; errors.append(f'secret_leakage_audit is blocking: {st}/P1')
+        elif st=='pass':
+            if not isinstance(secret.get('evidence_ref'),str) or not secret.get('evidence_ref').strip(): errors.append('secret_leakage_audit.evidence_ref is required when pass')
+            if not list_of_strs(secret.get('checked_surfaces')): errors.append('secret_leakage_audit.checked_surfaces must be a non-empty list when pass')
+            if secret.get('cleartext_secret_probe') not in {'pass','not_applicable'}: errors.append('secret_leakage_audit.cleartext_secret_probe must be pass|not_applicable when status pass')
+        elif st=='not_applicable' and not any(isinstance(secret.get(k),str) and secret.get(k).strip() for k in ('rationale','scope_basis_ref')):
+            errors.append('secret_leakage_audit not_applicable requires rationale or scope_basis_ref')
+
+    dep=first(bs,'dependency_spec_review')
+    dep_required=outcome_dependency_terms(required_acceptance)
+    if not isinstance(dep,list) or not dep:
+        errors.append('code grade missing parseable dependency_spec_review block'); dep=[]
+    dep_has_applicable=False
+    for i,row in enumerate(dep):
+        if not isinstance(row,dict): errors.append(f'dependency_spec_review[{i}] must be an object'); continue
+        st=row.get('status'); sv=row.get('severity_if_fail') or 'P1'
+        if st not in {'pass','fail','unverified','not_applicable'}: errors.append(f'dependency_spec_review[{i}].status must be pass|fail|unverified|not_applicable'); continue
+        if sv not in {'P0','P1','P2'}: errors.append(f'dependency_spec_review[{i}].severity_if_fail must be P0|P1|P2'); continue
+        if st!='not_applicable':
+            dep_has_applicable=True
+            if not isinstance(row.get('evidence_ref'),str) or not row.get('evidence_ref').strip(): errors.append(f'dependency_spec_review[{i}].evidence_ref is required unless not_applicable')
+            if not (isinstance(row.get('spec_ref'),str) and row.get('spec_ref').strip()): errors.append(f'dependency_spec_review[{i}].spec_ref is required unless not_applicable')
+        elif not (isinstance(row.get('rationale'),str) and row.get('rationale').strip()):
+            errors.append(f'dependency_spec_review[{i}].rationale is required when not_applicable')
+        if st in {'fail','unverified'} and sv in BLOCKING:
+            calc[sv]+=1; errors.append(f"dependency_spec_review[{i}] is blocking: {st}/{sv}")
+    if dep_required and not dep_has_applicable:
+        errors.append('dependency_spec_review must include at least one applicable row because outcome acceptance references dependencies/versions/packages')
+
+    if isinstance(summary,dict):
+        if nni(summary.get('p0_count')) and summary.get('p0_count')<calc['P0']: errors.append('grade_summary.p0_count undercounts blocking code-baseline P0 findings')
+        if nni(summary.get('p1_count')) and summary.get('p1_count')<calc['P1']: errors.append('grade_summary.p1_count undercounts blocking code-baseline P1 findings')
+
 def validate_adv(summary,bs,errors,required_acceptance=None):
     required_acceptance=required_acceptance or {}
     checks=first(bs,'adversarial_checks'); inv=first(bs,'trust_surface_inventory'); deferred=first(bs,'deferred_claims')
@@ -334,13 +455,15 @@ def validate_adv(summary,bs,errors,required_acceptance=None):
             errors.append(f'deferred_claims[{i}] defers current P0/P1 adversarial acceptance without tracked waiver or scope_basis_ref')
 def lint(task_type,risk_level,grade_file,outcome_file):
     errors=[]; gbs=blocks(grade_file); summary=first(gbs,'grade_summary'); acceptance=first(gbs,'acceptance_status')
-    validate_required(summary,acceptance,errors); gated=is_gate(task_type,risk_level)
+    validate_required(summary,acceptance,errors); gated=is_gate(task_type,risk_level); code_gate=(task_type=='code')
+    obs=blocks(outcome_file) if code_gate or gated else []
+    if code_gate:
+        validate_code_baseline(summary,gbs,errors,outcome_acceptance_metadata(obs),acceptance)
     if gated:
-        obs=blocks(outcome_file)
         validate_outcome(obs,errors)
         required=adversarial_acceptance_metadata(obs)
         validate_adv(summary,gbs,errors,required) if isinstance(summary,dict) else errors.append('cannot validate adversarial grade without grade_summary')
-    return {'grade_lint':{'status':'fail' if errors else 'pass','task_type':task_type,'risk_level':risk_level,'medium_high_code_gate':gated,'grade_file':str(grade_file),'outcome_file':str(outcome_file),'errors':errors}}
+    return {'grade_lint':{'status':'fail' if errors else 'pass','task_type':task_type,'risk_level':risk_level,'code_baseline_gate':code_gate,'medium_high_code_gate':gated,'grade_file':str(grade_file),'outcome_file':str(outcome_file),'errors':errors}}
 def main(argv=None):
     ap=argparse.ArgumentParser(); ap.add_argument('--task-type',required=True,choices=['code','docs','infra','refactor','spec']); ap.add_argument('--risk-level',required=True,choices=['low','medium','high']); ap.add_argument('--grade-file',required=True); ap.add_argument('--outcome-file',required=True); ap.add_argument('--evidence-file')
     a=ap.parse_args(argv)

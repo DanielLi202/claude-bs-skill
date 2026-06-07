@@ -24,6 +24,10 @@ class CommandFlowTests(unittest.TestCase):
         self.assertIn('occurred_at', text)
         self.assertIn('lib.events.append_started/append_completed/append_failed', text)
         self.assertIn('generate `auto_merge_gate.yaml` from parsed Grade summary', text)
+        self.assertIn('spec_compliance_matrix', text)
+        self.assertIn('negative_regression_tests', text)
+        self.assertIn('secret_leakage_audit', text)
+        self.assertIn('dependency_spec_review', text)
 
     def test_conduct_self_hang_hardening_guidance_is_present(self):
         text = COMMAND.read_text(encoding='utf-8')
@@ -41,5 +45,6 @@ class CommandFlowTests(unittest.TestCase):
         # #5 interrupted-with-delta verify-and-accept path
         self.assertIn('Interrupted-with-delta verify-and-accept', text)
         self.assertIn('interrupted_with_delta', text)
+        self.assertIn('recovery_decision.yaml', text)
         self.assertIn('workflow_reflection.yaml', text)
 if __name__ == '__main__': unittest.main()
