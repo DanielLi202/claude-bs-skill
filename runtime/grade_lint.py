@@ -29,6 +29,12 @@ BOUNDARY_SURFACES={"string_boundary","input_validation_or_schema"}
 BOUNDARY_EVIDENCE={"non_ascii_boundary_test","malformed_input_test","length_boundary_test","json_boundary_test","schema_validation_test"}
 PANIC_TERMS=re.compile(r"\bno[-\s]?panic\b|\bpanic(?:s|ked|king)?\b|\bunwrap\b|\bexpect\b", re.I)
 PANIC_EVIDENCE={"panic_audit","implicit_panic_audit"}
+PATH_ROOT_TERMS=re.compile(r"\bpath[-_\s]?traversal\b|\btravers(?:e|al|ing)\b.*\boutside\b|\boutside\b.*\b(?:root|roots|director(?:y|ies)|filesystem|file\s+tree)\b|\bescape\b.*\b(?:root|roots|director(?:y|ies)|filesystem|file\s+tree)\b|\broot[-_\s]?contain(?:ed|ment)?\b", re.I)
+PATH_ACCESS_TERMS=re.compile(r"\b(?:read|open|file|filesystem|path|dir|directory|directories|root|roots|skill[-_ ]?id|id)\b", re.I)
+STRING_TRAVERSAL_TERMS=re.compile(r"\.\.|slash|backslash|absolute\s+path|%2f|%5c|encoded\s+(?:slash|path)|path[-_\s]?traversal", re.I)
+SYMLINK_CONTAINMENT_TERMS=re.compile(r"symlink|canonical(?:ize|ise|ization|isation)?|realpath|starts?_with|starts[-\s]?with|root[-_\s]?contain(?:ed|ment)?|within\s+(?:the\s+)?(?:root|directory)|no[-_\s]?follow|lstat|symlink_metadata|link_metadata", re.I)
+REQUEST_TARGET_TERMS=re.compile(r"request[-_\s]?target|request\s+line|raw\s+http|http/1\.1|path\s+segment|percent[-_\s]?encod|url[-_\s]?encod|crlf|control\s+char|request\s+delimiter", re.I)
+REQUEST_TARGET_FACET_TERMS=re.compile(r"delimiter|\?|#|\bspaces?\b|control|crlf|\\r|\\n|percent[-_\s]?encod|url[-_\s]?encod", re.I)
 class LintError(ValueError): pass
 
 def split_top_level(text, sep=','):
@@ -177,9 +183,25 @@ def parse_yaml_fence(fence_lines):
     data,_=parse_mapping(lines,start,indent_of(lines[start]))
     return data
 
-def blocks(path:Path)->list[dict[str,Any]]:
+def parse_front_matter(lines):
+    if not lines or lines[0].strip()!='---':
+        return None, 0
+    j=1
+    while j<len(lines) and lines[j].strip()!='---':
+        j+=1
+    if j>=len(lines):
+        return None, 0
+    data=parse_yaml_fence(lines[1:j])
+    return data, j+1
+
+def blocks(path:Path, *, include_front_matter=False)->list[dict[str,Any]]:
     if not path.exists(): raise LintError(f"file missing: {path}")
     out=[]; lines=path.read_text(encoding='utf-8').splitlines(); i=0
+    if include_front_matter:
+        data,next_i=parse_front_matter(lines)
+        if isinstance(data,dict):
+            out.append(data)
+            i=next_i
     while i<len(lines):
         if lines[i].strip() in {'```yaml','```yml'}:
             j=i+1
@@ -324,6 +346,49 @@ def outcome_dependency_terms(required_acceptance):
     blob=text_blob([v.get('text','') for v in required_acceptance.values()])
     return bool(re.search(r"\b(dependenc(?:y|ies)|crate|package|cargo|npm|pip|go\.mod|version|lock(?:ed)?|Cargo\.toml|Cargo\.lock|forbidden\s+dependency|no\s+new\s+dependency)\b", blob, re.I))
 
+def has_path_root_obligation(meta):
+    text=meta.get('text','') if isinstance(meta,dict) else ''
+    return bool(PATH_ROOT_TERMS.search(text) and PATH_ACCESS_TERMS.search(text))
+
+def has_request_target_obligation(meta):
+    text=meta.get('text','') if isinstance(meta,dict) else ''
+    return bool(REQUEST_TARGET_TERMS.search(text))
+
+def negative_rows_for_acceptance(neg, acceptance_id):
+    return [row for row in neg if isinstance(row,dict) and row_acceptance_ref(row)==acceptance_id]
+
+def row_evidence_text(rows):
+    evidence_fields=('scenario','evidence_ref','evidence_refs','evidence_kind','method','evidence_method','audit_method','evidence_summary','summary','note','details','rationale')
+    values=[]
+    for row in rows:
+        if isinstance(row,dict):
+            values.extend(row.get(field) for field in evidence_fields if field in row)
+    return text_blob(values)
+
+def validate_property_obligations(required_acceptance, neg, errors):
+    """Catch property escapes where a Grade covers an example but not the invariant."""
+    calc={'P0':0,'P1':0}
+    for acceptance_id, meta in sorted(required_acceptance.items()):
+        severity=meta.get('severity')
+        if severity not in BLOCKING:
+            continue
+        rows=negative_rows_for_acceptance(neg, acceptance_id)
+        if not rows:
+            continue
+        text=row_evidence_text(rows)
+        missing=[]
+        if has_path_root_obligation(meta):
+            if not STRING_TRAVERSAL_TERMS.search(text):
+                missing.append('string_traversal')
+            if not SYMLINK_CONTAINMENT_TERMS.search(text):
+                missing.append('symlink_or_canonical_containment')
+        if has_request_target_obligation(meta) and not REQUEST_TARGET_FACET_TERMS.search(text):
+            missing.append('request_target_delimiter_or_control_chars')
+        if missing:
+            calc[severity]+=1
+            errors.append(f"property_obligation[{acceptance_id}] missing required negative coverage facets: {','.join(missing)}")
+    return calc
+
 def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_status):
     """All code tasks need replayable spec/security/negative-test evidence."""
     required_acceptance = required_acceptance or acceptance_status_metadata(acceptance_status)
@@ -372,6 +437,8 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
             errors.append(f'negative_regression_tests[{i}] {rid} P0/P1 not_applicable requires scope_basis_ref or tracked waiver')
     missing_neg=sorted(blocking_ids-neg_covered)
     if missing_neg: errors.append('negative_regression_tests missing P0/P1 outcome acceptance IDs: '+','.join(missing_neg))
+    prop_calc=validate_property_obligations(required_acceptance, neg, errors)
+    calc['P0']+=prop_calc['P0']; calc['P1']+=prop_calc['P1']
 
     secret=first(bs,'secret_leakage_audit')
     if not isinstance(secret,dict):
@@ -470,7 +537,7 @@ def validate_adv(summary,bs,errors,required_acceptance=None):
 def lint(task_type,risk_level,grade_file,outcome_file):
     errors=[]; gbs=blocks(grade_file); summary=first(gbs,'grade_summary'); acceptance=first(gbs,'acceptance_status')
     validate_required(summary,acceptance,errors); gated=is_gate(task_type,risk_level); code_gate=(task_type=='code')
-    obs=blocks(outcome_file) if code_gate or gated else []
+    obs=blocks(outcome_file, include_front_matter=True) if code_gate or gated else []
     if code_gate:
         validate_code_baseline(summary,gbs,errors,outcome_acceptance_metadata(obs),acceptance)
     if gated:

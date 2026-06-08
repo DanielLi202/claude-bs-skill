@@ -145,6 +145,125 @@ acceptance_status:
   - {id: INIT, status: pass, severity: P2}
 ```
 ''' + BASIC_CODE_SECTIONS
+CYCLE017_STYLE_OUTCOME='''---
+title: "B-005 — Pattern Library reader + API endpoints"
+type: code
+risk_level: low
+acceptance:
+  - id: B005-PATH-SAFETY
+    severity: P1
+    statement: >
+      skill_id is validated before any filesystem access. Any skill_id containing `..`, `/`,
+      `\\`, or that is an absolute path is rejected so no read can traverse outside the
+      pattern roots.
+    verification_hint: >
+      Test negative path traversal ids before reading from the filesystem.
+---
+# B-005
+'''
+CYCLE017_INSUFFICIENT_GRADE='''# Grade
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: B005-PATH-SAFETY, status: pass, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: B005-PATH-SAFETY
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/architecture/storage-layout.md
+    evidence_ref: validate_skill_id + basic invalid id tests
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: B005-PATH-SAFETY
+    status: pass
+    severity_if_fail: P1
+    scenario: skill_id with .., slash, backslash, absolute path, URL-encoded %2F/%5C is rejected
+    evidence_ref: tests::rejects_dotdot_slash_backslash_absolute
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: path safety fixture does not touch secrets
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: no dependency changes in this fixture
+```
+'''
+CYCLE017_SUFFICIENT_GRADE=CYCLE017_INSUFFICIENT_GRADE.replace(
+    'scenario: skill_id with .., slash, backslash, absolute path, URL-encoded %2F/%5C is rejected\n    evidence_ref: tests::rejects_dotdot_slash_backslash_absolute',
+    'scenario: skill_id with .., slash, backslash, absolute path, URL-encoded %2F/%5C is rejected; symlinked skill directories cannot escape the root; canonicalized candidate paths must starts_with the canonical root\n    evidence_ref: tests::rejects_dotdot_slash_backslash_absolute + tests::rejects_symlink_escape_with_canonical_root_containment'
+)
+REQUEST_TARGET_OUTCOME='''---
+title: "Raw HTTP detail path"
+type: code
+risk_level: low
+acceptance:
+  - id: CLIENT-REQUEST-TARGET
+    severity: P1
+    statement: >
+      The client builds a raw HTTP/1.1 request target from a user-controlled path segment.
+      It must percent-encode or reject request-target delimiters and control characters.
+    verification_hint: >
+      Test request target boundary ids.
+---
+# Request target
+'''
+REQUEST_TARGET_INSUFFICIENT_GRADE='''# Grade
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: CLIENT-REQUEST-TARGET, status: pass, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: CLIENT-REQUEST-TARGET
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/api.md
+    evidence_ref: tests::known_id_detail
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: CLIENT-REQUEST-TARGET
+    status: pass
+    severity_if_fail: P1
+    scenario: unknown skill id returns 404
+    evidence_ref: tests::unknown_id_404
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: request-target fixture does not touch secrets
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: no dependency changes in this fixture
+```
+'''
+REQUEST_TARGET_SUFFICIENT_GRADE=REQUEST_TARGET_INSUFFICIENT_GRADE.replace(
+    'scenario: unknown skill id returns 404\n    evidence_ref: tests::unknown_id_404',
+    'scenario: request-target delimiters ?, #, spaces, CRLF/control chars, and percent-encoded path segments are rejected or encoded\n    evidence_ref: tests::request_target_delimiters_and_control_chars'
+)
+REQUEST_TARGET_GENERIC_ONLY_GRADE=REQUEST_TARGET_INSUFFICIENT_GRADE.replace(
+    'scenario: unknown skill id returns 404\n    evidence_ref: tests::unknown_id_404',
+    'scenario: request-target smoke regression covers the ordinary unknown id path\n    evidence_ref: /Users/lidongyuan/workspace/tests/request_target_unknown_id_smoke.log'
+)
+REQUEST_TARGET_MALFORMED_ONLY_GRADE=REQUEST_TARGET_INSUFFICIENT_GRADE.replace(
+    'scenario: unknown skill id returns 404\n    evidence_ref: tests::unknown_id_404',
+    'scenario: malformed request is rejected\n    evidence_ref: /Users/lidongyuan/workspace/tests/malformed_request_smoke.log'
+)
 class GradeLintTests(unittest.TestCase):
     def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME):
         with tempfile.TemporaryDirectory() as td:
@@ -187,6 +306,38 @@ class GradeLintTests(unittest.TestCase):
 
     def test_low_risk_code_complete_baseline_passes(self):
         proc,p=self.run_lint('code','low',LOW_CODE_COMPLETE,LOW_CODE_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_cycle017_style_path_root_acceptance_requires_symlink_or_canonical_coverage(self):
+        proc,p=self.run_lint('code','low',CYCLE017_INSUFFICIENT_GRADE,CYCLE017_STYLE_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertIn('property_obligation[B005-PATH-SAFETY]', errors)
+        self.assertIn('symlink_or_canonical_containment', errors)
+
+    def test_cycle017_style_path_root_acceptance_passes_with_canonical_coverage(self):
+        proc,p=self.run_lint('code','low',CYCLE017_SUFFICIENT_GRADE,CYCLE017_STYLE_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_raw_request_target_acceptance_requires_delimiter_control_char_coverage(self):
+        proc,p=self.run_lint('code','low',REQUEST_TARGET_INSUFFICIENT_GRADE,REQUEST_TARGET_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertIn('property_obligation[CLIENT-REQUEST-TARGET]', errors)
+        self.assertIn('request_target_delimiter_or_control_chars', errors)
+
+    def test_raw_request_target_generic_mention_is_not_enough(self):
+        proc,p=self.run_lint('code','low',REQUEST_TARGET_GENERIC_ONLY_GRADE,REQUEST_TARGET_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn('request_target_delimiter_or_control_chars', '\n'.join(p['grade_lint']['errors']))
+
+    def test_raw_request_target_malformed_request_is_not_enough(self):
+        proc,p=self.run_lint('code','low',REQUEST_TARGET_MALFORMED_ONLY_GRADE,REQUEST_TARGET_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn('request_target_delimiter_or_control_chars', '\n'.join(p['grade_lint']['errors']))
+
+    def test_raw_request_target_acceptance_passes_with_delimiter_control_char_coverage(self):
+        proc,p=self.run_lint('code','low',REQUEST_TARGET_SUFFICIENT_GRADE,REQUEST_TARGET_OUTCOME)
         self.assertEqual(proc.returncode,0,p)
 
     def test_yaml_parser_accepts_colon_containing_scalar_lists(self):
