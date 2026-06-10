@@ -41,6 +41,22 @@ acceptance:
     statement: init writes files
 ```
 '''
+AUTH_SECRET_CODE_OUTCOME='''# Outcome
+```yaml
+risk_surface:
+  surfaces:
+    auth_or_secret: {present: true}
+```
+```yaml
+acceptance:
+  - id: CFG
+    severity: P1
+    statement: auth token handling redacts secret values from evidence
+  - id: INIT
+    severity: P2
+    statement: init writes files
+```
+'''
 BASIC_CODE_SECTIONS='''```yaml
 spec_compliance_matrix:
   - acceptance_id: CFG
@@ -66,7 +82,12 @@ negative_regression_tests:
 secret_leakage_audit:
   status: pass
   checked_surfaces: [debug, display, errors, logs]
-  cleartext_secret_probe: pass
+  cleartext_secret_probe:
+    status: pass
+    shapes:
+      - token=sk-secret-test
+      - '{"api_key":"sk-secret-test"}'
+      - "Authorization: Bearer sk-secret-test"
   evidence_ref: tests/config.rs::malformed_secret_yaml_is_redacted
 ```
 ```yaml
@@ -98,7 +119,12 @@ negative_regression_tests:
 secret_leakage_audit:
   status: pass
   checked_surfaces: [debug, display, errors, logs]
-  cleartext_secret_probe: pass
+  cleartext_secret_probe:
+    status: pass
+    shapes:
+      - token=sk-secret-test
+      - '{"api_key":"sk-secret-test"}'
+      - "Authorization: Bearer sk-secret-test"
   evidence_ref: tests/a1.rs::secrets_are_redacted
 ```
 ```yaml
@@ -307,6 +333,26 @@ class GradeLintTests(unittest.TestCase):
     def test_low_risk_code_complete_baseline_passes(self):
         proc,p=self.run_lint('code','low',LOW_CODE_COMPLETE,LOW_CODE_OUTCOME)
         self.assertEqual(proc.returncode,0,p)
+
+    def test_secret_leakage_audit_rejects_bare_only_probe_for_in_scope_surface(self):
+        grade=LOW_CODE_COMPLETE.replace(
+            "      - '{\"api_key\":\"sk-secret-test\"}'\n      - \"Authorization: Bearer sk-secret-test\"\n",
+            ''
+        )
+        proc,p=self.run_lint('code','low',grade,AUTH_SECRET_CODE_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertIn('secret_leakage_audit.cleartext_secret_probe missing required token shapes', errors)
+        self.assertIn('json_or_quoted_token', errors)
+        self.assertIn('authorization_bearer', errors)
+
+    def test_secret_leakage_audit_accepts_all_shapes_and_not_applicable(self):
+        with self.subTest('all shapes'):
+            proc,p=self.run_lint('code','low',LOW_CODE_COMPLETE,AUTH_SECRET_CODE_OUTCOME)
+            self.assertEqual(proc.returncode,0,p)
+        with self.subTest('not applicable'):
+            proc,p=self.run_lint('code','low',CYCLE017_SUFFICIENT_GRADE,CYCLE017_STYLE_OUTCOME)
+            self.assertEqual(proc.returncode,0,p)
 
     def test_cycle017_style_path_root_acceptance_requires_symlink_or_canonical_coverage(self):
         proc,p=self.run_lint('code','low',CYCLE017_INSUFFICIENT_GRADE,CYCLE017_STYLE_OUTCOME)

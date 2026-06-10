@@ -1,4 +1,4 @@
-# Bootstrap Development Workflow Contract v1.4.10
+# Bootstrap Development Workflow Contract v1.4.11
 
 > Universal workflow contract for bootstrap-driven repositories. The contract owns orchestration semantics; each repository owns only its binding, backlog, ledger, verification command, and red-line documents.
 
@@ -196,12 +196,12 @@ The driver spawns `codex app-server` in its own POSIX process group (`start_new_
 
 | file | sha256 |
 |---|---|
-| runtime/preflight.sh | 56922ef94d23e3e1e8d19f7362a994d289b0636e2215a58ba05ac86d29f80193 |
-| runtime/codex_driver.py | 5114a61ec2603b31e08556733284378f2ea26634fc3960d1337804b758198599 |
+| runtime/preflight.sh | 4ea35e944cec2fcf9567f11100ac1e6cb0c04f13fd9db3d790bc21f94295d2ef |
+| runtime/codex_driver.py | 39f9e865cc94f9f83f19783551869e2060dc31783936dd3a0b891fd0cc701c5d |
 | runtime/codex_fix_driver.py | 0ba1be44f6ddf4f8ff8d40a8a661bd317c85752c5e9597f6c2ac13afb9d1ae4a |
 | runtime/reshape_fix_round.py | ce6caf0114102fc706798963f6756e75c90b2d7d12caa854eca6352e30f9a73a |
 | runtime/conduct.sh | c9a7dab3798a384d3929256457e9b05da7a4b413b980ec128286f81c5f4b726e |
-| runtime/grade_lint.py | 69141364d2f3911901930257e1fa21f2dd0e90d73e56898d6c77becf1ab31410 |
+| runtime/grade_lint.py | e91d3849432df2038a813630c1a0b3242b7d9c4cbe0eed59d4c27bb59e482cbc |
 | runtime/grade_verify.py | cd7baca6f0102d8920408bfd03d18711f76ad003d353cded54c74935c223407f |
 | runtime/sync_status_marker.py | 4e0371d55d855dd18b6fd403e5c57a27099de412d99349efcd469e2595a3555a |
 | commands/bs.md | 0a8dd8525ac93ce097f67808bec9720200099b7b4377921480796974e396b8cc |
@@ -218,6 +218,7 @@ No parallel cycles, enum extension, severity override, council-member override, 
 
 ## 11. Changelog
 
+- v1.4.11: Cycle-018 F5 secret-shape Grade hardening. `grade_lint.py` now requires in-scope `secret_leakage_audit` cleartext probes to show bare token/key-value, JSON/quoted token/API-key, and `Authorization: Bearer` shapes for auth/secret/log/evidence surfaces, while preserving scoped `not_applicable` audits. Runtime manifest relocked; driver/preflight client versions plus `skill.yaml` bumped to 1.4.11. No Conduct success-oracle or goal-RPC transport change.
 - v1.4.10: Property-obligation Grade hardening after cycle-017 escape analysis. `grade_lint.py` now reads code outcome YAML front matter as well as fenced YAML blocks, derives lightweight property obligations from P0/P1 acceptance text, and blocks example-only negative coverage for path/root containment (string traversal without symlink/canonical-root containment) and raw request-target/path-segment boundaries (generic request-target or malformed-request smoke without delimiter/control-character/CRLF/encoding coverage). Shape and Grade prompts now require property-facet evidence even for low-risk code when trust-boundary surfaces exist. Runtime manifest relocked; driver/preflight client versions plus `skill.yaml` bumped to 1.4.10. No Conduct success-oracle or goal-RPC transport change.
 - v1.4.9: Cycle-016 review hardening. `lib.events` now accepts `str | Path`, exposes a first-class append-only `repair` event for missing-start orphan terminals, and shares event metadata schema with `validate_events.py`, which now rejects count/list/null ambiguity such as integer `workspace_delta_files` or null `file_change_events`. `grade_lint.py` prefers `yaml.safe_load` for valid fenced YAML, fixing colon-containing scalar-list ergonomics while retaining legacy compatibility. `status_marker.stale_id_guard` can fail close when old dynamic task IDs remain in guarded status prose. `/bs` close guidance now blocks helper failures, raw-smoke contradictions, and silent history insertion. Runtime/helper manifest relocked; driver/preflight client versions plus `skill.yaml` bumped to 1.4.9. No Conduct success-oracle or goal-RPC transport change.
 - v1.4.8: Cycle-015 review hardening for Grade and recovery evidence. All code Grades now run `grade_lint.py`; low-risk code must include deterministic `spec_compliance_matrix`, `negative_regression_tests`, `secret_leakage_audit`, and `dependency_spec_review` blocks so green build/test commands cannot hide spec-mandated dependency gaps, secret-bearing Debug/error leaks, or missing negative tests. Interrupted-with-delta acceptance now requires a structured `recovery_decision.yaml` before Step 10 close, tying the maintainer decision to options, selected path, approver, timestamp, reviewed evidence, waiver scope, and required follow-ups. Runtime manifest relocked (`grade_lint.py`, `commands/bs.md`, `preflight.sh`, `codex_driver.py`); driver/preflight client versions plus `skill.yaml` bumped to 1.4.8. No Conduct success-oracle or goal-RPC transport change.

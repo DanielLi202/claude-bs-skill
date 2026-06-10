@@ -35,6 +35,13 @@ STRING_TRAVERSAL_TERMS=re.compile(r"\.\.|slash|backslash|absolute\s+path|%2f|%5c
 SYMLINK_CONTAINMENT_TERMS=re.compile(r"symlink|canonical(?:ize|ise|ization|isation)?|realpath|starts?_with|starts[-\s]?with|root[-_\s]?contain(?:ed|ment)?|within\s+(?:the\s+)?(?:root|directory)|no[-_\s]?follow|lstat|symlink_metadata|link_metadata", re.I)
 REQUEST_TARGET_TERMS=re.compile(r"request[-_\s]?target|request\s+line|raw\s+http|http/1\.1|path\s+segment|percent[-_\s]?encod|url[-_\s]?encod|crlf|control\s+char|request\s+delimiter", re.I)
 REQUEST_TARGET_FACET_TERMS=re.compile(r"delimiter|\?|#|\bspaces?\b|control|crlf|\\r|\\n|percent[-_\s]?encod|url[-_\s]?encod", re.I)
+SECRET_AUDIT_SCOPE_TERMS=re.compile(r"\b(?:auth|secret|token|credential|password|oauth|bearer|api[-_\s]?key|vendor[-_\s]?stderr|stderr|logs?|logging|traces?|tracing|events?|evidence|debug|display|errors?|serialization)\b", re.I)
+SECRET_TOKEN_SHAPE_PATTERNS={
+    "bare_token_or_key": re.compile(r"\b(?:bare[-_\s]*(?:whitespace[-_\s]*)?(?:token|key|form|shape)|key[-_\s]?value|token[-_\s]?equals|api[-_\s]?key[-_\s]?equals)\b|\b(?:token|api[-_\s]?key)\s*=", re.I),
+    "json_or_quoted_token": re.compile(r"\b(?:json(?:[-_\s]*or[-_\s]*quoted)?|quoted)[-_\s]*(?:token|api[-_\s]?key|form|shape)\b|[\"'](?:api[-_]?key|token)[\"']\s*:", re.I),
+    "authorization_bearer": re.compile(r"\bauthorization\s*:\s*bearer\b|\bauthorization[-_\s]*bearer\b|\bhttp[-_\s]*header\b[^.;,\n]*\bbearer\b|\bbearer[-_\s]*header\b", re.I),
+}
+SECRET_BARE_SK_PATTERN=re.compile(r"(?<![\"':/A-Za-z0-9_-])sk-[A-Za-z0-9][A-Za-z0-9._-]*(?![A-Za-z0-9_-])", re.I)
 class LintError(ValueError): pass
 
 def split_top_level(text, sep=','):
@@ -365,6 +372,64 @@ def row_evidence_text(rows):
             values.extend(row.get(field) for field in evidence_fields if field in row)
     return text_blob(values)
 
+def outcome_has_auth_secret_surface(outcome_blocks):
+    rs=first(outcome_blocks or [],'risk_surface')
+    surfaces=rs.get('surfaces') if isinstance(rs,dict) else None
+    if isinstance(surfaces,dict):
+        detail=surfaces.get('auth_or_secret')
+        if detail is True or (isinstance(detail,dict) and detail.get('present') is True):
+            return True
+    adv=first(outcome_blocks or [],'adversarial_acceptance')
+    return isinstance(adv,list) and any(isinstance(row,dict) and 'auth_or_secret' in row_surfaces(row) for row in adv)
+
+def secret_audit_scope_text(secret):
+    return text_blob(
+        secret.get('checked_surfaces'),
+        secret.get('evidence_ref'),
+        secret.get('evidence_refs'),
+        secret.get('evidence_summary'),
+        secret.get('summary'),
+        secret.get('note'),
+        secret.get('details'),
+    )
+
+def secret_audit_requires_multi_shape(secret, outcome_blocks):
+    return outcome_has_auth_secret_surface(outcome_blocks) or bool(SECRET_AUDIT_SCOPE_TERMS.search(secret_audit_scope_text(secret)))
+
+def has_bare_sk_token(text):
+    for match in SECRET_BARE_SK_PATTERN.finditer(text):
+        context=text[max(0,match.start()-40):match.end()+40]
+        if not re.search(r"\b(?:authorization|bearer)\b", context, re.I):
+            return True
+    return False
+
+def secret_probe_has_shape(name, text):
+    pattern=SECRET_TOKEN_SHAPE_PATTERNS[name]
+    if pattern.search(text):
+        return True
+    return name=='bare_token_or_key' and has_bare_sk_token(text)
+
+def validate_cleartext_secret_probe_shape(secret, outcome_blocks, errors):
+    probe=secret.get('cleartext_secret_probe')
+    if isinstance(probe,str):
+        if probe not in {'pass','not_applicable'}:
+            errors.append('secret_leakage_audit.cleartext_secret_probe must be pass|not_applicable or a structured shape list when status pass')
+            return
+    elif isinstance(probe,dict):
+        probe_status=probe.get('status') or probe.get('result')
+        if probe_status is not None and probe_status not in {'pass','not_applicable'}:
+            errors.append('secret_leakage_audit.cleartext_secret_probe.status must be pass|not_applicable when status pass')
+            return
+    elif not isinstance(probe,list):
+        errors.append('secret_leakage_audit.cleartext_secret_probe must be pass|not_applicable or a structured shape list when status pass')
+        return
+    if not secret_audit_requires_multi_shape(secret, outcome_blocks):
+        return
+    probe_text=text_blob(secret)
+    missing=[name for name in SECRET_TOKEN_SHAPE_PATTERNS if not secret_probe_has_shape(name, probe_text)]
+    if missing:
+        errors.append('secret_leakage_audit.cleartext_secret_probe missing required token shapes for in-scope auth/secret/log/evidence surfaces: '+','.join(missing))
+
 def validate_property_obligations(required_acceptance, neg, errors):
     """Catch property escapes where a Grade covers an example but not the invariant."""
     calc={'P0':0,'P1':0}
@@ -389,7 +454,7 @@ def validate_property_obligations(required_acceptance, neg, errors):
             errors.append(f"property_obligation[{acceptance_id}] missing required negative coverage facets: {','.join(missing)}")
     return calc
 
-def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_status):
+def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_status, outcome_blocks=None):
     """All code tasks need replayable spec/security/negative-test evidence."""
     required_acceptance = required_acceptance or acceptance_status_metadata(acceptance_status)
     required_ids=set(required_acceptance)
@@ -452,7 +517,7 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
         elif st=='pass':
             if not isinstance(secret.get('evidence_ref'),str) or not secret.get('evidence_ref').strip(): errors.append('secret_leakage_audit.evidence_ref is required when pass')
             if not list_of_strs(secret.get('checked_surfaces')): errors.append('secret_leakage_audit.checked_surfaces must be a non-empty list when pass')
-            if secret.get('cleartext_secret_probe') not in {'pass','not_applicable'}: errors.append('secret_leakage_audit.cleartext_secret_probe must be pass|not_applicable when status pass')
+            validate_cleartext_secret_probe_shape(secret, outcome_blocks, errors)
         elif st=='not_applicable' and not any(isinstance(secret.get(k),str) and secret.get(k).strip() for k in ('rationale','scope_basis_ref')):
             errors.append('secret_leakage_audit not_applicable requires rationale or scope_basis_ref')
 
@@ -539,7 +604,7 @@ def lint(task_type,risk_level,grade_file,outcome_file):
     validate_required(summary,acceptance,errors); gated=is_gate(task_type,risk_level); code_gate=(task_type=='code')
     obs=blocks(outcome_file, include_front_matter=True) if code_gate or gated else []
     if code_gate:
-        validate_code_baseline(summary,gbs,errors,outcome_acceptance_metadata(obs),acceptance)
+        validate_code_baseline(summary,gbs,errors,outcome_acceptance_metadata(obs),acceptance,obs)
     if gated:
         validate_outcome(obs,errors)
         required=adversarial_acceptance_metadata(obs)
