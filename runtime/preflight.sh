@@ -25,6 +25,7 @@ done
 CHECKS_FILE="$(mktemp)"
 OVERALL="pass"
 COUNCIL_ALIVE=0
+RECOVERY_REASON=""
 
 escape() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
 add_check() {
@@ -37,6 +38,203 @@ add_check() {
     printf '    detail: "%s"\n' "$(escape "$detail")"
   } >> "$CHECKS_FILE"
 }
+
+emit_report() {
+  printf 'overall: %s\n' "$OVERALL"
+  printf 'checked_at: "%s"\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf 'checks:\n'
+  cat "$CHECKS_FILE"
+  rm -f "$CHECKS_FILE"
+  if [[ -n "$RECOVERY_REASON" ]]; then
+    printf '%s\n' "$RECOVERY_REASON"
+  fi
+  [[ "$OVERALL" == "pass" ]]
+}
+
+close_gap_probe() {
+  python3 - <<'PY'
+from __future__ import annotations
+
+import json
+import re
+import sys
+from pathlib import Path
+
+try:
+    import yaml
+except Exception as exc:
+    print(f"close_gap_probe_error=PyYAML_unavailable: {exc}")
+    sys.exit(1)
+
+
+ROOT = Path.cwd()
+STEP_TARGETS = {"step_7", "step_10"}
+
+
+def load_yaml(path: Path) -> dict:
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        raise RuntimeError(f"missing {path}")
+    except Exception as exc:
+        raise RuntimeError(f"invalid yaml {path}: {exc}")
+    if not isinstance(data, dict):
+        raise RuntimeError(f"{path} root must be mapping")
+    return data
+
+
+def task_id_from_cycle(cycle_dir: Path) -> str | None:
+    path = cycle_dir / "cycle.yaml"
+    if not path.exists():
+        return None
+    try:
+        data = load_yaml(path)
+    except RuntimeError:
+        return None
+    snapshot = data.get("task_snapshot")
+    task = data.get("task")
+    for value in (
+        data.get("task_id"),
+        snapshot.get("id") if isinstance(snapshot, dict) else None,
+        task.get("id") if isinstance(task, dict) else None,
+    ):
+        if isinstance(value, str) and value:
+            return value
+    return None
+
+
+def cycle_number(cycle_dir: Path) -> int:
+    match = re.fullmatch(r"cycle-(\d+)", cycle_dir.name)
+    return int(match.group(1)) if match else -1
+
+
+def latest_cycle_for_task(cycle_root: Path, task_id: str) -> Path | None:
+    if not cycle_root.exists():
+        return None
+    matches = []
+    for cycle_dir in cycle_root.iterdir():
+        if not cycle_dir.is_dir() or cycle_number(cycle_dir) < 0:
+            continue
+        if task_id_from_cycle(cycle_dir) == task_id:
+            matches.append(cycle_dir)
+    if not matches:
+        return None
+    return max(matches, key=cycle_number)
+
+
+def gate_decision(cycle_dir: Path) -> str | None:
+    path = cycle_dir / "auto_merge_gate.yaml"
+    if not path.exists():
+        return None
+    data = load_yaml(path)
+    gate = data.get("auto_merge_gate", data)
+    if not isinstance(gate, dict):
+        return None
+    decision = gate.get("decision")
+    return str(decision) if decision is not None else None
+
+
+def step_event_state(path: Path) -> tuple[set[str], bool, bool]:
+    states: dict[tuple[str, int], str] = {}
+    merged_evidence = False
+    if not path.exists():
+        raise RuntimeError(f"missing {path}")
+    for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            event = json.loads(line)
+        except Exception as exc:
+            raise RuntimeError(f"invalid json {path}:{line_no}: {exc}")
+        step = event.get("step")
+        kind = event.get("event")
+        try:
+            attempt = int(event.get("attempt", 0))
+        except Exception:
+            attempt = 0
+        if isinstance(step, str) and kind in {"started", "completed", "failed"}:
+            states[(step, attempt)] = kind
+        outcome = str(event.get("outcome", ""))
+        if step == "step_7" and kind == "completed" and re.search(r"\b(auto-)?merged?\b|\bsquash\b|\bmerge commit\b", outcome, re.I):
+            merged_evidence = True
+    open_targets = {step for (step, _attempt), kind in states.items() if step in STEP_TARGETS and kind == "started"}
+    step10_completed = any(step == "step_10" and kind == "completed" for (step, _attempt), kind in states.items())
+    return open_targets, step10_completed and "step_10" not in open_targets, merged_evidence
+
+
+def gate_has_merge_evidence(cycle_dir: Path) -> bool:
+    path = cycle_dir / "auto_merge_gate.yaml"
+    if not path.exists():
+        return False
+    data = load_yaml(path)
+    gate = data.get("auto_merge_gate", data)
+    if not isinstance(gate, dict):
+        return False
+    if gate.get("merged") is True:
+        return True
+    for key in ("merge_commit", "merge_commit_sha", "merge_sha", "squash_commit", "merged_at"):
+        value = gate.get(key)
+        if isinstance(value, str) and value.strip():
+            return True
+    return False
+
+
+try:
+    binding = load_yaml(ROOT / ".bootstrap.yaml")
+    backlog_rel = binding.get("backlog", ".bootstrap/backlog.yaml")
+    cycle_root_rel = binding.get("cycle_dir_root")
+    if not isinstance(backlog_rel, str) or not backlog_rel:
+        raise RuntimeError(".bootstrap.yaml backlog must be a path")
+    if not isinstance(cycle_root_rel, str) or not cycle_root_rel:
+        raise RuntimeError(".bootstrap.yaml cycle_dir_root must be a path")
+    backlog = load_yaml(ROOT / backlog_rel)
+    tasks = backlog.get("tasks")
+    if not isinstance(tasks, list):
+        raise RuntimeError("backlog tasks must be a list")
+    in_progress = [task for task in tasks if isinstance(task, dict) and task.get("status") == "in_progress"]
+    if len(in_progress) != 1:
+        print(f"ok: no unique in_progress task (count={len(in_progress)})")
+        sys.exit(0)
+    task_id = in_progress[0].get("id")
+    if not isinstance(task_id, str) or not task_id:
+        raise RuntimeError("in_progress task id missing")
+    cycle_dir = latest_cycle_for_task(ROOT / cycle_root_rel, task_id)
+    if cycle_dir is None:
+        print(f"ok: no cycle dir for in_progress task {task_id}")
+        sys.exit(0)
+    if gate_decision(cycle_dir) != "merge":
+        print(f"ok: latest cycle {cycle_dir.name} auto_merge_gate is not decision=merge")
+        sys.exit(0)
+    open_targets, step10_completed, event_merge_evidence = step_event_state(cycle_dir / "step_events.jsonl")
+    if step10_completed:
+        print(f"ok: latest cycle {cycle_dir.name} has step_10 completed")
+        sys.exit(0)
+    if open_targets or event_merge_evidence or gate_has_merge_evidence(cycle_dir):
+        match = re.fullmatch(r"cycle-(\d+)", cycle_dir.name)
+        cycle_id = match.group(1) if match else cycle_dir.name
+        print(f"recovery_required=merged_pr_needs_step10_close cycle={cycle_id} task={task_id}")
+        sys.exit(2)
+    print(f"ok: latest cycle {cycle_dir.name} has decision=merge but no offline merged/open-step evidence")
+    sys.exit(0)
+except Exception as exc:
+    print(f"close_gap_probe_error={exc}")
+    sys.exit(1)
+PY
+}
+
+if [[ -f .bootstrap.yaml ]]; then
+  if out=$(close_gap_probe 2>&1); then
+    add_check close_gap_probe pass true "$out"
+  else
+    rc=$?
+    add_check close_gap_probe fail true "$out"
+    if [[ "$rc" == 2 ]] && grep -q '^recovery_required=merged_pr_needs_step10_close ' <<<"$out"; then
+      RECOVERY_REASON="$(grep '^recovery_required=merged_pr_needs_step10_close ' <<<"$out" | tail -1)"
+      emit_report
+      exit $?
+    fi
+  fi
+fi
 version_ge() {
   python3 - "$1" "$2" <<'PY'
 import re, sys
@@ -152,9 +350,4 @@ else
   add_check verify_command_baseline warn false "no verify command provided"
 fi
 
-printf 'overall: %s\n' "$OVERALL"
-printf 'checked_at: "%s"\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-printf 'checks:\n'
-cat "$CHECKS_FILE"
-rm -f "$CHECKS_FILE"
-[[ "$OVERALL" == "pass" ]]
+emit_report

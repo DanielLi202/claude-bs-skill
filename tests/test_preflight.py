@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import os
 import subprocess
 import tempfile
@@ -56,7 +57,7 @@ class PreflightCouncilTests(unittest.TestCase):
         path.chmod(0o755)
         return path
 
-    def run_preflight(self, extra_args=None, with_codex=True):
+    def run_preflight(self, extra_args=None, with_codex=True, repo_root=None):
         with tempfile.TemporaryDirectory() as td:
             bindir = Path(td)
             if with_codex:
@@ -70,7 +71,57 @@ exit 0
             cmd = ['bash', str(PREFLIGHT), '--skip-verify-preflight']
             if extra_args:
                 cmd.extend(extra_args)
-            return subprocess.run(cmd, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+            return subprocess.run(
+                cmd,
+                cwd=str(repo_root) if repo_root is not None else None,
+                env=env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=10,
+            )
+
+    def write_close_gap_fixture(self, root: Path, completed_close: bool = False):
+        (root / '.bootstrap').mkdir()
+        cycle_dir = root / '.prompts' / 'dogfood' / 'cycle-018'
+        cycle_dir.mkdir(parents=True)
+        (root / '.bootstrap.yaml').write_text(
+            'schema_version: 1\n'
+            'backlog: .bootstrap/backlog.yaml\n'
+            'cycle_dir_root: .prompts/dogfood\n',
+            encoding='utf-8',
+        )
+        (root / '.bootstrap' / 'backlog.yaml').write_text(
+            'schema_version: 1\n'
+            'tasks:\n'
+            '  - id: B-018\n'
+            '    status: in_progress\n',
+            encoding='utf-8',
+        )
+        (cycle_dir / 'cycle.yaml').write_text(
+            'cycle: cycle-018\n'
+            'task_id: B-018\n',
+            encoding='utf-8',
+        )
+        (cycle_dir / 'auto_merge_gate.yaml').write_text(
+            'auto_merge_gate:\n'
+            '  decision: merge\n'
+            '  pr: 25\n',
+            encoding='utf-8',
+        )
+        events = [
+            {'step': 'step_7', 'attempt': 0, 'event': 'started', 'recorded_at': '2026-06-09T11:34:27Z'},
+        ]
+        if completed_close:
+            events.extend([
+                {'step': 'step_7', 'attempt': 0, 'event': 'completed', 'outcome': 'PR #25 auto-merged to main (squash 5017538)', 'recorded_at': '2026-06-10T02:19:38Z'},
+                {'step': 'step_10', 'attempt': 0, 'event': 'started', 'recorded_at': '2026-06-10T02:19:38Z'},
+                {'step': 'step_10', 'attempt': 0, 'event': 'completed', 'outcome': 'atomic close committed e6f9699', 'recorded_at': '2026-06-10T02:26:29Z'},
+            ])
+        (cycle_dir / 'step_events.jsonl').write_text(
+            ''.join(json.dumps(event, sort_keys=True) + '\n' for event in events),
+            encoding='utf-8',
+        )
 
     def test_default_council_unavailable_is_warning_not_failure(self):
         proc = self.run_preflight()
@@ -101,6 +152,27 @@ exit 0
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertIn('council checks skipped', proc.stdout)
         self.assertIn('required: false', proc.stdout)
+
+    def test_close_gap_probe_blocks_merge_decided_open_step_7(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self.write_close_gap_fixture(root)
+            proc = self.run_preflight(repo_root=root)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn('overall: fail', proc.stdout)
+        self.assertIn('name: close_gap_probe', proc.stdout)
+        self.assertIn('recovery_required=merged_pr_needs_step10_close cycle=018 task=B-018', proc.stdout)
+        self.assertNotIn('name: codex_binary', proc.stdout)
+
+    def test_close_gap_probe_allows_completed_step_10(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            self.write_close_gap_fixture(root, completed_close=True)
+            proc = self.run_preflight(repo_root=root)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn('name: close_gap_probe', proc.stdout)
+        self.assertIn('latest cycle cycle-018 has step_10 completed', proc.stdout)
+        self.assertNotIn('recovery_required=merged_pr_needs_step10_close', proc.stdout)
 
 
 if __name__ == '__main__':

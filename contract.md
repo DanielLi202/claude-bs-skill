@@ -198,7 +198,7 @@ The driver spawns `codex app-server` in its own POSIX process group (`start_new_
 
 | file | sha256 |
 |---|---|
-| runtime/preflight.sh | 4ea35e944cec2fcf9567f11100ac1e6cb0c04f13fd9db3d790bc21f94295d2ef |
+| runtime/preflight.sh | f709aa5c16c7e56b21d71b57ebed186f2bced19c10c2e01d84d936b505bbbfad |
 | runtime/codex_driver.py | 39f9e865cc94f9f83f19783551869e2060dc31783936dd3a0b891fd0cc701c5d |
 | runtime/codex_fix_driver.py | 0ba1be44f6ddf4f8ff8d40a8a661bd317c85752c5e9597f6c2ac13afb9d1ae4a |
 | runtime/reshape_fix_round.py | ce6caf0114102fc706798963f6756e75c90b2d7d12caa854eca6352e30f9a73a |
