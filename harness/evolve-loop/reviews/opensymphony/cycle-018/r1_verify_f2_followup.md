@@ -1,0 +1,3 @@
+After the reader tasks spawn, timeout and `child.wait()` I/O-error branches both call `terminate_and_reap_process_group`, then `join_or_abort` both `stream_task` and `stderr_task` before returning. On the successful `wait` branch, the child is already waited/reaped, `terminate_process_group` runs, and both reader tasks are joined before `stream_join` is inspected, so stdout-reader `None`/failure cannot bypass stderr joining. The `!status.success()` return and later terminal-event errors also occur only after both joins. The normal `Ok(ConductOutcome)` path likewise follows the same join point. `join_or_abort` does abort on timeout and then awaits the task handle before returning `None`.
+
+F2_VERDICT: closed=true
