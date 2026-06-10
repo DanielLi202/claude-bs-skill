@@ -1,6 +1,9 @@
 from pathlib import Path
 import unittest
 COMMAND = Path(__file__).resolve().parents[1] / 'commands' / 'bs.md'
+RESUME_COMMAND = Path(__file__).resolve().parents[1] / 'commands' / 'bs-resume.md'
+DOCTOR_COMMAND = Path(__file__).resolve().parents[1] / 'commands' / 'bs-doctor.md'
+
 class CommandFlowTests(unittest.TestCase):
     def test_grade_verify_is_required_before_initial_and_fix_grade(self):
         text = COMMAND.read_text(encoding='utf-8')
@@ -50,4 +53,24 @@ class CommandFlowTests(unittest.TestCase):
         self.assertIn('interrupted_with_delta', text)
         self.assertIn('recovery_decision.yaml', text)
         self.assertIn('workflow_reflection.yaml', text)
+
+    def test_resume_documents_merged_pr_step10_recovery(self):
+        text = RESUME_COMMAND.read_text(encoding='utf-8')
+        self.assertIn('recovery_required=merged_pr_needs_step10_close cycle=<NNN> task=<ID>', text)
+        self.assertIn('Verify the PR merge SHA is already contained in main', text)
+        self.assertIn('git merge-base --is-ancestor <merge_sha> origin/main', text)
+        self.assertIn('append `step_7 completed`', text)
+        self.assertIn('append the first-class `repair`', text)
+        self.assertIn('git pull --ff-only origin main', text)
+        self.assertIn('Run the normal Step-10 atomic close from `/bs`', text)
+        self.assertIn('`HEAD == origin/main` proof', text)
+
+    def test_doctor_reports_close_gap_as_red_recovery_state(self):
+        text = DOCTOR_COMMAND.read_text(encoding='utf-8')
+        self.assertIn('Before reporting a generic `in_progress` blocker', text)
+        self.assertIn('RED recovery_required=merged_pr_needs_step10_close cycle=<NNN> task=<ID>', text)
+        self.assertIn('exact_resume_instruction: run /bs-resume', text)
+        self.assertIn('use the "Merged-PR Step-10 recovery" path', text)
+        self.assertIn('do not run /bs until Step 10 atomic close completes', text)
+        self.assertIn('Do not flatten this state to "task in_progress"', text)
 if __name__ == '__main__': unittest.main()
