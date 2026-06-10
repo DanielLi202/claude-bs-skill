@@ -408,6 +408,103 @@ dependency_spec_review:
     evidence_ref: "crates/symphony-patterns/Cargo.toml uses only existing workspace deps serde/serde_json/serde_yaml_bw/thiserror/symphony-storage; no addition to root [workspace.dependencies]"
 ```
 '''
+SUBPROCESS_LIFECYCLE_OUTCOME='''# Outcome Capsule — B-018 M5 Conduct adapter (cycle-018, Phase 2)
+```yaml
+risk_surface:
+  surfaces:
+    external_subprocess: {present: true}
+```
+```yaml
+adversarial_acceptance:
+  - id: B018-ADV-PROBE-FAILCLOSED-1
+    surface: external_subprocess
+    severity: P1
+    evidence_kind: subprocess_lifecycle_test
+    verification_hint: "Simulate Codex/Claude capability probe version and auth-status helper commands plus a stream-json ping helper; assert unsupported_fatal and no exec fallback."
+```
+'''
+SUBPROCESS_LIFECYCLE_INSUFFICIENT_GRADE='''# Grade — B-018 M5 Conduct adapter (cycle-018, round 1)
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0, adversarial_p0_count: 0, adversarial_p1_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: A1, status: pass, severity: P1}
+```
+```yaml
+adversarial_checks:
+  - id: GADV-PROBE-1
+    acceptance_id: B018-ADV-PROBE-FAILCLOSED-1
+    status: pass
+    severity_if_fail: P1
+    evidence_kind: subprocess_lifecycle_test
+    evidence_ref: "src/codex/mod.rs:327-404 real in-process round trip + ephemeral-negative; failures map to VersionTooOld/LoginRequired/GoalRpcUnavailable; never builds an exec/--json/text-goal fallback argv; tests codex_fake_vendor_probe_exercises_goal_rpc_round_trip + codex_probe_maps_not_logged_in_without_secret_leakage + handoff_argv_uses_goal_rpc_without_exec_json_or_text_goal_fallback (nextest green)"
+```
+```yaml
+trust_surface_inventory:
+  unverified_items: []
+```
+```yaml
+deferred_claims: []
+```
+''' + A1_CODE_SECTIONS
+SUBPROCESS_LIFECYCLE_COMPLETE_GRADE=SUBPROCESS_LIFECYCLE_INSUFFICIENT_GRADE.replace(
+    'src/codex/mod.rs:327-404 real in-process round trip + ephemeral-negative; failures map to VersionTooOld/LoginRequired/GoalRpcUnavailable; never builds an exec/--json/text-goal fallback argv; tests codex_fake_vendor_probe_exercises_goal_rpc_round_trip + codex_probe_maps_not_logged_in_without_secret_leakage + handoff_argv_uses_goal_rpc_without_exec_json_or_text_goal_fallback (nextest green)',
+    'src/process.rs spawn_process_group .process_group(0) own process-group isolation; every probe/version/auth-status/ping helper command is wrapped in time::timeout wait timeout/deadline; after SIGTERM/SIGKILL the child.wait().await wait/reap path runs; stream-json stdout/stderr reader tasks are awaited, joined, and drained before return; nextest green'
+)
+CYCLE016_LEDGER_CLEAN_OUTCOME='''# Outcome — cycle-016 B-004 Run Event Ledger + State Machine Projection
+```yaml
+acceptance:
+  - id: B004-A1
+    severity: P1
+    statement: >
+      Ledger append is idempotent and collision-safe under fs4 lock_with_timeout;
+      duplicate idempotency keys are skipped and changed payloads return IdempotencyCollision.
+```
+'''
+CYCLE016_LEDGER_CLEAN_GRADE='''# Grade — cycle-016 B-004 Run Event Ledger + State Machine Projection (round 0)
+```yaml
+grade_summary:
+  p0_count: 0
+  p1_count: 0
+  p2_count: 0
+```
+```yaml
+acceptance_status:
+  - id: B004-A1
+    status: pass
+    severity: P1
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: B004-A1
+    status: pass
+    severity_if_fail: P1
+    spec_refs: ["docs/architecture/schemas/events.md"]
+    evidence_ref: "symphony-ledger::tests::append_is_idempotent_and_collision_safe; lib.rs append()/append_locked() (fs4 lock_with_timeout + SeekFrom::End + sync_data; dup-skip vs IdempotencyCollision)"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: B004-A1
+    status: pass
+    severity_if_fail: P1
+    scenario: "Re-append the same idempotency_key with a CHANGED payload returns LedgerError::IdempotencyCollision and never overwrites or duplicates the existing line."
+    evidence_ref: "symphony-ledger::tests::append_is_idempotent_and_collision_safe"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: "symphony-ledger append fixture has no auth/token/log secret surface"
+```
+```yaml
+dependency_spec_review:
+  - dependency: "symphony-ledger crate dependencies (fs4, serde, serde_json, thiserror, time)"
+    status: pass
+    severity_if_fail: P1
+    spec_ref: "docs/architecture/tech-stack.yaml"
+    evidence_ref: "crates/symphony-ledger/Cargo.toml uses *.workspace = true only; matches tech-stack.yaml pins"
+```
+'''
 class GradeLintTests(unittest.TestCase):
     def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME):
         with tempfile.TemporaryDirectory() as td:
@@ -482,6 +579,21 @@ class GradeLintTests(unittest.TestCase):
 
     def test_cycle017_real_not_applicable_probe_with_negated_auth_terms_does_not_require_shapes(self):
         proc,p=self.run_lint('code','low',CYCLE017_SECRET_NOT_APPLICABLE_GRADE,CYCLE017_SECRET_NOT_APPLICABLE_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_cycle018_subprocess_lifecycle_claim_requires_per_facet_evidence(self):
+        proc,p=self.run_lint('code','medium',SUBPROCESS_LIFECYCLE_INSUFFICIENT_GRADE,SUBPROCESS_LIFECYCLE_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertEqual(p['grade_lint']['errors'], [
+            'subprocess_lifecycle[GADV-PROBE-1] missing facets: timeout,process_group,reap,stream_join — probe/stream subprocess surfaces require timeout + process-group + wait/reap (+ stream-task join) evidence'
+        ])
+
+    def test_subprocess_lifecycle_claim_passes_with_all_facets(self):
+        proc,p=self.run_lint('code','medium',SUBPROCESS_LIFECYCLE_COMPLETE_GRADE,SUBPROCESS_LIFECYCLE_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_cycle016_clean_ledger_timeout_text_does_not_trigger_subprocess_lifecycle(self):
+        proc,p=self.run_lint('code','low',CYCLE016_LEDGER_CLEAN_GRADE,CYCLE016_LEDGER_CLEAN_OUTCOME)
         self.assertEqual(proc.returncode,0,p)
 
     def test_cycle017_style_path_root_acceptance_requires_symlink_or_canonical_coverage(self):

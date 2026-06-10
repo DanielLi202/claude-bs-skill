@@ -29,6 +29,13 @@ BOUNDARY_SURFACES={"string_boundary","input_validation_or_schema"}
 BOUNDARY_EVIDENCE={"non_ascii_boundary_test","malformed_input_test","length_boundary_test","json_boundary_test","schema_validation_test"}
 PANIC_TERMS=re.compile(r"\bno[-\s]?panic\b|\bpanic(?:s|ked|king)?\b|\bunwrap\b|\bexpect\b", re.I)
 PANIC_EVIDENCE={"panic_audit","implicit_panic_audit"}
+SUBPROCESS_LIFECYCLE_SCOPE_TERMS=re.compile(r"\bexternal[-_\s]?subprocess\b|\bsubprocess(?:es)?\b|\bvendor\s+(?:child|process|binary)\b|\bchild\s+process\b|\bspawn(?:s|ed|ing)?\s+(?:the\s+)?(?:vendor|child|subprocess|process|command|helper|argv|binary)\b|\b(?:vendor|child|subprocess|command|helper|binary)[^.;,\n]{0,80}\bspawn(?:s|ed|ing)?\b|Command::output[^.;,\n]{0,80}\b(?:probe|version|auth|ping)\b|\b(?:probe|version|auth|ping)[^.;,\n]{0,80}Command::output|process[-_\s]?group|SIGTERM|SIGKILL|\bkill(?:ed|s|ing)?\b|\bcancel(?:led|s|ing)?\b|\breap(?:ed|s|ing)?\b|\bzombie(?:s)?\b|\borphan(?:ed)?\s+grandchild\b|\bcapability[-_\s]?probe\b|\bprobe_capability\b|\b(?:codex|claude)\s+--version\b|\b(?:codex\s+login|claude\s+auth|auth|login)\s+status\b|\b(?:stream[-_\s]?json\s+)?ping\s+(?:probe|helper|command)\b", re.I)
+SUBPROCESS_TIMEOUT_FACET=re.compile(r"\btime::timeout\b|\btimeout\b|\bdeadline\b|\bwait[-_\s]?timeout\b|\bbounded\s+(?:wait|deadline)\b|\bwait\s+bounded\b", re.I)
+SUBPROCESS_PROCESS_GROUP_FACET=re.compile(r"\.process_group\(0\)|\bprocess[-_\s]?group\b|\bnegative[-_\s]?pgid\b|\bstart_new_session\b|\bsetsid\b|\bsetpgid\b|\bown\s+(?:process[-_\s]?)?group\b|\bnew\s+session\b|\bisolat(?:e|ed|ion)\b", re.I)
+SUBPROCESS_REAP_FACET=re.compile(r"\bchild\.wait\b|\.wait\(\)|\btry_wait\b|\bwaitpid\b|\breap(?:ed|s|ing)?\b|\bwait/reap\b|\bwait\s+after\s+(?:SIGTERM|SIGKILL|kill|signal)\b|after\s+(?:SIGTERM|SIGKILL|kill|signal)[^.;,\n]*\bwait\b", re.I)
+SUBPROCESS_STREAM_TERMS=re.compile(r"\bstream(?:ing|ed|s)?\b|\bstream[-_\s]?json\b|\bstdio\b|\bstdout\b|\bstderr\b|\breader(?:s)?\b|\braw[-_\s]?vendor[-_\s]?output\b|\bNDJSON\b", re.I)
+SUBPROCESS_STREAM_JOIN_FACET=re.compile(r"\bjoin(?:ed|s|ing)?\s+(?:stdout|stderr|reader|stream|task)s?\b|\b(?:stdout|stderr|reader|stream)[^.;,\n]{0,80}\b(?:join(?:ed|s|ing)?|await(?:ed)?|drain(?:ed)?|closed)\b|\bawait(?:ed)?\s+(?:stdout|stderr|reader|stream)[^.;,\n]{0,80}\btask\b|\bdrain(?:ed)?\s+(?:stdout|stderr|reader|stream)s?\b", re.I)
+SUBPROCESS_LIFECYCLE_EVIDENCE_KIND="subprocess_lifecycle_test"
 PATH_ROOT_TERMS=re.compile(r"\bpath[-_\s]?traversal\b|\btravers(?:e|al|ing)\b.*\boutside\b|\boutside\b.*\b(?:root|roots|director(?:y|ies)|filesystem|file\s+tree)\b|\bescape\b.*\b(?:root|roots|director(?:y|ies)|filesystem|file\s+tree)\b|\broot[-_\s]?contain(?:ed|ment)?\b", re.I)
 PATH_ACCESS_TERMS=re.compile(r"\b(?:read|open|file|filesystem|path|dir|directory|directories|root|roots|skill[-_ ]?id|id)\b", re.I)
 STRING_TRAVERSAL_TERMS=re.compile(r"\.\.|slash|backslash|absolute\s+path|%2f|%5c|encoded\s+(?:slash|path)|path[-_\s]?traversal", re.I)
@@ -373,6 +380,49 @@ def row_evidence_text(rows):
             values.extend(row.get(field) for field in evidence_fields if field in row)
     return text_blob(values)
 
+def subprocess_lifecycle_evidence_text(rows):
+    evidence_fields=('evidence_ref','evidence_refs','method','evidence_method','audit_method','evidence_summary','summary','note','details','rationale')
+    values=[]
+    for row in rows:
+        if isinstance(row,dict):
+            values.extend(row.get(field) for field in evidence_fields if field in row)
+    return text_blob(values)
+
+def subprocess_lifecycle_kind_in_scope(rows):
+    return any(isinstance(row,dict) and evidence_kind(row)==SUBPROCESS_LIFECYCLE_EVIDENCE_KIND for row in rows)
+
+def subprocess_lifecycle_missing_facets(claim_text, evidence_text, *, kind_in_scope=False):
+    if not kind_in_scope and not has_non_negated_scope_term(SUBPROCESS_LIFECYCLE_SCOPE_TERMS, claim_text):
+        return []
+    facets=(
+        ('timeout', SUBPROCESS_TIMEOUT_FACET),
+        ('process_group', SUBPROCESS_PROCESS_GROUP_FACET),
+        ('reap', SUBPROCESS_REAP_FACET),
+    )
+    missing=[name for name,pattern in facets if not has_non_negated_scope_term(pattern, evidence_text)]
+    if has_non_negated_scope_term(SUBPROCESS_STREAM_TERMS, claim_text) and not has_non_negated_scope_term(SUBPROCESS_STREAM_JOIN_FACET, evidence_text):
+        missing.append('stream_join')
+    return missing
+
+def validate_subprocess_lifecycle_evidence(item_id, claim_text, evidence_text, errors, *, kind_in_scope=False):
+    missing=subprocess_lifecycle_missing_facets(claim_text, evidence_text, kind_in_scope=kind_in_scope)
+    if missing:
+        errors.append(f"subprocess_lifecycle[{item_id}] missing facets: {','.join(missing)} — probe/stream subprocess surfaces require timeout + process-group + wait/reap (+ stream-task join) evidence")
+
+def validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, rows, errors):
+    by_acceptance={}
+    for row in rows:
+        rid=row_acceptance_ref(row)
+        if rid:
+            by_acceptance.setdefault(rid,[]).append(row)
+    for acceptance_id, meta in sorted(required_acceptance.items()):
+        if meta.get('severity') not in BLOCKING:
+            continue
+        related=by_acceptance.get(acceptance_id,[])
+        claim_text=text_blob(meta.get('text',''), related)
+        evidence_text=subprocess_lifecycle_evidence_text(related)
+        validate_subprocess_lifecycle_evidence(acceptance_id, claim_text, evidence_text, errors, kind_in_scope=subprocess_lifecycle_kind_in_scope(related))
+
 def outcome_has_auth_secret_surface(outcome_blocks):
     rs=first(outcome_blocks or [],'risk_surface')
     surfaces=rs.get('surfaces') if isinstance(rs,dict) else None
@@ -517,6 +567,7 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
     if missing_neg: errors.append('negative_regression_tests missing P0/P1 outcome acceptance IDs: '+','.join(missing_neg))
     prop_calc=validate_property_obligations(required_acceptance, neg, errors)
     calc['P0']+=prop_calc['P0']; calc['P1']+=prop_calc['P1']
+    validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, spec+neg, errors)
 
     secret=first(bs,'secret_leakage_audit')
     if not isinstance(secret,dict):
@@ -591,6 +642,8 @@ def validate_adv(summary,bs,errors,required_acceptance=None):
                 errors.append(f'adversarial_checks[{i}] {row.get("id")} panic/no-panic audit requires evidence_kind panic_audit|implicit_panic_audit')
             if method_is_mere_grep(row):
                 errors.append(f'adversarial_checks[{i}] {row.get("id")} panic/no-panic audit cannot be mere grep')
+        if st!='not_applicable':
+            validate_subprocess_lifecycle_evidence(row.get('id') or i, combined_text, subprocess_lifecycle_evidence_text([row]), errors, kind_in_scope=evidence_kind(row)==SUBPROCESS_LIFECYCLE_EVIDENCE_KIND)
     missing_acceptance=sorted(set(required_acceptance)-covered_acceptance_ids)
     if missing_acceptance: errors.append('adversarial_checks missing shaped adversarial_acceptance IDs: '+','.join(missing_acceptance))
     for k in ('adversarial_p0_count','adversarial_p1_count'):
