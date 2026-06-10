@@ -29,7 +29,11 @@ BOUNDARY_SURFACES={"string_boundary","input_validation_or_schema"}
 BOUNDARY_EVIDENCE={"non_ascii_boundary_test","malformed_input_test","length_boundary_test","json_boundary_test","schema_validation_test"}
 PANIC_TERMS=re.compile(r"\bno[-\s]?panic\b|\bpanic(?:s|ked|king)?\b|\bunwrap\b|\bexpect\b", re.I)
 PANIC_EVIDENCE={"panic_audit","implicit_panic_audit"}
-SUBPROCESS_LIFECYCLE_SCOPE_TERMS=re.compile(r"\bexternal[-_\s]?subprocess\b|\bsubprocess(?:es)?\b|\bvendor\s+(?:child|process|binary)\b|\bchild\s+process\b|\bspawn(?:s|ed|ing)?\s+(?:the\s+)?(?:vendor|child|subprocess|process|command|helper|argv|binary)\b|\b(?:vendor|child|subprocess|command|helper|binary)[^.;,\n]{0,80}\bspawn(?:s|ed|ing)?\b|Command::output[^.;,\n]{0,80}\b(?:probe|version|auth|ping)\b|\b(?:probe|version|auth|ping)[^.;,\n]{0,80}Command::output|process[-_\s]?group|SIGTERM|SIGKILL|\bkill(?:ed|s|ing)?\b|\bcancel(?:led|s|ing)?\b|\breap(?:ed|s|ing)?\b|\bzombie(?:s)?\b|\borphan(?:ed)?\s+grandchild\b|\bcapability[-_\s]?probe\b|\bprobe_capability\b|\b(?:codex|claude)\s+--version\b|\b(?:codex\s+login|claude\s+auth|auth|login)\s+status\b|\b(?:stream[-_\s]?json\s+)?ping\s+(?:probe|helper|command)\b", re.I)
+SUBPROCESS_LIFECYCLE_STRONG_SCOPE_TERMS=re.compile(r"\bexternal[-_\s]?subprocess\b|\bsubprocess(?:es)?\b|\bvendor\s+(?:child|process|binary|subprocess)\b|\bchild\s+process\b|\bspawn(?:s|ed|ing)?\s+(?:the\s+)?(?:vendor|child|subprocess|process|command|helper|argv|binary|daemon|app[-_\s]?server|call[-_\s]?sites?|failure|path|error)\b|\b(?:vendor|child|subprocess|process|command|helper|argv|binary|daemon|app[-_\s]?server)[^.;,\n]{0,80}\bspawn(?:s|ed|ing)?\b|\bspawn[-_\s]?(?:process|group|command|helper|vendor|child)\b|\b--detach\b|\bdetach(?:ed|es|ing)?\b|\bre[-_\s]?exec\b|\bprocess[-_\s]?group\b|\.process_group\(0\)|\bstart_new_session\b|\bsetsid\b|\bsetpgid\b|SIGTERM|SIGKILL|\bkill\s+(?:-TERM|-9)\b|\bkill\s*\(\s*-?9\s*\)|\bkill\s*\([^)]*\bSIG(?:TERM|KILL)\b[^)]*\)|\bkill(?:ed|s|ing)?\s+(?:the\s+)?(?:child|process|subprocess|daemon|vendor|app[-_\s]?server)\b|\breap(?:ed|s|ing)?\b|\bzombie(?:s)?\b|\borphan(?:ed)?\s+grandchild\b", re.I)
+SUBPROCESS_PROBE_SCOPE_TERMS=re.compile(r"\bprobe(?:s|d|ing)?\b|\bcapability[-_\s]?probe\b|\bprobe_capability\b", re.I)
+SUBPROCESS_PROBE_VENDOR_CONTEXT=re.compile(r"\b(?:codex|claude|vendor|cli|binary|Command)\b|--version\b|\blogin\s+status\b|\bapp[-_\s]?server\b", re.I)
+SUBPROCESS_PROBE_HTTP_CONTEXT=re.compile(r"\bGET\b|(?i:\bendpoint\b|/api/|\bhttp\b|\burl\b|\bAuthorization\b)")
+SUBPROCESS_DEPENDENCY_COMPLIANCE_CLAIM_TERMS=re.compile(r"\bno\s+new\s+(?:external\s+)?(?:dep(?:endenc(?:y|ies)|s)?|dependencies|deps)\b|\b(?:all\s+)?deps?\s+in\s+tech[-_\s]?stack(?:\.yaml)?\b|\bdependency\s+review\b|\bcrate\s*/\s*version[-_\s]?pinning\b|\b(?:crate|version|package)[-_\s]?pinning\b|\b(?:pinned|locked)\s+(?:crate|package|version)\b", re.I)
 SUBPROCESS_TIMEOUT_FACET=re.compile(r"\btime::timeout\b|\btimeout\b|\bdeadline\b|\bwait[-_\s]?timeout\b|\bbounded\s+(?:wait|deadline)\b|\bwait\s+bounded\b", re.I)
 SUBPROCESS_PROCESS_GROUP_FACET=re.compile(r"\.process_group\(0\)|\bprocess[-_\s]?group\b|\bnegative[-_\s]?pgid\b|\bstart_new_session\b|\bsetsid\b|\bsetpgid\b|\bown\s+(?:process[-_\s]?)?group\b|\bnew\s+session\b|\bisolat(?:e|ed|ion)\b", re.I)
 SUBPROCESS_REAP_FACET=re.compile(r"\bchild\.wait\b|\.wait\(\)|\btry_wait\b|\bwaitpid\b|\breap(?:ed|s|ing)?\b|\bwait/reap\b|\bwait\s+after\s+(?:SIGTERM|SIGKILL|kill|signal)\b|after\s+(?:SIGTERM|SIGKILL|kill|signal)[^.;,\n]*\bwait\b", re.I)
@@ -404,6 +408,33 @@ def markdown_acceptance_metadata(path: Path):
         i+=1
     return meta
 
+def markdown_bullet_acceptance_metadata(path: Path):
+    try:
+        lines=path.read_text(encoding='utf-8').splitlines()
+    except OSError:
+        return {}
+    meta={}; i=0
+    bullet=re.compile(r"^\s*-\s+\*\*(?P<id>[A-Za-z0-9][A-Za-z0-9_-]+)\b[^*]*\*\*:\s*(?P<text>.*)$")
+    while i<len(lines):
+        m=bullet.match(lines[i])
+        if not m:
+            i+=1
+            continue
+        row_id=m.group('id')
+        parts=[strip_markdown_cell(m.group('text'))]
+        i+=1
+        while i<len(lines):
+            line=lines[i]
+            if not line.strip() or line.lstrip().startswith(('- **','```')):
+                break
+            if line.startswith((' ', '\t')):
+                parts.append(strip_markdown_cell(line))
+                i+=1
+                continue
+            break
+        meta[row_id]={'text':' '.join(part for part in parts if part),'row':{'id':row_id,'statement':' '.join(part for part in parts if part)}}
+    return meta
+
 def outcome_acceptance_metadata_from_file(bs, path: Path):
     meta=outcome_acceptance_metadata(bs)
     return meta or markdown_acceptance_metadata(path)
@@ -460,8 +491,27 @@ def subprocess_lifecycle_evidence_text(rows):
 def subprocess_lifecycle_kind_in_scope(rows):
     return any(isinstance(row,dict) and evidence_kind(row)==SUBPROCESS_LIFECYCLE_EVIDENCE_KIND for row in rows)
 
+def is_dependency_compliance_claim(text):
+    leading=re.sub(r"\s+"," ", text or "").strip()[:260]
+    return bool(SUBPROCESS_DEPENDENCY_COMPLIANCE_CLAIM_TERMS.search(leading))
+
+def has_vendor_command_probe_scope(text):
+    text=text or ''
+    if not has_non_negated_scope_term(SUBPROCESS_PROBE_SCOPE_TERMS, text):
+        return False
+    if SUBPROCESS_PROBE_HTTP_CONTEXT.search(text):
+        return False
+    return bool(SUBPROCESS_PROBE_VENDOR_CONTEXT.search(text))
+
+def subprocess_lifecycle_claim_in_scope(text):
+    if is_dependency_compliance_claim(text):
+        return False
+    if has_non_negated_scope_term(SUBPROCESS_LIFECYCLE_STRONG_SCOPE_TERMS, text):
+        return True
+    return has_vendor_command_probe_scope(text)
+
 def subprocess_lifecycle_missing_facets(claim_text, evidence_text, *, kind_in_scope=False):
-    if not kind_in_scope and not has_non_negated_scope_term(SUBPROCESS_LIFECYCLE_SCOPE_TERMS, claim_text):
+    if not kind_in_scope and not subprocess_lifecycle_claim_in_scope(claim_text):
         return []
     facets=(
         ('timeout', SUBPROCESS_TIMEOUT_FACET),
@@ -501,7 +551,8 @@ def validate_rpc_cleanup_evidence(item_id, claim_text, rows, errors):
     if rpc_cleanup_claimed(claim_text) and not rpc_cleanup_negative_evidence_in_rows(rows):
         errors.append(f"rpc_cleanup[{item_id}] cleanup-on-every-exit-path claimed but no timeout/error-path cleanup evidence (negative-path test required)")
 
-def validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, rows, errors):
+def validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, rows, errors, grade_claims=None):
+    grade_claims=grade_claims or {}
     by_acceptance={}
     for row in rows:
         rid=row_acceptance_ref(row)
@@ -511,7 +562,7 @@ def validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, ro
         if meta.get('severity') not in BLOCKING:
             continue
         related=by_acceptance.get(acceptance_id,[])
-        claim_text=text_blob(meta.get('text',''), related)
+        claim_text=text_blob(meta.get('text',''), grade_claims.get(acceptance_id,{}).get('text',''), related)
         evidence_text=subprocess_lifecycle_evidence_text(related)
         validate_subprocess_lifecycle_evidence(acceptance_id, claim_text, evidence_text, errors, kind_in_scope=subprocess_lifecycle_kind_in_scope(related))
 
@@ -809,7 +860,7 @@ def validate_property_obligations(required_acceptance, neg, errors):
             errors.append(f"property_obligation[{acceptance_id}] missing required negative coverage facets: {','.join(missing)}")
     return calc
 
-def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_status, outcome_blocks=None):
+def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_status, outcome_blocks=None, grade_claims=None):
     """All code tasks need replayable spec/security/negative-test evidence."""
     required_acceptance = required_acceptance or acceptance_status_metadata(acceptance_status)
     required_ids=set(required_acceptance)
@@ -859,7 +910,7 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
     if missing_neg: errors.append('negative_regression_tests missing P0/P1 outcome acceptance IDs: '+','.join(missing_neg))
     prop_calc=validate_property_obligations(required_acceptance, neg, errors)
     calc['P0']+=prop_calc['P0']; calc['P1']+=prop_calc['P1']
-    validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, spec+neg, errors)
+    validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, spec+neg, errors, grade_claims)
     validate_rpc_cleanup_acceptance_obligations(required_acceptance, acceptance_status, spec+neg, errors)
     validate_event_source_obligations(required_acceptance, spec+neg, errors)
     validate_auth_status_acceptance_obligations(required_acceptance, acceptance_status, spec, neg, errors)
@@ -969,7 +1020,7 @@ def lint(task_type,risk_level,grade_file,outcome_file):
     validate_required(summary,acceptance,errors); gated=is_gate(task_type,risk_level); code_gate=(task_type=='code')
     obs=blocks(outcome_file, include_front_matter=True) if code_gate or gated else []
     if code_gate:
-        validate_code_baseline(summary,gbs,errors,outcome_acceptance_metadata_from_file(obs,outcome_file),acceptance,obs)
+        validate_code_baseline(summary,gbs,errors,outcome_acceptance_metadata_from_file(obs,outcome_file),acceptance,obs,markdown_bullet_acceptance_metadata(grade_file))
     if gated:
         validate_outcome(obs,errors)
         required=adversarial_acceptance_metadata(obs)

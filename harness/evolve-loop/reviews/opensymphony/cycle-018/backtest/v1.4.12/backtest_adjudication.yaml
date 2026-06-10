@@ -1,0 +1,123 @@
+# Adjudication of misfire candidates from the v1.4.12 backtest (baseline v1.4.11).
+# Protocol: in-loop self-adjudication + preserved evidence + fresh-context verification.
+backtest: v1.4.12
+baseline_ref: v1.4.11
+target_cycle: cycle-018
+must_fire: true   # delta=12 on cycle-018 grade_round_1.md covering all 5 new rule families
+adjudicated_by: claude-orchestrator (bs-evolve-loop)
+adjudicated_at: "2026-06-10"
+verdicts:
+  - cycle: cycle-009
+    rule: subprocess_lifecycle
+    fired_on: "B001-DAEMON-RUN (grade_round_1.md ~L33-36)"
+    verdict: true_positive_historical
+    rationale: >
+      Affirmative lifecycle claim — "`--detach` re-exec + process_group" — whose cited
+      evidence (integration test asserting 'already running' on a second run) carries no
+      timeout/wait-reap facet. A detached daemon spawn without startup-handshake timeout or
+      exit accounting is a genuine historical weakness of the same class as r1-F1/F2.
+      Cycle closed; archive only.
+    evidence_quote: >
+      "B001-DAEMON-RUN (P0) — pass: ... `--detach` re-exec + process_group; integration
+      test asserts second run reports 'already running'."
+  - cycle: cycle-009
+    rule: subprocess_lifecycle
+    fired_on: "B001-DAEMON-STOP (grade_round_1.md ~L40-42)"
+    verdict: true_positive_historical
+    rationale: >
+      "SIGTERM graceful shutdown" claim whose evidence asserts file cleanup (4 files gone +
+      status not-running), not process termination accounting (no wait/try_wait or
+      exit-confirmation facet). Under the new standard this rightly needs a reap/termination
+      facet. Cycle closed; archive only.
+    evidence_quote: >
+      "B001-DAEMON-STOP (P0) — pass: SIGTERM graceful shutdown; reverse-order removal
+      (port→token→pid→instance.id) + lock release; integration test asserts all 4 files
+      gone and a subsequent status reports 'not running'."
+  - cycle: cycle-009
+    rule: subprocess_lifecycle
+    fired_on: "B001-NO-NEW-DEPS (grade_round_1.md ~L27-28)"
+    verdict: false_positive
+    rationale: >
+      This is a DEPENDENCY-COMPLIANCE row ("all deps in tech-stack.yaml; no
+      daemonize/nix/libc") that mentions `CommandExt::process_group(0)` only as rationale
+      for why no new crate was needed. The lifecycle claim itself lives in
+      B001-DAEMON-RUN, which already carries the obligation. Charging a deps row with
+      lifecycle facets is duplicate scoping.
+    required_fix: >
+      v1.4.12 refinement: exempt dependency-review rows (text whose claim is dependency
+      compliance: "no new dep(s)", "deps in tech-stack", crate/version-pinning phrasing)
+      from subprocess_lifecycle obligations; must-not-fire fixture from B001-NO-NEW-DEPS
+      real text. Must NOT weaken DAEMON-RUN/STOP or any cycle-018 fire.
+  - cycle: cycle-013
+    rule: subprocess_lifecycle
+    fired_on: "B002-IFMATCH (grade_round_0.md ~L50-54)"
+    verdict: false_positive
+    rationale: >
+      Scope-term collision: the row text "if_match_middleware on
+      execute/approve/re-shape/cancel" matches the lifecycle term 'cancel', but 'cancel'
+      here is an HTTP ENDPOINT NAME in an If-Match revision-check claim — no subprocess
+      context whatsoever.
+    required_fix: >
+      v1.4.12 refinement: weak lifecycle terms ('cancel', bare 'timeout', 'stop') put a row
+      in scope only when co-located with a process-context noun (process/subprocess/child/
+      spawn/daemon/vendor turn/app-server/probe/command); strong terms (process group,
+      reap, zombie, SIGTERM/SIGKILL, subprocess, spawn) remain sufficient alone.
+      Must-not-fire fixture from B002-IFMATCH real text. Must NOT weaken cycle-018 fires
+      (those rows carry probe/process-group/reap context).
+fresh_context_verification: pending
+# ---- round 2 (after refinement A2b widened context-noun co-location) ----
+round2_verdicts:
+  - cycle: cycle-013
+    rule: subprocess_lifecycle
+    fired_on: "B002-NO-REGRESSION (grade_round_0.md)"
+    verdict: true_positive_historical
+    rationale: >
+      The row affirmatively re-asserts B-001 daemon run/status/stop lifecycle behavior and
+      mentions raw `kill -TERM`; evidence is an e2e (run->status->stop->files removed)
+      without termination-accounting facets — the same class as the adjudicated
+      B001-DAEMON-RUN/STOP true positives. Consistency requires the same verdict.
+  - cycle: cycle-013
+    rule: subprocess_lifecycle
+    fired_on: "B002-STATUS (grade_round_0.md)"
+    verdict: false_positive
+    rationale: >
+      'probe' here is an HTTP status probe (`fetch_status_bounded`, GET
+      /api/v1/daemon/status, Authorization: Bearer) — no subprocess is spawned. Term
+      collision between vendor-CLI capability probes (subprocess) and HTTP probes.
+  - cycle: cycle-009
+    rule: subprocess_lifecycle
+    fired_on: "B001-QUALITY (grade_round_1.md)"
+    verdict: false_positive
+    rationale: >
+      Pure code-quality row (no unwrap/panic, thiserror enum, clippy, nextest, tempdir
+      isolation) — no subprocess-lifecycle claim of any kind.
+  - cycle: cycle-016
+    rule: subprocess_lifecycle
+    fired_on: "ADV-CHECK-CONCURRENCY (grade_round_0.md)"
+    verdict: false_positive
+    rationale: >
+      fs4 file-lock concurrency test (16 concurrent appenders, torn-write check) — file
+      locking, not process lifecycle.
+round2_required_fix: >
+  A2c: drop weak-term (cancel/stop/timeout) scoping entirely — the corpus-observed
+  invariant is that every adjudicated true positive carries a STRONG term (process_group /
+  SIGTERM / kill -TERM / spawn / detach / re-exec / reap / zombie / subprocess). Scope =
+  strong terms only (non-negated), with 'probe' counting only in vendor-command context
+  (codex/claude/vendor/CLI/binary/--version/login status) and never in HTTP context
+  (GET/endpoint/api/http/url). Fixtures from all four round-2 real texts + preserved
+  true-positive fixtures.
+# ---- round 3 (after A2c strong-term-only refinement) ----
+round3_convergence:
+  result: converged
+  must_fire: true   # cycle-018 delta=13, all 5 rule families
+  remaining_fires:
+    - "cycle-009 B001-DAEMON-RUN (true_positive_historical, round 1)"
+    - "cycle-009 B001-DAEMON-STOP (true_positive_historical, round 1)"
+    - "cycle-013 B002-NO-REGRESSION (true_positive_historical, round 2)"
+  false_positives_remaining: 0
+  note: >
+    All five adjudicated false positives (B001-NO-NEW-DEPS, B002-IFMATCH, B001-QUALITY,
+    B002-STATUS, ADV-CHECK-CONCURRENCY) are silent under A2c; all adjudicated true
+    positives still fire. Scope predicate is now strong-term-only (non-negated), with
+    'probe' requiring vendor-command context and an HTTP guard — the corpus-observed
+    invariant that every true positive carries a strong term.

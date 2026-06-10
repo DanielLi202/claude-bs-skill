@@ -1,0 +1,22 @@
+{
+  "grade_lint": {
+    "code_baseline_gate": true,
+    "errors": [
+      "code grade missing parseable spec_compliance_matrix block",
+      "spec_compliance_matrix missing outcome acceptance IDs: B002-API-CRATE,B002-AUTH,B002-COMMAND-CLASS,B002-CORS,B002-DAEMON-PROGRESS,B002-ERROR-ENVELOPE,B002-IFMATCH,B002-INSTANCE-HEADER,B002-NO-REGRESSION,B002-QUALITY,B002-SSE,B002-STATUS",
+      "code grade missing parseable negative_regression_tests block",
+      "negative_regression_tests missing P0/P1 outcome acceptance IDs: B002-API-CRATE,B002-AUTH,B002-CORS,B002-DAEMON-PROGRESS,B002-ERROR-ENVELOPE,B002-IFMATCH,B002-INSTANCE-HEADER,B002-NO-REGRESSION,B002-QUALITY,B002-SSE,B002-STATUS",
+      "code grade missing parseable secret_leakage_audit block",
+      "code grade missing parseable dependency_spec_review block",
+      "dependency_spec_review must include at least one applicable row because outcome acceptance references dependencies/versions/packages",
+      "adversarial_acceptance[4] ADV-IFMATCH-SPLIT P0/P1 verification_hint makes current validation optional via optional wording",
+      "adversarial_checks missing shaped adversarial_acceptance IDs: ADV-AUTH-LEAK,ADV-AUTH-QUERYTOKEN,ADV-CORS-FOREIGN,ADV-IFMATCH-SPLIT,ADV-INSTANCE-ID,ADV-RUNTIME-FILE-TRUST,ADV-SSE-NO-PROGRESS-TEXT"
+    ],
+    "grade_file": "/Users/lidongyuan/workspace/utils/OpenSymphony-V3/.prompts/dogfood/cycle-013/grade_round_0.md",
+    "medium_high_code_gate": true,
+    "outcome_file": "/Users/lidongyuan/workspace/utils/OpenSymphony-V3/.prompts/dogfood/cycle-013/outcome.md",
+    "risk_level": "medium",
+    "status": "fail",
+    "task_type": "code"
+  }
+}

@@ -452,6 +452,416 @@ SUBPROCESS_LIFECYCLE_COMPLETE_GRADE=SUBPROCESS_LIFECYCLE_INSUFFICIENT_GRADE.repl
     'src/codex/mod.rs:327-404 real in-process round trip + ephemeral-negative; failures map to VersionTooOld/LoginRequired/GoalRpcUnavailable; never builds an exec/--json/text-goal fallback argv; tests codex_fake_vendor_probe_exercises_goal_rpc_round_trip + codex_probe_maps_not_logged_in_without_secret_leakage + handoff_argv_uses_goal_rpc_without_exec_json_or_text_goal_fallback (nextest green)',
     'src/process.rs spawn_process_group .process_group(0) own process-group isolation; every probe/version/auth-status/ping helper command is wrapped in time::timeout wait timeout/deadline; after SIGTERM/SIGKILL the child.wait().await wait/reap path runs; stream-json stdout/stderr reader tasks are awaited, joined, and drained before return; nextest green'
 )
+B001_NO_NEW_DEPS_OUTCOME='''# Outcome — cycle-009-derived dependency row
+```yaml
+acceptance:
+  - id: B001-NO-NEW-DEPS
+    severity: P1
+    statement: >
+      B001-NO-NEW-DEPS (P1) — pass: all deps in tech-stack.yaml; no daemonize/nix/libc;
+      `--detach` via std `CommandExt::process_group(0)`.
+```
+'''
+B001_NO_NEW_DEPS_GRADE='''# Grade — cycle-009-derived dependency row
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: B001-NO-NEW-DEPS, status: pass, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: B001-NO-NEW-DEPS
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/architecture/tech-stack.yaml
+    evidence_ref: "all deps in tech-stack.yaml; no daemonize/nix/libc; `--detach` via std `CommandExt::process_group(0)`"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: B001-NO-NEW-DEPS
+    status: pass
+    severity_if_fail: P1
+    scenario: "dependency review rejects new external daemon crates"
+    evidence_ref: "tech-stack dependency check"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: dependency compliance fixture does not touch secrets
+```
+```yaml
+dependency_spec_review:
+  - dependency: "daemonize/nix/libc"
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/architecture/tech-stack.yaml
+    evidence_ref: "all deps in tech-stack.yaml; no daemonize/nix/libc"
+```
+'''
+B002_IFMATCH_OUTCOME='''# Outcome — cycle-013-derived If-Match row
+```yaml
+acceptance:
+  - id: B002-IFMATCH
+    severity: P1
+    statement: >
+      B002-IFMATCH (P0) — pass: `if_match_middleware` on execute/approve/re-shape/cancel:
+      missing → 428 `missing_precondition` (endpoint + expected_header); stale → 409
+      `revision_conflict` (expected/current/changed_since); match → 2xx; answer-qa/edit-outcome
+      optional. Tested (428/409/match). (Atomic CAS for true concurrency is deferred to B-004 —
+      see deferred_claims; B-002 handlers are stubs with no real state to corrupt.)
+```
+'''
+B002_IFMATCH_GRADE='''# Grade — cycle-013-derived If-Match row
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: B002-IFMATCH, status: pass, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: B002-IFMATCH
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/api.md#if-match
+    evidence_ref: "if_match_middleware on execute/approve/re-shape/cancel covers 428/409/match"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: B002-IFMATCH
+    status: pass
+    severity_if_fail: P1
+    scenario: "missing/stale/matching If-Match headers on execute/approve/re-shape/cancel endpoints"
+    evidence_ref: "428/409/match endpoint tests"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: If-Match endpoint fixture does not touch secrets
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: no dependency changes in this fixture
+```
+'''
+B001_DAEMON_LIFECYCLE_OUTCOME='''# Outcome — cycle-009-derived daemon lifecycle rows
+```yaml
+acceptance:
+  - id: B001-DAEMON-RUN
+    severity: P1
+    statement: >
+      B001-DAEMON-RUN (P0) — pass: fs4 `try_lock` exclusive (WouldBlock → AlreadyRunning,
+      no clobber); base64url 32B token; UUID-v7 instance.id; atomic tempfile+sync+rename in
+      order with port last; modes 0600/0644; JSON tracing; axum bind 127.0.0.1:0; `--detach`
+      re-exec + process_group; integration test asserts second run reports "already running".
+  - id: B001-DAEMON-STOP
+    severity: P1
+    statement: >
+      B001-DAEMON-STOP (P0) — pass: SIGTERM graceful shutdown; reverse-order removal
+      (port→token→pid→instance.id) + lock release; integration test asserts all 4 files gone
+      and a subsequent status reports "not running".
+```
+'''
+B001_DAEMON_LIFECYCLE_GRADE='''# Grade — cycle-009-derived daemon lifecycle rows
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: B001-DAEMON-RUN, status: pass, severity: P1}
+  - {id: B001-DAEMON-STOP, status: pass, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: B001-DAEMON-RUN
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/daemon.md#run
+    evidence_ref: "integration test asserts second run reports already running"
+  - acceptance_id: B001-DAEMON-STOP
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/daemon.md#stop
+    evidence_ref: "integration test asserts all 4 files gone and status reports not running"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: B001-DAEMON-RUN
+    status: pass
+    severity_if_fail: P1
+    scenario: "second daemon run reports already running"
+    evidence_ref: "already-running integration test"
+  - acceptance_id: B001-DAEMON-STOP
+    status: pass
+    severity_if_fail: P1
+    scenario: "stop removes runtime files and status reports not running"
+    evidence_ref: "stop integration test"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: daemon lifecycle fixture does not touch secret leakage surfaces
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: no dependency changes in this fixture
+```
+'''
+B001_QUALITY_OUTCOME='''# Outcome — cycle-009 real quality row
+```yaml
+acceptance:
+  - id: B001-QUALITY
+    severity: P1
+    statement: >
+      No unwrap()/expect()/panic!() in non-test production code paths. Domain errors
+      use a thiserror DaemonError enum modeled on daemon.md §9 (AlreadyRunning,
+      LockFailed, BindFailed, ...); infra boundaries use anyhow::Result.
+      `cargo clippy --workspace --all-targets -- -D warnings` is clean and
+      `cargo nextest run --workspace` (or `cargo test --workspace`) passes, including
+      the storage path/mode tests and the daemon run/status/stop integration test.
+      Every test that touches the filesystem uses an isolated SYMPHONY_HOME tempdir,
+      never the real ~/.symphony.
+```
+'''
+B001_QUALITY_GRADE='''# Grade — cycle-009 real quality row
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: B001-QUALITY, status: pass, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: B001-QUALITY
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/daemon.md#quality
+    evidence_ref: "B001-QUALITY (P1) — pass: no unwrap/expect/panic in production paths; thiserror `DaemonError` enum (AlreadyRunning/LockFailed/BindFailed/…); clippy `-D warnings` clean; nextest 5/5; every fs-touching test uses an isolated SYMPHONY_HOME tempdir."
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: B001-QUALITY
+    status: pass
+    severity_if_fail: P1
+    scenario: "daemon run/status/stop integration test remains covered by nextest"
+    evidence_ref: "nextest 5/5"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: quality fixture does not touch secret leakage surfaces
+```
+```yaml
+dependency_spec_review:
+  - dependency: "workspace quality tooling"
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/architecture/tech-stack.yaml
+    evidence_ref: "cargo clippy and cargo nextest use workspace-pinned tooling"
+```
+'''
+B002_STATUS_HTTP_PROBE_OUTCOME='''# Outcome — cycle-013 real HTTP status probe row
+```yaml
+acceptance:
+  - id: B002-STATUS
+    severity: P1
+    statement: >
+      Authenticated `GET /api/v1/daemon/status` returns 200 with JSON containing at
+      least instance_id, pid, port, version, uptime_sec, binding ("127.0.0.1"), and
+      log_path (B-001 fields preserved; §3.7 count fields like workspaces_active /
+      runs_active / vendor_subprocesses / autostart_enabled may be derived from the
+      minimal projection or 0/false). No secret field (token) is ever present. The
+      daemon's internal readiness/status/stop probe sends `Authorization: Bearer
+      <token>` read from daemon.token.
+```
+'''
+B002_STATUS_HTTP_PROBE_GRADE='''# Grade — cycle-013 real HTTP status probe row
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: B002-STATUS, status: pass, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: B002-STATUS
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/api.md#status
+    evidence_ref: "B002-STATUS (P0) — pass: authenticated `GET /api/v1/daemon/status` returns the §3.7 JSON (instance_id, pid, port, version, uptime_sec, started_at, binding=127.0.0.1, workspaces_active, runs_active, vendor_subprocesses, autostart_enabled, log_path); no token field. The internal probe (`fetch_status_bounded`) + stop (`post_stop_bounded`) send `Authorization: Bearer <token>` read from `daemon.token`, plus an `X-Symphony-Instance-Id` response check. `symphony daemon status`/`stop` pass in `daemon_cli.rs`."
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: B002-STATUS
+    status: pass
+    severity_if_fail: P1
+    scenario: "authenticated GET /api/v1/daemon/status plus Authorization Bearer status probe"
+    evidence_ref: "daemon_cli.rs status probe"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: HTTP status probe fixture does not expose token fields
+```
+```yaml
+dependency_spec_review:
+  - dependency: "status endpoint version field"
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/architecture/tech-stack.yaml
+    evidence_ref: "status response version field is application metadata, no new dependency"
+```
+'''
+B002_NO_REGRESSION_OUTCOME='''# Outcome — cycle-013 real daemon lifecycle regression row
+```yaml
+acceptance:
+  - id: B002-NO-REGRESSION
+    severity: P1
+    statement: >
+      B-001 behavior is preserved: `symphony daemon run` / `daemon status` / `daemon
+      stop` lifecycle still works (now against the authenticated status endpoint),
+      runtime-file atomic-write ordering + modes (token 600) unchanged, single-instance
+      fs4 lock unchanged, reverse-order cleanup unchanged, terminal close does not kill
+      the daemon. The existing apps/symphony/tests/daemon_cli.rs integration test passes
+      (updated as needed for the auth change).
+```
+'''
+B002_NO_REGRESSION_GRADE='''# Grade — cycle-013 real daemon lifecycle regression row
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: B002-NO-REGRESSION, status: pass, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: B002-NO-REGRESSION
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/daemon.md#lifecycle
+    evidence_ref: "B002-NO-REGRESSION (P1) — pass: B-001 daemon run/status/stop lifecycle, atomic runtime-file ordering + modes, fs4 lock, reverse-order cleanup preserved; `daemon_cli.rs` (run→authed status 200→stop→files removed, stale-port/instance recovery) passes; stop now uses the authenticated API endpoint rather than raw `kill -TERM`."
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: B002-NO-REGRESSION
+    status: pass
+    severity_if_fail: P1
+    scenario: "daemon_cli.rs run→authed status 200→stop→files removed"
+    evidence_ref: "daemon_cli.rs"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: daemon lifecycle regression fixture does not touch secret leakage surfaces
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: no dependency changes in this fixture
+```
+'''
+ADV_CONCURRENCY_OUTCOME='''# Outcome — cycle-016 real concurrency adversarial row
+```yaml
+risk_surface:
+  surfaces:
+    concurrency_or_locking: {present: true}
+```
+```yaml
+adversarial_acceptance:
+  - id: B004-ADV-CONCURRENCY-1
+    surface: concurrency_or_locking
+    severity: P1
+    evidence_kind: concurrency_test
+    verification_hint: "Spawn 2+ concurrent appenders writing distinct idempotency keys to one events.jsonl guarded by the fs4 exclusive lock; assert the final line count equals the total number of appends, every line parses as exactly one JSON object, and there are no interleaved or partial writes."
+```
+'''
+ADV_CONCURRENCY_GRADE='''# Grade — cycle-016 real concurrency adversarial row
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0, adversarial_p0_count: 0, adversarial_p1_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: A1, status: pass, severity: P1}
+```
+```yaml
+adversarial_checks:
+  - id: ADV-CHECK-CONCURRENCY
+    acceptance_ref: B004-ADV-CONCURRENCY-1
+    surface: concurrency_or_locking
+    status: pass
+    severity_if_fail: P1
+    evidence_kind: concurrency_test
+    evidence_ref: "symphony-ledger::tests::concurrent_appenders_write_complete_lf_terminated_json_lines — 16 concurrent appenders (separate fds) under the fs4 exclusive lock yield exactly 16 complete, LF-terminated, individually-parseable JSON lines (no interleave/torn write)."
+```
+```yaml
+trust_surface_inventory:
+  verified_items:
+    - surface: concurrent_ledger_append
+      status: verified
+      note: "fs4 exclusive lock + 5s timeout (FileLockTimeout) + fsync; validate-before-write; 16-thread test green"
+  unverified_items: []
+```
+```yaml
+deferred_claims: []
+```
+''' + A1_CODE_SECTIONS
+VENDOR_PROBE_OUTCOME='''# Outcome — vendor command probe row
+```yaml
+acceptance:
+  - id: VENDOR-PROBE
+    severity: P1
+    statement: >
+      Codex capability probe invokes the vendor CLI binary via Command and checks
+      --version before use.
+```
+'''
+VENDOR_PROBE_GRADE='''# Grade — vendor command probe row
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: VENDOR-PROBE, status: pass, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: VENDOR-PROBE
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/vendor.md#probe
+    evidence_ref: "Codex capability probe verifies --version"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: VENDOR-PROBE
+    status: pass
+    severity_if_fail: P1
+    scenario: "vendor CLI binary probe maps unsupported version"
+    evidence_ref: "probe status mapping test"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: vendor probe fixture does not touch secret leakage surfaces
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: no dependency changes in this fixture
+```
+'''
 RPC_CLEANUP_OUTCOME='''# Outcome Capsule — B-018 M5 Conduct adapter (cycle-018, Phase 2)
 ```yaml
 acceptance:
@@ -815,6 +1225,48 @@ class GradeLintTests(unittest.TestCase):
         proc,p=self.run_lint('code','medium',SUBPROCESS_LIFECYCLE_COMPLETE_GRADE,SUBPROCESS_LIFECYCLE_OUTCOME)
         self.assertEqual(proc.returncode,0,p)
 
+    def test_cycle009_dependency_row_process_group_rationale_does_not_trigger_subprocess_lifecycle(self):
+        proc,p=self.run_lint('code','low',B001_NO_NEW_DEPS_GRADE,B001_NO_NEW_DEPS_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_cycle013_ifmatch_cancel_endpoint_does_not_trigger_subprocess_lifecycle(self):
+        proc,p=self.run_lint('code','low',B002_IFMATCH_GRADE,B002_IFMATCH_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_cycle009_daemon_run_stop_lifecycle_rows_still_trigger_subprocess_lifecycle(self):
+        proc,p=self.run_lint('code','low',B001_DAEMON_LIFECYCLE_GRADE,B001_DAEMON_LIFECYCLE_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertIn('subprocess_lifecycle[B001-DAEMON-RUN] missing facets:', errors)
+        self.assertIn('subprocess_lifecycle[B001-DAEMON-STOP] missing facets:', errors)
+
+    def test_cycle009_quality_stop_word_near_daemon_does_not_trigger_subprocess_lifecycle(self):
+        """A2b fired because weak stop in daemon run/status/stop co-located with daemon; A2c deletes weak-term scoping."""
+        proc,p=self.run_lint('code','low',B001_QUALITY_GRADE,B001_QUALITY_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_cycle013_http_status_probe_does_not_trigger_subprocess_lifecycle(self):
+        proc,p=self.run_lint('code','low',B002_STATUS_HTTP_PROBE_GRADE,B002_STATUS_HTTP_PROBE_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_cycle013_no_regression_kill_term_still_triggers_subprocess_lifecycle(self):
+        proc,p=self.run_lint('code','low',B002_NO_REGRESSION_GRADE,B002_NO_REGRESSION_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn('subprocess_lifecycle[B002-NO-REGRESSION] missing facets:', '\n'.join(p['grade_lint']['errors']))
+
+    def test_cycle016_concurrency_spawn_appenders_does_not_trigger_subprocess_lifecycle(self):
+        """A2b fired because broad spawn matched Spawn 2+ concurrent appenders; A2c treats spawn as process-action scope only."""
+        proc,p=self.run_lint('code','medium',ADV_CONCURRENCY_GRADE,ADV_CONCURRENCY_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_vendor_probe_context_triggers_but_http_probe_guard_wins(self):
+        proc,p=self.run_lint('code','low',VENDOR_PROBE_GRADE,VENDOR_PROBE_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn('subprocess_lifecycle[VENDOR-PROBE] missing facets:', '\n'.join(p['grade_lint']['errors']))
+        http_outcome=VENDOR_PROBE_OUTCOME.replace('Codex capability probe invokes the vendor CLI binary via Command and checks\n      --version before use.', 'Codex capability probe checks GET /api/v1/daemon/status endpoint URL with Authorization before use.')
+        proc,p=self.run_lint('code','low',VENDOR_PROBE_GRADE,http_outcome)
+        self.assertEqual(proc.returncode,0,p)
+
     def test_cycle016_clean_ledger_timeout_text_does_not_trigger_subprocess_lifecycle(self):
         proc,p=self.run_lint('code','low',CYCLE016_LEDGER_CLEAN_GRADE,CYCLE016_LEDGER_CLEAN_OUTCOME)
         self.assertEqual(proc.returncode,0,p)
@@ -822,7 +1274,10 @@ class GradeLintTests(unittest.TestCase):
     def test_cycle018_real_rpc_clear_archive_source_claim_requires_negative_path_cleanup_evidence(self):
         proc,p=self.run_lint('code','low',RPC_CLEANUP_SOURCE_ROW_GRADE,RPC_CLEANUP_SOURCE_ROW_OUTCOME)
         self.assertEqual(proc.returncode,1)
+        # the real B018-A5 text carries vendor-probe strong terms, so under the A2c
+        # strong-term-only scoping it legitimately fires the lifecycle obligation too
         self.assertEqual(p['grade_lint']['errors'], [
+            'subprocess_lifecycle[B018-A5] missing facets: timeout,process_group,reap — probe/stream subprocess surfaces require timeout + process-group + wait/reap (+ stream-task join) evidence',
             'rpc_cleanup[B018-A5] cleanup-on-every-exit-path claimed but no timeout/error-path cleanup evidence (negative-path test required)'
         ])
 
