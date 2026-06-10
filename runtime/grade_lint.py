@@ -57,6 +57,21 @@ SECRET_TOKEN_SHAPE_PATTERNS={
     "authorization_bearer": re.compile(r"\bauthorization\s*:\s*bearer\b|\bauthorization[-_\s]*bearer\b|\bhttp[-_\s]*header\b[^.;,\n]*\bbearer\b|\bbearer[-_\s]*header\b", re.I),
 }
 SECRET_BARE_SK_PATTERN=re.compile(r"(?<![\"':/A-Za-z0-9_-])sk-[A-Za-z0-9][A-Za-z0-9._-]*(?![A-Za-z0-9_-])", re.I)
+EVENT_SOURCE_TOKEN=re.compile(r"`([^`]+)`|\"([^\"]+)\"|'([^']+)'|(?<![A-Za-z0-9_-])([A-Za-z][A-Za-z0-9_-]*(?:[/.][A-Za-z0-9_*_-]+)+)(?![A-Za-z0-9_-])")
+EVENT_SOURCE_BARE={"result"}
+EVENT_SOURCE_PREFIXES={"system","thread","turn","item"}
+EVENT_SOURCE_PATHLIKE=re.compile(r"\.(?:md|json|jsonl|rs|py|toml|yaml|yml|txt|log)\b|/\.|^\.|(?:^|/)(?:docs|src|crates|tests|evidence|runtime|lib|prompts|harness|bundle)(?:/|$)", re.I)
+EVENT_MAPPING_VERBS=re.compile(r"\b(?:emit(?:s|ted|ting)?|normaliz(?:e|es|ed|ing)|produc(?:e|es|ed|ing)|map(?:s|ped|ping)?|yield(?:s|ed|ing)?|convert(?:s|ed|ing)?|writ(?:e|es|ten|ing)|append(?:s|ed|ing)?|driv(?:e|es|en|ing)|source(?:s)?)\b|[-=]+>|→", re.I)
+EVENT_SOURCE_NEGATED_SUFFIX=re.compile(r"^\W*(?:is|are|was|were|be|being)?\W*(?:missing|absent|omitted|raced|unavailable|not\s+present)\b", re.I)
+EVENT_PROOF_TERMS=re.compile(r"\b(?:test(?:s)?|fixture(?:s)?|case(?:s)?|assert(?:s|ed|ion)?|probe(?:s)?|regression|parameteri[sz]ed|nextest)\b|::|#\[test\]", re.I)
+EVENT_MULTI_SOURCE_PROOF_TERMS=re.compile(r"\b(?:each|per[-_\s]?source|per[-_\s]?event|parameteri[sz]ed|cases?)\b", re.I)
+EVENT_AGGREGATE_EVIDENCE_TERMS=re.compile(r"(?:>=|≥)\s*1|\bat least one\b|\bexactly one\b|\bcount(?:s|ed)?\b|\baggregate(?:d|-only)?\b|\bcombined\b|\bassert_exit_condition\b|\be2e\b|\bfake[-_\s]?vendor\b", re.I)
+EVENT_OUTPUT_PATTERNS=(
+    ("goal_snapshot", re.compile(r"\bgoal[_\s-]?snapshot\b|\bGoalSnapshot\b", re.I)),
+    ("plan_snapshot", re.compile(r"\bplan[_\s-]?snapshot\b|\bPlanSnapshot\b", re.I)),
+    ("task_end", re.compile(r"\btask[_\s-]?end\b|\bterminal\s+event\b", re.I)),
+    ("failure", re.compile(r"\bfailure\b", re.I)),
+)
 class LintError(ValueError): pass
 
 def split_top_level(text, sep=','):
@@ -346,6 +361,43 @@ def outcome_acceptance_metadata(bs):
                 meta[row['id']]={'severity':row.get('severity'),'text':text_blob(row),'row':row}
     return meta
 
+def strip_markdown_cell(text):
+    text=re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text or '')
+    return text.replace('**','').replace('__','').replace('<br>',' ').strip()
+
+def split_markdown_row(line):
+    if not line.lstrip().startswith('|'): return []
+    body=line.strip().strip('|')
+    return [strip_markdown_cell(cell) for cell in body.split('|')]
+
+def markdown_acceptance_metadata(path: Path):
+    try:
+        lines=path.read_text(encoding='utf-8').splitlines()
+    except OSError:
+        return {}
+    meta={}; i=0
+    while i<len(lines)-1:
+        header=split_markdown_row(lines[i])
+        lower=[cell.lower() for cell in header]
+        if {'id','acceptance','severity'}.issubset(set(lower)):
+            idx_id=lower.index('id'); idx_text=lower.index('acceptance'); idx_sev=lower.index('severity')
+            i+=2
+            while i<len(lines) and lines[i].lstrip().startswith('|'):
+                cells=split_markdown_row(lines[i])
+                if len(cells)>max(idx_id,idx_text,idx_sev):
+                    row_id=cells[idx_id].strip()
+                    severity=cells[idx_sev].strip()
+                    if row_id and severity in {'P0','P1','P2'}:
+                        meta[row_id]={'severity':severity,'text':cells[idx_text],'row':{'id':row_id,'severity':severity,'statement':cells[idx_text]}}
+                i+=1
+            continue
+        i+=1
+    return meta
+
+def outcome_acceptance_metadata_from_file(bs, path: Path):
+    meta=outcome_acceptance_metadata(bs)
+    return meta or markdown_acceptance_metadata(path)
+
 def acceptance_status_metadata(acceptance):
     meta={}
     if isinstance(acceptance,list):
@@ -475,6 +527,109 @@ def validate_rpc_cleanup_acceptance_obligations(required_acceptance, acceptance_
             related,
         )
         validate_rpc_cleanup_evidence(acceptance_id, claim_text, related, errors)
+
+def event_output_names(text):
+    return [name for name,pattern in EVENT_OUTPUT_PATTERNS if has_non_negated_scope_term(pattern,text)]
+
+def canonical_event_source(raw):
+    return raw.strip().strip('`"\'').strip().rstrip(':,.;').lower()
+
+def event_source_allowed(source):
+    if not source or EVENT_SOURCE_PATHLIKE.search(source):
+        return False
+    if source in EVENT_SOURCE_BARE:
+        return True
+    if '/' not in source and '.' not in source:
+        return False
+    parts=re.split(r"[/.]", source)
+    return bool(parts and parts[0] in EVENT_SOURCE_PREFIXES and 1 < len(parts) <= 4 and all(parts))
+
+def event_source_negated(text, start, end):
+    prefix=text[max(0,start-80):start]
+    suffix=text[end:end+80]
+    return bool(NEGATED_SCOPE_PREFIX.search(prefix) or EVENT_SOURCE_NEGATED_SUFFIX.search(suffix))
+
+def append_unique(seq, item):
+    if item not in seq:
+        seq.append(item)
+
+def event_sources_from_segment(segment):
+    sources=[]; slash_or_dot_seen=False
+    for match in EVENT_SOURCE_TOKEN.finditer(segment):
+        raw=None; start=end=-1
+        for group in range(1,5):
+            if match.group(group) is not None:
+                raw=match.group(group); start,end=match.span(group); break
+        source=canonical_event_source(raw or '')
+        if not event_source_allowed(source) or event_source_negated(segment,start,end):
+            continue
+        append_unique(sources,source)
+        if '/' in source or '.' in source:
+            slash_or_dot_seen=True
+    if slash_or_dot_seen:
+        for bare in EVENT_SOURCE_BARE:
+            for match in re.finditer(rf"(?<![A-Za-z0-9_]){re.escape(bare)}(?![A-Za-z0-9_])", segment, re.I):
+                if not event_source_negated(segment,match.start(),match.end()):
+                    append_unique(sources,bare)
+    return sources
+
+def event_source_obligations(text):
+    obligations={}
+    for segment in re.split(r"(?<=[.;])\s+|\n+", text or ''):
+        if not has_non_negated_scope_term(EVENT_MAPPING_VERBS,segment):
+            continue
+        outputs=event_output_names(segment)
+        if not outputs:
+            continue
+        sources=event_sources_from_segment(segment)
+        for source in sources:
+            obligations.setdefault(source,set()).update(outputs)
+    return obligations
+
+def event_source_pattern(source):
+    if '/' in source or '.' in source:
+        parts=[re.escape(part) for part in re.split(r"[/.]", source)]
+        return re.compile(r"(?<![A-Za-z0-9])"+r"[/_.\-\s]+".join(parts)+r"(?![A-Za-z0-9])", re.I)
+    return re.compile(r"(?<![A-Za-z0-9])"+re.escape(source)+r"(?![A-Za-z0-9])", re.I)
+
+def event_evidence_chunks(text):
+    return [chunk.strip() for chunk in re.split(r"\s*(?:\+|;|\n)\s*", text or '') if chunk.strip()]
+
+def event_source_matches(source, text):
+    return bool(event_source_pattern(source).search(text or ''))
+
+def chunk_has_event_source_proof(source, outputs, all_sources, chunk):
+    if not event_source_matches(source,chunk):
+        return False
+    matched_sources=[item for item in all_sources if event_source_matches(item,chunk)]
+    if len(matched_sources)>1 and not has_non_negated_scope_term(EVENT_MULTI_SOURCE_PROOF_TERMS,chunk):
+        return False
+    if not has_non_negated_scope_term(EVENT_PROOF_TERMS,chunk):
+        return False
+    return any(pattern.search(chunk) for name,pattern in EVENT_OUTPUT_PATTERNS if name in outputs)
+
+def event_source_has_proof(source, outputs, all_sources, evidence_text):
+    return any(chunk_has_event_source_proof(source,outputs,all_sources,chunk) for chunk in event_evidence_chunks(evidence_text))
+
+def validate_event_source_obligations(required_acceptance, rows, errors):
+    by_acceptance={}
+    for row in rows:
+        rid=row_acceptance_ref(row)
+        if rid:
+            by_acceptance.setdefault(rid,[]).append(row)
+    for acceptance_id, meta in sorted(required_acceptance.items()):
+        if meta.get('severity') not in BLOCKING:
+            continue
+        obligations=event_source_obligations(meta.get('text',''))
+        if not obligations:
+            continue
+        related=by_acceptance.get(acceptance_id,[])
+        evidence_text=row_evidence_text(related)
+        all_sources=sorted(obligations)
+        missing=[source for source in all_sources if not event_source_has_proof(source,obligations[source],all_sources,evidence_text)]
+        if missing:
+            reason='aggregate-only' if has_non_negated_scope_term(EVENT_AGGREGATE_EVIDENCE_TERMS,evidence_text) else 'not per-source'
+            errors.append(f"event_source[{acceptance_id}] names required source events ({', '.join(missing)}) but evidence is {reason}; per-source emission fixtures required")
 
 def outcome_has_auth_secret_surface(outcome_blocks):
     rs=first(outcome_blocks or [],'risk_surface')
@@ -622,6 +777,7 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
     calc['P0']+=prop_calc['P0']; calc['P1']+=prop_calc['P1']
     validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, spec+neg, errors)
     validate_rpc_cleanup_acceptance_obligations(required_acceptance, acceptance_status, spec+neg, errors)
+    validate_event_source_obligations(required_acceptance, spec+neg, errors)
 
     secret=first(bs,'secret_leakage_audit')
     if not isinstance(secret,dict):
@@ -726,7 +882,7 @@ def lint(task_type,risk_level,grade_file,outcome_file):
     validate_required(summary,acceptance,errors); gated=is_gate(task_type,risk_level); code_gate=(task_type=='code')
     obs=blocks(outcome_file, include_front_matter=True) if code_gate or gated else []
     if code_gate:
-        validate_code_baseline(summary,gbs,errors,outcome_acceptance_metadata(obs),acceptance,obs)
+        validate_code_baseline(summary,gbs,errors,outcome_acceptance_metadata_from_file(obs,outcome_file),acceptance,obs)
     if gated:
         validate_outcome(obs,errors)
         required=adversarial_acceptance_metadata(obs)

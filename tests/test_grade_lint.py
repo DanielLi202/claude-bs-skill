@@ -611,6 +611,64 @@ dependency_spec_review:
     evidence_ref: "crates/symphony-ledger/Cargo.toml uses *.workspace = true only; matches tech-stack.yaml pins"
 ```
 '''
+EVENT_SOURCE_OUTCOME='''# Outcome — cycle-018-derived Claude source mapping
+```yaml
+acceptance:
+  - id: B018-A7
+    severity: P1
+    statement: >
+      Claude GoalSnapshot is driven by evaluator-loop source events:
+      `system/init` and `result` produce `goal_snapshot` vendor events.
+```
+'''
+EVENT_SOURCE_AGGREGATE_GRADE='''# Grade — cycle-018-derived aggregate evidence
+```yaml
+grade_summary:
+  p0_count: 0
+  p1_count: 0
+  p2_count: 0
+```
+```yaml
+acceptance_status:
+  - id: B018-A7
+    status: pass
+    severity: P1
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: B018-A7
+    status: pass
+    severity_if_fail: P1
+    spec_refs: ["docs/architecture/adapters/claude-code.md"]
+    evidence_ref: "tests/adapter_e2e.rs claude_fake_vendor_demonstrates_m5_exit_condition asserts >=1 goal_snapshot + >=1 plan_snapshot + exactly one task_end; fake vendor includes post_turn_summary; nextest pass"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: B018-A7
+    status: pass
+    severity_if_fail: P1
+    scenario: "A Claude stream missing goal/plan/terminal events would fail the aggregate exit-condition assertion."
+    evidence_ref: "tests/adapter_e2e.rs assert_exit_condition aggregate count"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: event source fixture has no auth/token/log secret surface
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: no dependency changes in this fixture
+```
+'''
+EVENT_SOURCE_PER_SOURCE_GRADE=EVENT_SOURCE_AGGREGATE_GRADE.replace(
+    'tests/adapter_e2e.rs claude_fake_vendor_demonstrates_m5_exit_condition asserts >=1 goal_snapshot + >=1 plan_snapshot + exactly one task_end; fake vendor includes post_turn_summary; nextest pass',
+    'tests::claude_system_init_emits_goal_snapshot + tests::claude_result_emits_goal_snapshot; each fixture asserts its named source event produces goal_snapshot'
+).replace(
+    'scenario: "A Claude stream missing goal/plan/terminal events would fail the aggregate exit-condition assertion."\n    evidence_ref: "tests/adapter_e2e.rs assert_exit_condition aggregate count"',
+    'scenario: "Per-source regressions assert system/init and result each emit goal_snapshot rather than relying on aggregate counts."\n    evidence_ref: "tests::claude_system_init_emits_goal_snapshot + tests::claude_result_emits_goal_snapshot"'
+)
 class GradeLintTests(unittest.TestCase):
     def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME):
         with tempfile.TemporaryDirectory() as td:
@@ -708,6 +766,21 @@ class GradeLintTests(unittest.TestCase):
         self.assertEqual(p['grade_lint']['errors'], [
             'rpc_cleanup[B018-A5] cleanup-on-every-exit-path claimed but no timeout/error-path cleanup evidence (negative-path test required)'
         ])
+
+    def test_cycle018_source_event_mapping_requires_per_source_evidence(self):
+        proc,p=self.run_lint('code','low',EVENT_SOURCE_AGGREGATE_GRADE,EVENT_SOURCE_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertEqual(p['grade_lint']['errors'], [
+            'event_source[B018-A7] names required source events (result, system/init) but evidence is aggregate-only; per-source emission fixtures required'
+        ])
+
+    def test_source_event_mapping_passes_with_per_named_source_fixtures(self):
+        proc,p=self.run_lint('code','low',EVENT_SOURCE_PER_SOURCE_GRADE,EVENT_SOURCE_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_clean_cycle_text_without_source_event_mapping_does_not_trigger_event_source(self):
+        proc,p=self.run_lint('code','low',CYCLE016_LEDGER_CLEAN_GRADE,CYCLE016_LEDGER_CLEAN_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
 
     def test_cycle018_rpc_cleanup_every_exit_claim_requires_negative_path_cleanup_evidence(self):
         proc,p=self.run_lint('code','low',RPC_CLEANUP_HAPPY_ONLY_GRADE,RPC_CLEANUP_OUTCOME)
