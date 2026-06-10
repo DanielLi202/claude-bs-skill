@@ -1,0 +1,3 @@
+# Per-cycle review artifacts land here: reviews/opensymphony/cycle-<NNN>/{r1.md,r2.md}
+# r1 = independent delivery review (second signal vs bs's own Grade)
+# r2 = process/evolution review (why did r1's findings escape the bs workflow?)
