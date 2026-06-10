@@ -72,6 +72,16 @@ EVENT_OUTPUT_PATTERNS=(
     ("task_end", re.compile(r"\btask[_\s-]?end\b|\bterminal\s+event\b", re.I)),
     ("failure", re.compile(r"\bfailure\b", re.I)),
 )
+AUTH_STATUS_COMMAND_TERMS=re.compile(r"\b(?:codex\s+login\s+status|claude\s+auth\s+status|login[-_\s]?status|auth[-_\s]?status|login\s+output|auth\s+output|status\s+output|loggedIn|loggedin)\b", re.I)
+AUTH_STATUS_LOGGED_OUT_TERMS=re.compile(r"\b(?:not[-_\s]?logged[-_\s]?in|logged[-_\s]?out|not\s+authenticated|unauthenticated)\b", re.I)
+AUTH_STATUS_MAPPING_TERMS=re.compile(r"\b(?:maps?|mapped|mapping|yields?|returns?|produces?|classif(?:y|ies|ied|ication)|mis[-_\s]?classif(?:y|ies|ied|ication))\b|[-=]+>|→", re.I)
+AUTH_STATUS_DISTINGUISH_TERMS=re.compile(r"\b(?:distinguish(?:es|ed|ing)?|differentiat(?:e|es|ed|ing)?|distinct(?:ly)?|separat(?:e|es|ed|ing)?)\b", re.I)
+AUTH_STATUS_ERROR_STATE_TERMS=re.compile(r"\b(?:AdapterError(?:::[A-Za-z][A-Za-z0-9_]*)?|LoginRequired|NotAuthenticated|BinaryNotFound|VersionTooOld|GoalRpcUnavailable|Unsupported|authenticated|unauthenticated|logged[-_\s]?in|logged[-_\s]?out|remediation)\b", re.I)
+AUTH_STATUS_DISTINGUISH_FROM_TERMS=re.compile(r"\b(?:distinguish(?:es|ed|ing)?|differentiat(?:e|es|ed|ing)?|separat(?:e|es|ed|ing)?)\b[^.;\n]{0,80}\bfrom\b", re.I)
+AUTH_STATUS_JSON_PARSE_EVIDENCE=re.compile(r"\b(?:json[-_\s]?pars(?:e|ed|es|ing)?|pars(?:e|ed|es|ing)\s+(?:the\s+)?(?:codex\s+|claude\s+)?(?:login[-_\s]?status|auth[-_\s]?status|status)\s+(?:as\s+)?json|pars(?:e|ed|es|ing)\s+(?:the\s+)?status\s+as\s+structured\s+data|structured[-_\s]?(?:json|data|status)|serde(?:_json)?(?:\s*::\s*(?:from_str|from_slice))?|deseriali[sz](?:e|ed|es|ing))\b", re.I)
+AUTH_STATUS_VARIANT_EVIDENCE=re.compile(r"\b(?:case[-_\s]?insensitive\s+(?:key|field)|key[-_\s]?case|camel[-_\s]?case|lower[-_\s]?case|whitespace[-_\s]?(?:variant|toleran(?:t|ce)|format|fixture)|format[-_\s]?variant|status[-_\s]?format[-_\s]?variant|status[-_\s]?fixture[-_\s]?matrix)\b", re.I)
+AUTH_STATUS_MULTI_VARIANT_EVIDENCE=re.compile(r"\b(?:multiple|both|two|several|matrix|parameteri[sz]ed)\b[^.;\n]{0,100}\b(?:login[-_\s]?status|auth[-_\s]?status|status|format|fixture|fixtures|variant|variants|loggedIn|loggedin|whitespace|key[-_\s]?case)\b", re.I)
+AUTH_STATUS_LITERAL_VARIANT_EVIDENCE=re.compile(r"(?:loggedIn[^.;\n]{0,100}loggedin|loggedin[^.;\n]{0,100}loggedIn|\"loggedIn\"\s*:\s*false[^.;\n]{0,100}\"loggedin\"\s*:\s*false|\"loggedin\"\s*:\s*false[^.;\n]{0,100}\"loggedIn\"\s*:\s*false)", re.I)
 class LintError(ValueError): pass
 
 def split_top_level(text, sep=','):
@@ -631,6 +641,80 @@ def validate_event_source_obligations(required_acceptance, rows, errors):
             reason='aggregate-only' if has_non_negated_scope_term(EVENT_AGGREGATE_EVIDENCE_TERMS,evidence_text) else 'not per-source'
             errors.append(f"event_source[{acceptance_id}] names required source events ({', '.join(missing)}) but evidence is {reason}; per-source emission fixtures required")
 
+def auth_status_claim_segments(text):
+    return [segment.strip() for segment in re.split(r"(?<=[.;])\s+|[;\n]+", text or '') if segment.strip()]
+
+def negation_is_auth_status_value(text):
+    if re.search(r"\b(?:does\s+not|do\s+not|doesn't|don't|never|without|no)\b", text or '', re.I):
+        return False
+    return bool(re.search(r"\bnot[-_\s]?logged[-_\s]?in\b|\bnot\s+authenticated\b", text or '', re.I))
+
+def has_non_negated_auth_claim_term(pattern, text):
+    for match in pattern.finditer(text or ''):
+        prefix=text[max(0,match.start()-80):match.start()]
+        negated=NEGATED_SCOPE_PREFIX.search(prefix)
+        if negated and not negation_is_auth_status_value(negated.group(0)):
+            continue
+        return True
+    return False
+
+def auth_status_mapping_claimed(text):
+    for segment in auth_status_claim_segments(text):
+        command_status=has_non_negated_auth_claim_term(AUTH_STATUS_COMMAND_TERMS,segment)
+        logged_out=has_non_negated_auth_claim_term(AUTH_STATUS_LOGGED_OUT_TERMS,segment)
+        strong_mapping=has_non_negated_auth_claim_term(AUTH_STATUS_MAPPING_TERMS,segment)
+        distinguishes=has_non_negated_auth_claim_term(AUTH_STATUS_DISTINGUISH_TERMS,segment)
+        state=has_non_negated_auth_claim_term(AUTH_STATUS_ERROR_STATE_TERMS,segment)
+        if command_status and state and (strong_mapping or distinguishes):
+            return True
+        if command_status and distinguishes and has_non_negated_auth_claim_term(AUTH_STATUS_DISTINGUISH_FROM_TERMS,segment):
+            return True
+        if logged_out and state and strong_mapping:
+            return True
+    return False
+
+def auth_status_has_format_tolerance_evidence(text):
+    return (
+        has_non_negated_scope_term(AUTH_STATUS_JSON_PARSE_EVIDENCE,text)
+        or has_non_negated_scope_term(AUTH_STATUS_VARIANT_EVIDENCE,text)
+        or has_non_negated_scope_term(AUTH_STATUS_MULTI_VARIANT_EVIDENCE,text)
+        or has_non_negated_scope_term(AUTH_STATUS_LITERAL_VARIANT_EVIDENCE,text)
+    )
+
+def validate_auth_status_acceptance_obligations(required_acceptance, acceptance_status, spec, neg, errors):
+    status_meta=acceptance_status_metadata(acceptance_status)
+    spec_by_acceptance={}
+    neg_by_acceptance={}
+    for row in spec:
+        rid=row_acceptance_ref(row)
+        if rid:
+            spec_by_acceptance.setdefault(rid,[]).append(row)
+    for row in neg:
+        rid=row_acceptance_ref(row)
+        if rid:
+            neg_by_acceptance.setdefault(rid,[]).append(row)
+    ids=set(required_acceptance) | set(status_meta) | set(spec_by_acceptance) | set(neg_by_acceptance)
+    for acceptance_id in sorted(ids):
+        spec_rows=spec_by_acceptance.get(acceptance_id,[])
+        neg_rows=neg_by_acceptance.get(acceptance_id,[])
+        severities=[
+            required_acceptance.get(acceptance_id,{}).get('severity'),
+            status_meta.get(acceptance_id,{}).get('severity'),
+        ] + [row_blocking_severity(row, required_acceptance) for row in spec_rows+neg_rows if isinstance(row,dict)]
+        if not any(severity in BLOCKING for severity in severities):
+            continue
+        pass_neg_rows=[row for row in neg_rows if isinstance(row,dict) and row.get('status')=='pass']
+        if not pass_neg_rows:
+            continue
+        claim_text=text_blob(
+            required_acceptance.get(acceptance_id,{}).get('text',''),
+            status_meta.get(acceptance_id,{}).get('text',''),
+            spec_rows,
+            pass_neg_rows,
+        )
+        if auth_status_mapping_claimed(claim_text) and not auth_status_has_format_tolerance_evidence(row_evidence_text(pass_neg_rows)):
+            errors.append(f"auth_status[{acceptance_id}] login-status mapping claimed but evidence covers one literal form only; JSON-parsed or format-variant fixtures required")
+
 def outcome_has_auth_secret_surface(outcome_blocks):
     rs=first(outcome_blocks or [],'risk_surface')
     surfaces=rs.get('surfaces') if isinstance(rs,dict) else None
@@ -778,6 +862,7 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
     validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, spec+neg, errors)
     validate_rpc_cleanup_acceptance_obligations(required_acceptance, acceptance_status, spec+neg, errors)
     validate_event_source_obligations(required_acceptance, spec+neg, errors)
+    validate_auth_status_acceptance_obligations(required_acceptance, acceptance_status, spec, neg, errors)
 
     secret=first(bs,'secret_leakage_audit')
     if not isinstance(secret,dict):
@@ -856,6 +941,8 @@ def validate_adv(summary,bs,errors,required_acceptance=None):
             validate_subprocess_lifecycle_evidence(row.get('id') or i, combined_text, subprocess_lifecycle_evidence_text([row]), errors, kind_in_scope=evidence_kind(row)==SUBPROCESS_LIFECYCLE_EVIDENCE_KIND)
             if sv in BLOCKING or any(ref.get('severity') in BLOCKING for ref in referenced):
                 validate_rpc_cleanup_evidence(row.get('id') or i, combined_text, [row], errors)
+                if st=='pass' and auth_status_mapping_claimed(combined_text) and not auth_status_has_format_tolerance_evidence(row_evidence_text([row])):
+                    errors.append(f"auth_status[{row.get('id') or i}] login-status mapping claimed but evidence covers one literal form only; JSON-parsed or format-variant fixtures required")
     missing_acceptance=sorted(set(required_acceptance)-covered_acceptance_ids)
     if missing_acceptance: errors.append('adversarial_checks missing shaped adversarial_acceptance IDs: '+','.join(missing_acceptance))
     for k in ('adversarial_p0_count','adversarial_p1_count'):

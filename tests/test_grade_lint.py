@@ -611,6 +611,65 @@ dependency_spec_review:
     evidence_ref: "crates/symphony-ledger/Cargo.toml uses *.workspace = true only; matches tech-stack.yaml pins"
 ```
 '''
+AUTH_STATUS_MAPPING_OUTCOME='''# Outcome Capsule — B-018 M5 Conduct adapter (cycle-018-derived)
+```yaml
+acceptance:
+  - id: B018-A5
+    severity: P1
+    statement: >
+      Codex capability probing must fail closed and route login/auth status
+      failures to distinct remediation states.
+```
+'''
+AUTH_STATUS_LITERAL_ONLY_GRADE='''# Grade — B-018-derived login-status mapping
+```yaml
+grade_summary:
+  p0_count: 0
+  p1_count: 0
+  p2_count: 0
+```
+```yaml
+acceptance_status:
+  - id: B018-A5
+    status: pass
+    severity: P1
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: B018-A5
+    status: pass
+    severity_if_fail: P1
+    spec_refs: ["docs/architecture/adapters/codex.md"]
+    evidence_ref: "src/codex/mod.rs:327-404 run_codex_goal_rpc_probe; auth-status helper is wrapped in time::timeout, spawned with .process_group(0), and child.wait().await reaps it; no fabricated flag"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: B018-A5
+    status: pass
+    severity_if_fail: P1
+    scenario: "Each probe failure must map to the correct AdapterError with no fallback: an old version -> VersionTooOld; a not-logged-in vendor -> LoginRequired (with no secret leaked); a handshake failure -> GoalRpcUnavailable."
+    evidence_ref: "tests codex_probe_maps_not_logged_in_without_secret_leakage (nextest pass)"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: login-status mapping fixture asserts status classification only and does not capture token material
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: no dependency changes in this fixture
+```
+'''
+AUTH_STATUS_JSON_PARSED_GRADE=AUTH_STATUS_LITERAL_ONLY_GRADE.replace(
+    'tests codex_probe_maps_not_logged_in_without_secret_leakage (nextest pass)',
+    'tests codex_probe_json_parsed_login_status_maps_logged_in_false_to_login_required uses serde_json::from_str and covers {"loggedIn": false} (nextest pass)'
+)
+AUTH_STATUS_VARIANT_FIXTURES_GRADE=AUTH_STATUS_LITERAL_ONLY_GRADE.replace(
+    'tests codex_probe_maps_not_logged_in_without_secret_leakage (nextest pass)',
+    'parameterized login-status format variants cover {"loggedin":false}, {"loggedIn": false}, and whitespace around the colon (nextest pass)'
+)
 EVENT_SOURCE_OUTCOME='''# Outcome — cycle-018-derived Claude source mapping
 ```yaml
 acceptance:
@@ -779,6 +838,25 @@ class GradeLintTests(unittest.TestCase):
         self.assertEqual(proc.returncode,0,p)
 
     def test_clean_cycle_text_without_source_event_mapping_does_not_trigger_event_source(self):
+        proc,p=self.run_lint('code','low',CYCLE016_LEDGER_CLEAN_GRADE,CYCLE016_LEDGER_CLEAN_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_cycle018_auth_status_mapping_requires_format_tolerant_evidence(self):
+        proc,p=self.run_lint('code','low',AUTH_STATUS_LITERAL_ONLY_GRADE,AUTH_STATUS_MAPPING_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertEqual(p['grade_lint']['errors'], [
+            'auth_status[B018-A5] login-status mapping claimed but evidence covers one literal form only; JSON-parsed or format-variant fixtures required'
+        ])
+
+    def test_auth_status_mapping_passes_with_json_parse_or_format_variants(self):
+        with self.subTest('json parsed'):
+            proc,p=self.run_lint('code','low',AUTH_STATUS_JSON_PARSED_GRADE,AUTH_STATUS_MAPPING_OUTCOME)
+            self.assertEqual(proc.returncode,0,p)
+        with self.subTest('format variants'):
+            proc,p=self.run_lint('code','low',AUTH_STATUS_VARIANT_FIXTURES_GRADE,AUTH_STATUS_MAPPING_OUTCOME)
+            self.assertEqual(proc.returncode,0,p)
+
+    def test_clean_cycle_text_without_auth_status_mapping_does_not_trigger_auth_status(self):
         proc,p=self.run_lint('code','low',CYCLE016_LEDGER_CLEAN_GRADE,CYCLE016_LEDGER_CLEAN_OUTCOME)
         self.assertEqual(proc.returncode,0,p)
 
