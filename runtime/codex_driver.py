@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Codex app-server driver for bs v1.4.11.
+"""Codex app-server driver for bs v1.4.12.
 
 Delegates a frozen outcome capsule through a persistent, non-ephemeral Codex
 app-server thread using `thread/goal/set`, not text `/goal`. The driver computes
@@ -12,7 +12,7 @@ thread on every thread-owned exit path.
 The app-server is spawned in its own POSIX process group (start_new_session) and
 every exit path reaps the whole group (SIGTERM then SIGKILL after a grace) so a
 runaway grandchild (e.g. a vendor `find` across $HOME) cannot survive as an
-orphan after the leader dies (cycle-015 self-hang hardening, v1.4.11).
+orphan after the leader dies (cycle-015 self-hang hardening, v1.4.12).
 """
 from __future__ import annotations
 
@@ -725,7 +725,7 @@ def launch_and_handshake(args: argparse.Namespace, raw: TextIO, rpc: TextIO, err
     try:
         proc = subprocess.Popen([codex_bin, "app-server", "--listen", "stdio://"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, cwd=str(cwd), start_new_session=(os.name == "posix"))
         _stash_pgid(proc)
-        rpc_call(proc, raw, rpc, err, 1, "initialize", {"clientInfo": {"name": "bs-codex-driver", "version": "1.4.11"}, "capabilities": {"experimentalApi": True}}, args.handshake_timeout_sec)
+        rpc_call(proc, raw, rpc, err, 1, "initialize", {"clientInfo": {"name": "bs-codex-driver", "version": "1.4.12"}, "capabilities": {"experimentalApi": True}}, args.handshake_timeout_sec)
         params = {"cwd": str(cwd), "approvalPolicy": "never", "sandbox": "workspace-write", "ephemeral": False}
         if args.model:
             params["model"] = args.model

@@ -1,4 +1,4 @@
-# Bootstrap Development Workflow Contract v1.4.11
+# Bootstrap Development Workflow Contract v1.4.12
 
 > Universal workflow contract for bootstrap-driven repositories. The contract owns orchestration semantics; each repository owns only its binding, backlog, ledger, verification command, and red-line documents.
 
@@ -198,8 +198,8 @@ The driver spawns `codex app-server` in its own POSIX process group (`start_new_
 
 | file | sha256 |
 |---|---|
-| runtime/preflight.sh | f709aa5c16c7e56b21d71b57ebed186f2bced19c10c2e01d84d936b505bbbfad |
-| runtime/codex_driver.py | 39f9e865cc94f9f83f19783551869e2060dc31783936dd3a0b891fd0cc701c5d |
+| runtime/preflight.sh | 6e9342fdc7dd2e942effe07e0fe8c8c9a936c59603eb8623c27fae88f807b143 |
+| runtime/codex_driver.py | 1cec0b3587561f0392b658c021913d5b83aba60325fc3ce62882c18942e5bc56 |
 | runtime/codex_fix_driver.py | 0ba1be44f6ddf4f8ff8d40a8a661bd317c85752c5e9597f6c2ac13afb9d1ae4a |
 | runtime/reshape_fix_round.py | ce6caf0114102fc706798963f6756e75c90b2d7d12caa854eca6352e30f9a73a |
 | runtime/conduct.sh | c9a7dab3798a384d3929256457e9b05da7a4b413b980ec128286f81c5f4b726e |
@@ -220,6 +220,7 @@ No parallel cycles, enum extension, severity override, council-member override, 
 
 ## 11. Changelog
 
+- v1.4.12: Cycle-018 close-gap and Grade/Shape hardening. `grade_lint.py` now enforces five additional hardening rules: subprocess-lifecycle facets, RPC cleanup negative-path evidence, per-source event emission evidence, multi-shape secret probes with scoped `not_applicable` exemption, and format-tolerant auth-status mapping evidence. Contract §6 and the Shape/Grade prompts now require facet-level clauses for these claims. Preflight now probes the cycle-018 post-merge close incident pattern (merged PR but Step 10 never ran) and routes recovery through `/bs resume` plus `/bs doctor`. Runtime manifest relocked; no Conduct goal-RPC transport change.
 - v1.4.11: Cycle-018 F5 secret-shape Grade hardening. `grade_lint.py` now requires in-scope `secret_leakage_audit` cleartext probes to show bare token/key-value, JSON/quoted token/API-key, and `Authorization: Bearer` shapes for auth/secret/log/evidence surfaces, while preserving scoped `not_applicable` audits. Runtime manifest relocked; driver/preflight client versions plus `skill.yaml` bumped to 1.4.11. No Conduct success-oracle or goal-RPC transport change.
 - v1.4.10: Property-obligation Grade hardening after cycle-017 escape analysis. `grade_lint.py` now reads code outcome YAML front matter as well as fenced YAML blocks, derives lightweight property obligations from P0/P1 acceptance text, and blocks example-only negative coverage for path/root containment (string traversal without symlink/canonical-root containment) and raw request-target/path-segment boundaries (generic request-target or malformed-request smoke without delimiter/control-character/CRLF/encoding coverage). Shape and Grade prompts now require property-facet evidence even for low-risk code when trust-boundary surfaces exist. Runtime manifest relocked; driver/preflight client versions plus `skill.yaml` bumped to 1.4.10. No Conduct success-oracle or goal-RPC transport change.
 - v1.4.9: Cycle-016 review hardening. `lib.events` now accepts `str | Path`, exposes a first-class append-only `repair` event for missing-start orphan terminals, and shares event metadata schema with `validate_events.py`, which now rejects count/list/null ambiguity such as integer `workspace_delta_files` or null `file_change_events`. `grade_lint.py` prefers `yaml.safe_load` for valid fenced YAML, fixing colon-containing scalar-list ergonomics while retaining legacy compatibility. `status_marker.stale_id_guard` can fail close when old dynamic task IDs remain in guarded status prose. `/bs` close guidance now blocks helper failures, raw-smoke contradictions, and silent history insertion. Runtime/helper manifest relocked; driver/preflight client versions plus `skill.yaml` bumped to 1.4.9. No Conduct success-oracle or goal-RPC transport change.
