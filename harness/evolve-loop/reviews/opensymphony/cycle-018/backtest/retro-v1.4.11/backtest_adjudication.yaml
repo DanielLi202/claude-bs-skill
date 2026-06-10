@@ -1,0 +1,48 @@
+# Adjudication of misfire candidates from the retroactive backtest of v1.4.11's F5 rule
+# (baseline v1.4.10 -> v1.4.11 HEAD), per the bs-evolve-loop adjudication protocol:
+# in-loop self-adjudication + preserved evidence + fresh-context verification.
+backtest: retro-v1.4.11
+baseline_ref: v1.4.10
+target_cycle: cycle-018
+must_fire: true   # F5 fires on cycle-018 grade_round_1.md (bare-only probe on in-scope surfaces)
+adjudicated_by: claude-orchestrator (bs-evolve-loop)
+adjudicated_at: "2026-06-10"
+verdicts:
+  - cycle: cycle-016
+    rule: secret_leakage_audit.cleartext_secret_probe multi-shape
+    fired_on: ".prompts/dogfood/cycle-016/grade_round_0.md secret_leakage_audit (lines ~156-161)"
+    verdict: true_positive_historical
+    rationale: >
+      The audited surfaces are genuinely secret-adjacent: daemon token handling, Bearer
+      auth header, events.jsonl on-disk content, daemon tracing logs, and the GET
+      runs/events response body. The probe evidence was a source grep ("scan of
+      symphony-ledger for token/secret/password/bearer found none"), not a shaped
+      cleartext probe pushed through the event/log path — exactly the class of
+      example-only coverage that let cycle-018's F5 escape. Under the new rule this
+      grade would rightly require bare/JSON/Bearer shaped probes. Cycle is closed;
+      no action — this documents the rule being correctly stricter.
+    evidence_quote: >
+      checked_surfaces: ["Event Debug and Serialize output", "LedgerError Display and
+      Debug", "events.jsonl on-disk content", "daemon tracing logs", "GET runs events
+      response body"]; cleartext_secret_probe: pass; evidence_ref: "scan of
+      symphony-ledger for token/secret/password/bearer found none; ... only the Bearer
+      auth header (existing B-002 middleware) gates the endpoint"
+  - cycle: cycle-017
+    rule: secret_leakage_audit.cleartext_secret_probe multi-shape
+    fired_on: ".prompts/dogfood/cycle-017/grade_round_0.md secret_leakage_audit (lines ~163-172)"
+    verdict: false_positive
+    rationale: >
+      The probe is explicitly `not_applicable` and the audit substantiates why (the
+      crate adds no auth/token/log code; the reader never reads auth.json or the daemon
+      token). v1.4.11's validate_cleartext_secret_probe_shape does NOT early-return for
+      a string `not_applicable` — it falls through to the scope predicate, and
+      SECRET_AUDIT_SCOPE_TERMS matches the *negated* phrases in checked_surfaces ("no
+      auth/token code", "not secret-bearing", "No logging added"), so multi-shape
+      coverage is demanded where the audit has correctly declared the probe class not
+      applicable. Rule bug, not a grade gap.
+    required_fix: >
+      v1.4.12: validate_cleartext_secret_probe_shape must exempt
+      cleartext_secret_probe == not_applicable (string or structured status) from the
+      multi-shape requirement, and the must-not-fire fixture must be derived from
+      cycle-017's REAL audit text (negated phrases present) so this masking cannot recur.
+fresh_context_verification: "verified 2026-06-10 — 2/2 agree, fix_assessment sound (see backtest_adjudication_verify.md; verifier notes cycle-018 lacks ALL three shapes, strengthening must-fire)"

@@ -1,104 +1,103 @@
-# bs-evolve-loop
+# bs-evolve-loop (v2 — closure-ledger model)
 
-A self-paced `/loop` that dogfoods the `bs` skill and **evolves it from its own output**:
-run a `/bs` dev cycle, independently review the delivery, review the *process* that produced
-it, then patch the `bs` skill so the next cycle can't leak the same class of defect — and
-repeat. One iteration = one full pipeline. Strictly serial.
+A self-paced `/loop` that dogfoods the `bs` skill and **evolves it from its own output** —
+and whose every iteration is **self-closing**: the dev task lands, the reviews land, the
+review findings land (both in the skill and in the deliverable), all on `main`, before any
+new cycle may start. Nothing is "recorded for later"; work either ships this iteration or
+is explicitly escalated to the human in the iteration report.
 
 ```
-┌──────────────── one iteration (one /loop turn) ────────────────────────────┐
-│ 0 guard        STOP-file? lock? stop-conditions?                            │
-│ 1 dev          subagent runs /bs in OpenSymphony  (self-commits + merges)   │
-│ 2 r1.md        codex xhigh, read-only  — independent delivery review        │
-│ 3 r2.md        codex xhigh, read-only  — why did r1's findings escape bs?   │
-│ 3.5 commit     push r1+r2 to bs-skill main                                  │
-│ 4 implement    codex xhigh, workspace-write — patch bs-skill + release      │
-│ 5 health       next /bs preflight is the regression test                    │
-│ 6 close        ScheduleWakeup(next) | stop                                  │
-└────────────────────────────────────────────────────────────────────────────┘
+┌────────────── one iteration = advance the newest open closure ───────────────┐
+│ 0 guard      STOP? lock? stop-conditions? → closure scan (resume or new)      │
+│ 1 dev        subagent runs /bs in OpenSymphony (self-commits + merges)        │
+│ 2 r1         codex xhigh ro — independent delivery review        → commit    │
+│ 3 r2         codex xhigh ro — why did r1 escape bs? DETERMINISTIC plan       │
+│ 4 skill      implement ALL deterministic items, per-item commits             │
+│              → BACKTEST vs corpus (must-fire + adjudicate + fresh-verify)    │
+│              → release.sh G1-G4 → tag → push → pin-sync                      │
+│ 5 remediate  codex fixes r1 findings in target repo UNDER THE NEW GATES      │
+│              → fresh r1-verify → PR → merge → post_close_amendments          │
+│ 6 close      closure.yaml closed:true → push both repos → report             │
+│ 7 loop       ScheduleWakeup | stop                                           │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
+
+## The closure ledger (why leftovers are impossible)
+`reviews/opensymphony/cycle-NNN/closure.yaml` (committed) tracks per-cycle:
+`r1 → r2 → skill_release → remediation → closed`, plus `escalated_to_human[]`.
+An iteration must **resume the newest incomplete closure**; a new `/bs` cycle is allowed
+only when none is open. Stage position is re-derived from disk every turn — interruptions,
+compaction, or kills lose at most the in-flight stage. Helper: `bin/closure.py`.
+
+## Where confidence comes from (the verification stack)
+1. **Backtest** (`bin/backtest.py`): replay the NEW `grade_lint` against all historical
+   code cycles, baseline = last release tag; only **delta** failures are attributed to the
+   new rules. The target cycle MUST fire (proves the rules catch the known escape); any
+   other fire is adjudicated `true_positive_historical | false_positive` with evidence.
+   *Maiden run caught a real bug: v1.4.11's F5 rule lacked a `not_applicable` exemption and
+   its scope regex matched negated phrases (fired on cycle-017's clean audit).*
+2. **Fresh-context verification**: every adjudication (and every remediation) is reviewed
+   by a CLEAN codex session prompted to refute it. Trusted only if it agrees.
+3. **Paired fixtures from real corpus text**: every new rule ships a must-fire test taken
+   from the escaping cycle's actual grade text and a must-not-fire test from a genuinely
+   clean cycle's actual text (negated phrases included).
+4. **Scope predicates**: every rule carries an explicit in-scope predicate — fail-closed
+   but narrow.
+5. **Per-item commits, one tag**: a bad rule is `git revert <one commit>` + patch release,
+   not a full-release rollback. Anchor-based `rollback.sh` remains the emergency path.
+6. **Same-iteration canary**: Stage 5's remediation grade is linted by the *just-released*
+   rules — a misfiring rule is discovered within the same iteration, not the next.
 
 ## Two repos, two git targets
 | What | Repo | Committed by |
 |---|---|---|
-| The dev deliverable (Phase-2 backend/UI) | **OpenSymphony-V3** | `/bs` itself (start + close + PR merge) |
-| r1.md / r2.md review docs | **bs-skill** `harness/evolve-loop/reviews/opensymphony/cycle-NNN/` | Step 3.5 |
-| The skill improvement + patch release | **bs-skill** main + tag | Step 4 `release.sh` |
-| The refreshed contract pin | **OpenSymphony-V3** `.bootstrap*` | `release.sh` → `sync-bs-binding.py` |
-
-The strict OpenSymphony doc red lines never see r1/r2 — they live here, where the tool being
-evaluated lives. OpenSymphony only ever gets its normal `/bs` commits + the binding refresh.
+| Dev deliverable | OpenSymphony-V3 | `/bs` itself |
+| r1/r2, closure.yaml, backtest + adjudication evidence | bs-skill `harness/evolve-loop/reviews/opensymphony/cycle-NNN/` | Stages 2-4 |
+| Skill improvements (per-item commits) + patch release tag | bs-skill main | Stage 4 (`release.sh`) |
+| Contract pin refresh | OpenSymphony-V3 `.bootstrap*` | `release.sh` → `sync-bs-binding.py` |
+| r1-finding remediation + `post_close_amendments` | OpenSymphony-V3 main | Stage 5 |
 
 ## Layout
 ```
 harness/evolve-loop/
-├── README.md            ← this runbook
-├── loop-prompt.md       ← the /loop body (the executable spec; feed it to /loop)
+├── README.md / loop-prompt.md       runbook / the executable /loop body
 ├── bin/
-│   ├── loop-guard.sh    ← kill-switch + single-iteration time-lease lock
-│   ├── loop-state.py    ← state.json ledger (init/get/set/begin-iteration/should-stop)
-│   ├── verify-manifest.sh ← contract manifest sha table == actual file hashes (release gate)
-│   ├── release.sh       ← Stage-4 git/tag/push + pin-sync plumbing (auto mode)
-│   └── rollback.sh      ← restore both repos to the pre-release anchor
-└── reviews/opensymphony/cycle-NNN/{r1.md,r2.md}
+│   ├── loop-guard.sh                kill-switch + single-iteration time-lease lock
+│   ├── loop-state.py                per-run state.json (iterations, anchors, stop)
+│   ├── closure.py                   per-cycle closure ledger (the self-closing core)
+│   ├── backtest.py                  corpus replay: delta attribution + must-fire
+│   ├── verify-manifest.sh           contract manifest relock gate
+│   ├── release.sh                   gates G1-G4 → tag → push → pin-sync
+│   └── rollback.sh                  restore both repos to the pre-release anchor
+└── reviews/opensymphony/cycle-NNN/  r1.md r2.md closure.yaml r1_verify.md
+                                     remediation_grade.md backtest/<ver>/…
 ```
-Runtime state (gitignored, machine-local) lives in `OpenSymphony-V3/.prompts/loop/`:
-`STOP`, `RUNNING.lock`, `state.json`, `iter-NNN/`.
+Runtime state (gitignored): `OpenSymphony-V3/.prompts/loop/` (`STOP`, `RUNNING.lock`,
+`state.json`, `iter-NNN/`).
 
 ## Launch
-
-**1. First run — supervised dry-run (single iteration, stops before any skill release):**
 ```bash
 HARNESS=/Users/lidongyuan/workspace/utils/bs-skill/harness/evolve-loop
 python3 "$HARNESS/bin/loop-state.py" init \
   --target /Users/lidongyuan/workspace/utils/OpenSymphony-V3 \
-  --skill  /Users/lidongyuan/workspace/utils/bs-skill --mode dry-run --max 5
+  --skill  /Users/lidongyuan/workspace/utils/bs-skill --mode auto --max 5
 /loop "$(cat "$HARNESS/loop-prompt.md")"
 ```
-The dry-run runs `/bs` → r1 → r2 → commits the reviews → has codex *author* the skill patch,
-then **pauses and shows you the diff**. Nothing is tagged/pushed to the skill until you OK it.
+Stop: `touch OpenSymphony-V3/.prompts/loop/STOP` (the only external cancel).
 
-**2. Go live (after the dry-run looks right):**
-```bash
-python3 "$HARNESS/bin/loop-state.py" set mode auto
-/loop "$(cat "$HARNESS/loop-prompt.md")"
-```
+## Failure policy
+Pause-and-surface (never fabricate approval): `/bs` hard-stops, gate failures after
+retry, contested adjudications, and `escalated_to_human` items all stop the loop with the
+exact evidence and options. Stop conditions: STOP file · backlog exhausted · max
+iterations (default 5) · consecutive failures (default 2).
 
-## Decisions baked in
-- **Q1 artifacts → bs-skill repo.** OpenSymphony stays clean.
-- **Q2 Stage-4 → full-auto release**, fenced by the four guardrails below.
-- **Q3 mechanism → dynamic self-paced `/loop`** + file kill-switch + state ledger.
-- **Q4 failures → pause-and-surface**, never fabricate approval.
-
-## The four guardrails on full-auto skill release
-1. **Unittest gate.** `release.sh` re-runs `python3 -m unittest discover -s tests` (150 tests)
-   and refuses to commit if red.
-2. **Manifest-relock gate.** `verify-manifest.sh` proves the contract sha table matches actual
-   file hashes — a botched relock can't ship (it would later fail `/bs doctor`).
-3. **Patch-only.** The bump is always the next PATCH and `sync-bs-binding.py` independently
-   refuses to cross `compatible_range` (`>=1.3,<2.0`).
-4. **Rollback anchor + kill-switch.** The pre-release skill sha is recorded; if the *next*
-   `/bs` preflight fails, `rollback.sh` restores both repos. `touch .prompts/loop/STOP` ends
-   the loop at the next iteration boundary.
-
-## Stop conditions (any one ends the loop, no reschedule)
-- `STOP` file present (the manual kill-switch).
-- `/bs` reports the backlog is exhausted (nothing to do until Phase-2 tasks are groomed).
-- `max_iterations` reached (default 5).
-- `consecutive_failures` ≥ threshold (default 2) — circuit breaker.
-- Any pause-and-surface event (hard-stop / escalation / unrecoverable stage failure).
-
-## Recovery
-- **Inspect:** `loop-state.py get history` and `OpenSymphony-V3/.prompts/loop/iter-NNN/`.
-- **A bad release shipped:** `rollback.sh --skill … --target … --anchor-sha <state.anchor.skill_sha> --bad-tag vX.Y.Z [--pushed]`, then `cd OpenSymphony-V3 && /bs doctor`.
-- **Stuck lock** (a crashed iteration): the lock is a 2h time-lease; or `rm .prompts/loop/RUNNING.lock`.
-
-> **Validation status:** `loop-guard.sh`, `loop-state.py`, `verify-manifest.sh` are unit-smoke
-> tested. `release.sh` / `rollback.sh` are exercised end-to-end only at the **first real
-> (auto-mode) release**, which is why the first run is a supervised dry-run that stops before
-> them. Treat the first auto release as itself supervised.
+## Codex invocation (account gotcha)
+Omit `-m` (ChatGPT-auth rejects `gpt-5.2`; config default `gpt-5.5` is the best available);
+always `-c model_reasoning_effort="xhigh"`; prompt via stdin; reviews `--sandbox read-only`,
+implementation `--sandbox workspace-write --full-auto`. bs-skill tests:
+`python3 -m unittest discover -s tests -p 'test_*.py'`.
 
 ## Cost / cadence
-Each iteration is heavy: a full `/bs` cycle (~10–30 min) + two `codex xhigh` reviews +
-an implement pass. Budget ~40–70 min and significant tokens per iteration. The
-`max_iterations` cap and the `STOP` file are your throttles.
+An iteration is heavy: a full `/bs` cycle + 2 review runs + N implement runs + backtest +
+fresh verifies + a remediation PR ≈ 2-3 h wall-clock. `max_iterations` and `STOP` are the
+throttles.
