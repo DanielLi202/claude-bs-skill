@@ -121,3 +121,22 @@ round3_convergence:
     positives still fire. Scope predicate is now strong-term-only (non-negated), with
     'probe' requiring vendor-command context and an HTTP guard — the corpus-observed
     invariant that every true positive carries a strong term.
+# ---- round 4: fresh-context verification outcome + release decision ----
+fresh_context_verification: >
+  verified 2026-06-10 — 8/8 verdicts agree (see backtest_adjudication_verify.md).
+  Verifier additionally flagged convergence as 'unsound' in the recall sense: the A2c
+  strong-term-only predicate catches B002-NO-REGRESSION only via incidental negated
+  "rather than raw kill -TERM" text; equivalent lifecycle prose without a strong term
+  would under-fire. Also noted the F5 secret-shape fire is baseline (v1.4.11), not a
+  v1.4.12 delta — expected, F5 shipped last release.
+release_decision: >
+  PROCEED (maintainer-orchestrator, 2026-06-10). No verdict was contested (no
+  agree:false). The under-fire risk is a RECALL gap, accepted as a deliberate
+  precision-biased trade-off after two measured over-fire rounds on this corpus
+  (daemon/probe/cancel noun collisions). Recall is covered by defense-in-depth shipped in
+  the same release: (1) prompts/shape/role.md (B2) requires subprocess surfaces to carry
+  evidence_kind: subprocess_lifecycle_test, which is a DETERMINISTIC lint trigger
+  independent of prose phrasing; (2) prompts/grade/critic.md (B4) fails facet-claims
+  lacking facet evidence. Prose-term scoping remains as the historical/sloppy-grade
+  backstop only. Verifier's alternative predicate (lifecycle-noun pairing + dep/HTTP/
+  lock exclusions) is recorded for a future cycle if a real under-fire escape is observed.
