@@ -39,6 +39,13 @@ python3 "$HARNESS/bin/loop-state.py" init \
 `dry-run` = single iteration, **stop before release**. Switch to auto with
 `loop-state.py set mode auto` only AFTER a supervised dry-run passes.
 
+**Codex invocation (best reasoning mode):** do NOT pass `-m gpt-5.2` — on a ChatGPT-auth
+account that model is rejected. Omit `-m` so codex uses your `~/.codex/config.toml` default
+(the best model on the account, e.g. `gpt-5.5`) and force top reasoning with
+`-c model_reasoning_effort="xhigh"`. Pass each prompt via **stdin** (`… - < prompt.txt`) to
+avoid shell-quoting; redirect stdout to the review file; `2>/dev/null` drops thinking tokens
+and the benign `mcp.cloudflare.com` auth-noise line.
+
 ---
 
 ## Step 0 — Guard (FIRST, every turn)
@@ -77,8 +84,8 @@ Branch on the payload:
 ```bash
 mkdir -p "$REVIEWS/$CYCLE"
 codex exec --skip-git-repo-check -C "$BS_LOOP_TARGET_REPO" \
-  -m gpt-5.2 --config model_reasoning_effort="xhigh" --sandbox read-only \
-  "<R1_PROMPT>" > "$REVIEWS/$CYCLE/r1.md" 2>/dev/null
+  -c model_reasoning_effort="xhigh" --sandbox read-only - \
+  < "$ITERDIR/r1_prompt.txt" > "$REVIEWS/$CYCLE/r1.md" 2>/dev/null   # write R1_PROMPT to that file first
 ```
 **R1_PROMPT** (fill the cycle bounds): "You are an INDEPENDENT reviewer. The bs workflow
 already ran its own Grade and merged this delivery — your job is to find what its Grade
@@ -94,8 +101,8 @@ why, evidence}], confidence}`. Review only — modify nothing."
 ## Step 3 — r2.md (codex, process/evolution review — depends on r1)
 ```bash
 codex exec --skip-git-repo-check -C "$WORKSPACE_PARENT" \
-  -m gpt-5.2 --config model_reasoning_effort="xhigh" --sandbox read-only \
-  "<R2_PROMPT>" > "$REVIEWS/$CYCLE/r2.md" 2>/dev/null
+  -c model_reasoning_effort="xhigh" --sandbox read-only - \
+  < "$ITERDIR/r2_prompt.txt" > "$REVIEWS/$CYCLE/r2.md" 2>/dev/null   # write R2_PROMPT to that file first
 ```
 **R2_PROMPT**: "Read `r1.md` at `<abs path>` and this cycle's PROCESS evidence in
 `<cycle_dir>`: `step_events.jsonl`, `grade_round_*.md`, `evidence/grade_lint_*.json`,
@@ -130,8 +137,8 @@ git -C "$BS_LOOP_SKILL_REPO" push origin main
 3. **Implement via codex (workspace-write):**
 ```bash
 codex exec --skip-git-repo-check -C "$BS_LOOP_SKILL_REPO" \
-  -m gpt-5.2 --config model_reasoning_effort="xhigh" --sandbox workspace-write --full-auto \
-  "<IMPLEMENT_PROMPT>" 2>/dev/null
+  -c model_reasoning_effort="xhigh" --sandbox workspace-write --full-auto - \
+  < "$ITERDIR/implement_prompt.txt" 2>/dev/null   # write IMPLEMENT_PROMPT to that file first
 ```
    **IMPLEMENT_PROMPT**: "Apply `r2_plan.proposed_changes` from `<r2 path>` as a
    PATCH-level change to this bs-skill repo. Then prepare a release: (1) bump `skill.yaml`
