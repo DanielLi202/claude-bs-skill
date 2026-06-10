@@ -1,10 +1,17 @@
 <!-- runtime asset: bs-evolve-loop orchestration spec v2 (closure-ledger model); fed to /loop, not documentation -->
 # bs-evolve-loop v2 — `/loop` body (closure-ledger model)
 
-Launch (self-paced):
-```
-/loop "$(cat /Users/lidongyuan/workspace/utils/bs-skill/harness/evolve-loop/loop-prompt.md)"
-```
+## Canonical wake prompt (WAKE_PROMPT)
+
+Every `ScheduleWakeup` in this loop passes EXACTLY this line as `prompt` — never this
+file's full text. Each wake therefore re-reads this file fresh, so edits to this file
+(including the loop's own Stage-4 self-improvements) take effect next iteration:
+
+    WAKE_PROMPT = 读取 /Users/lidongyuan/workspace/utils/bs-skill/harness/evolve-loop/loop-prompt.md 并严格按其执行一轮 bs-evolve-loop 迭代
+
+The human launches the first turn with the same line prefixed by `/loop` (do NOT use
+`"$(cat …)"` — the Claude Code input box performs no shell expansion; the explicit-read
+line is the mechanism-correct form).
 
 You are the **orchestrator**. The unit of work is a **cycle closure**, tracked on disk in
 `reviews/opensymphony/cycle-NNN/closure.yaml` (committed to the bs-skill repo). An
@@ -50,16 +57,29 @@ release.sh tags/pushes.
 
 ---
 
-## Step 0 — Guard + closure scan (every turn, FIRST)
-1. `loop-guard.sh acquire` → exit 10 (STOP file) or 11 (locked) ⇒ report + END, no reschedule.
-2. `loop-state.py should-stop` → reason ⇒ release lock, report, END.
-3. **Closure scan:** `python3 "$HARNESS/bin/closure.py" --reviews-root "$REVIEWS" newest-open`
+## Step 0 — Stop-checks, heartbeat, guard, closure scan (every turn, FIRST, in this order)
+1. `loop-guard.sh check-stop` → exit 10 (STOP file) ⇒ report "kill-switch present"; END
+   with NO reschedule. The STOP file is the universal absorber: every in-flight wakeup
+   that lands here dies quietly, which is how the loop is cancelled despite ScheduleWakeup
+   having no external cancel.
+2. `loop-state.py should-stop` → a reason prints ⇒ report it; END with NO reschedule
+   (stop conditions absorb stray heartbeats the same way).
+3. **Fallback heartbeat (arm BEFORE taking the lock):** `ScheduleWakeup(delaySeconds:
+   3600, reason: "bs-evolve fallback heartbeat", prompt: WAKE_PROMPT)`. If this turn later
+   dies mid-iteration (session kill — observed twice in cycle-018), this probe resumes the
+   loop from the closure ledger; after a NORMAL iteration it wakes into a held lock or a
+   stop condition and exits harmlessly.
+4. `loop-guard.sh acquire` → exit 11 (locked: another iteration is live) ⇒
+   `ScheduleWakeup(delaySeconds: 1800, reason: "lock-held retry probe", prompt:
+   WAKE_PROMPT)` then END. Combined with the 2h stale-lock auto-clear, a dead lock-holder
+   is resumed within ~2-3h; a live one keeps ownership (the probe just bounces).
+5. **Closure scan:** `python3 "$HARNESS/bin/closure.py" --reviews-root "$REVIEWS" newest-open`
    - prints a dir ⇒ resume that closure: `closure.py --dir <dir> next` → jump to that stage
      (r1→Stage 2, r2→Stage 3, skill_release→Stage 4, remediation→Stage 5, close→Stage 6).
    - exit 10 (none open) ⇒ also check: latest CLOSED `/bs` cycle in `$CORPUS` (≥ cycle-018)
      without a closure dir ⇒ adopt it (`closure.py --dir "$REVIEWS/<cycle>" init`), start at
      Stage 2. Otherwise → Stage 1 (new cycle).
-4. `loop-state.py begin-iteration`.
+6. `loop-state.py begin-iteration`.
 
 ## Stage 1 — Dev cycle via `/bs` (subagent)
 Spawn ONE awaited `general-purpose` subagent: run `/bs` to completion in
@@ -148,10 +168,16 @@ origin/main. Then report (REQUIRED content): cycle, r1 verdict, skill release + 
 backtest summary (fires/adjudications), remediation commit, and **every
 `escalated_to_human` item verbatim** — these are live handoffs to the user, not records.
 
-## Stage 7 — Stop or reschedule
-`loop-state.py should-stop` → reason ⇒ report + END. Else
-`ScheduleWakeup(delaySeconds: 90, reason: "next bs-evolve iteration", prompt: <this same
-/loop input verbatim>)`. **ALWAYS last:** `loop-guard.sh release`.
+## Stage 7 — Stop or reschedule (the self-chaining step)
+1. `loop-state.py should-stop` → a reason prints ⇒ report it; END with NO reschedule —
+   the chain terminates here, and any still-pending heartbeat is absorbed by the same
+   stop condition on its next firing.
+2. `loop-state.py get mode` == `dry-run` ⇒ single-iteration mode: report and END with NO
+   reschedule.
+3. Else **re-arm the chain:** `ScheduleWakeup(delaySeconds: 90, reason: "next bs-evolve
+   iteration", prompt: WAKE_PROMPT)` — always the canonical WAKE_PROMPT line, never this
+   file's contents.
+4. **ALWAYS last:** `loop-guard.sh release`.
 
 ---
 

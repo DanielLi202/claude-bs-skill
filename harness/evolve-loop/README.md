@@ -76,14 +76,32 @@ Runtime state (gitignored): `OpenSymphony-V3/.prompts/loop/` (`STOP`, `RUNNING.l
 `state.json`, `iter-NNN/`).
 
 ## Launch
+
+One-time state prep (terminal):
 ```bash
 HARNESS=/Users/lidongyuan/workspace/utils/bs-skill/harness/evolve-loop
 python3 "$HARNESS/bin/loop-state.py" init \
   --target /Users/lidongyuan/workspace/utils/OpenSymphony-V3 \
   --skill  /Users/lidongyuan/workspace/utils/bs-skill --mode auto --max 5
-/loop "$(cat "$HARNESS/loop-prompt.md")"
 ```
-Stop: `touch OpenSymphony-V3/.prompts/loop/STOP` (the only external cancel).
+Then type ONE line in the Claude Code input box (this is the canonical WAKE_PROMPT with a
+`/loop` prefix — do NOT use `"$(cat …)"`, the input box performs no shell expansion):
+```
+/loop 读取 /Users/lidongyuan/workspace/utils/bs-skill/harness/evolve-loop/loop-prompt.md 并严格按其执行一轮 bs-evolve-loop 迭代
+```
+
+**How it self-chains:** the launch line only ignites turn 1. Continuation lives in the
+prompt file itself — Stage 7 re-arms `ScheduleWakeup(90s, WAKE_PROMPT)` after every
+completed iteration, and each wake re-READS loop-prompt.md (file = single source of
+truth; edits, including the loop's own self-improvements, apply next iteration). Two
+safety wakeups also fly: a Step-0 fallback heartbeat (3600s — resumes from the closure
+ledger if a turn dies mid-iteration) and a lock-held retry probe (1800s). Stray wakeups
+are harmless by construction: the RUNNING lock prevents double-runs, and stop conditions
+/ the STOP file absorb every leftover firing.
+
+Stop: `touch OpenSymphony-V3/.prompts/loop/STOP` (the universal absorber — the only
+external cancel, honored by every wakeup at Step 0). Single-iteration test run:
+`loop-state.py set mode dry-run` (Stage 7 then never re-arms).
 
 ## Failure policy
 Pause-and-surface (never fabricate approval): `/bs` hard-stops, gate failures after
