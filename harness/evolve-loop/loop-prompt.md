@@ -43,8 +43,10 @@ First-ever launch: `python3 "$HARNESS/bin/loop-state.py" init --target … --ski
 **Codex invocation:** NEVER pass `-m` (ChatGPT-auth rejects `gpt-5.2`; the config default,
 e.g. `gpt-5.5`, is the account's best model). Always `-c model_reasoning_effort="xhigh"`,
 prompt via stdin (`… - < prompt.txt`), stdout → artifact file. Reviews/verifies:
-`--sandbox read-only`. Implementation: `--sandbox workspace-write --full-auto` (codex may
-`git commit` per item when instructed, but NEVER tags or pushes — only release.sh pushes).
+`--sandbox read-only`. Implementation: `--sandbox workspace-write --full-auto`. **codex CANNOT git-commit under
+this sandbox (`.git` is read-only)** — run ONE codex exec PER ITEM; the ORCHESTRATOR
+verifies each result (suite + targeted greps) and makes that item's commit itself. Only
+release.sh tags/pushes.
 
 ---
 
