@@ -290,6 +290,124 @@ REQUEST_TARGET_MALFORMED_ONLY_GRADE=REQUEST_TARGET_INSUFFICIENT_GRADE.replace(
     'scenario: unknown skill id returns 404\n    evidence_ref: tests::unknown_id_404',
     'scenario: malformed request is rejected\n    evidence_ref: /Users/lidongyuan/workspace/tests/malformed_request_smoke.log'
 )
+CYCLE018_SECRET_BARE_OUTCOME='''# Outcome Capsule — B-018 M5 Conduct adapter (cycle-018, Phase 2)
+```yaml
+acceptance:
+  - id: B018-A11
+    severity: P1
+    statement: >
+      **Secret / auth non-leakage.** The probe reads `codex login status` / `claude auth status`, but auth tokens, API keys, or OAuth material never appear in `AdapterError` `Debug`/`Display`, `tracing` output, normalized ledger events, or any `evidence/` file. `LoginRequired`/`NotAuthenticated` carry only an actionable remediation string, not captured auth output.
+```
+'''
+CYCLE018_SECRET_BARE_GRADE='''# Grade — B-018 M5 Conduct adapter (cycle-018, round 1)
+```yaml
+grade_summary:
+  p0_count: 0
+  p1_count: 0
+  p2_count: 0
+```
+```yaml
+acceptance_status:
+  - id: B018-A11
+    status: pass
+    severity: P1
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: B018-A11
+    status: pass
+    severity_if_fail: P1
+    spec_refs: ["docs/ops/contributing.md", "docs/decisions/product.md"]
+    evidence_ref: "src/process.rs:170-190 redact_secrets (token=/api_key=/sk-/oauth); src/lib.rs error messages carry no captured auth output; tests adapter_errors_do_not_display_token_material + codex_probe_maps_not_logged_in_without_secret_leakage"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: B018-A11
+    status: pass
+    severity_if_fail: P1
+    scenario: "A token-shaped secret in vendor stderr or a logged-out probe must not surface in AdapterError Debug/Display, evidence, or events; redact_secrets masks token=/api_key=/sk-/oauth."
+    evidence_ref: "src/process.rs:170-190; tests adapter_errors_do_not_display_token_material + codex_probe_maps_not_logged_in_without_secret_leakage (nextest pass)"
+```
+```yaml
+secret_leakage_audit:
+  status: pass
+  checked_surfaces:
+    - "AdapterError Debug + Display (src/lib.rs:63-111)"
+    - "vendor stderr capture redaction (src/process.rs:151-190, src/codex/mod.rs:210-226)"
+    - "capability probe login/auth output (inspected for a boolean only, not stored; src/codex/mod.rs:80-88,540-559)"
+    - "tracing warn! calls in normalize (no token/auth fields)"
+    - "normalized vendor_event payloads + evidence trace/raw files"
+  cleartext_secret_probe: pass
+  evidence_ref: "tests adapter_errors_do_not_display_token_material + codex_probe_maps_not_logged_in_without_secret_leakage; src/process.rs:170-190 redact_secrets -> [REDACTED]; nextest green"
+```
+```yaml
+dependency_spec_review:
+  - dependency: "async-trait"
+    status: pass
+    severity_if_fail: P1
+    spec_ref: "docs/ops/contributing.md (§9 license allowlist), docs/architecture/tech-stack.yaml"
+    evidence_ref: "root Cargo.toml [workspace.dependencies] async-trait = \\"0.1.89\\" (pinned); Cargo.lock async-trait 0.1.89 from crates.io; license MIT OR Apache-2.0 (allowlisted)"
+```
+'''
+CYCLE017_SECRET_NOT_APPLICABLE_OUTCOME='''# Grade round 0 — cycle-017 / B-005 Pattern Library reader + API endpoints
+```yaml
+acceptance:
+  - id: B005-MALFORMED-ROBUST
+    severity: P1
+    statement: >
+      parse_skill_file/parse_skill_text return degraded ParsedSkill (parse_ok=false + parse_error) for read error / non-utf8 / missing-frontmatter / malformed-yaml — never panic.
+```
+'''
+CYCLE017_SECRET_NOT_APPLICABLE_GRADE='''# Grade round 0 — cycle-017 / B-005 Pattern Library reader + API endpoints
+```yaml
+grade_summary:
+  p0_count: 0
+  p1_count: 0
+  p2_count: 0
+```
+```yaml
+acceptance_status:
+  - id: B005-MALFORMED-ROBUST
+    severity: P1
+    status: pass
+    evidence: "parse_skill_file/parse_skill_text return degraded ParsedSkill (parse_ok=false + parse_error) for read error / non-utf8 / missing-frontmatter / malformed-yaml — never panic; tests malformed_skills_degrade_without_breaking_listing (good+no-frontmatter+bad-yaml all list) + non_utf8_skill_degrades_without_error."
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: B005-MALFORMED-ROBUST
+    severity_if_fail: P1
+    status: pass
+    spec_refs: ["docs/ops/roadmap.md §4.1 dogfood task 2 (robust to missing YAML front matter)", "docs/decisions/product.md D-P25"]
+    evidence_ref: "parse_skill_file degradation + tests malformed_skills_degrade_without_breaking_listing / non_utf8_skill_degrades_without_error"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: B005-MALFORMED-ROBUST
+    severity_if_fail: P1
+    status: pass
+    scenario: "malformed YAML front matter / missing front matter / non-UTF8 SKILL.md does not crash listing"
+    evidence_ref: "tests malformed_skills_degrade_without_breaking_listing + non_utf8_skill_degrades_without_error (return Ok with degraded entry)"
+```
+```yaml
+secret_leakage_audit:
+  status: pass
+  cleartext_secret_probe: not_applicable
+  evidence_ref: "crates/symphony-patterns/src/lib.rs (PatternError/PatternEntry/PatternDetail) + crates/symphony-api/src/handlers/mod.rs (patterns_index/patterns_detail/pattern_error_to_api_error) + apps/symphony format_patterns; no auth/token/log code added (symphony-api auth.rs unchanged)"
+  checked_surfaces:
+    - "PatternError Debug/Display (thiserror): messages contain only path + skill_id (user-supplied dir name) — no tokens/keys/passwords."
+    - "PatternEntry / PatternDetail Serialize (API JSON + CLI): id/name/description/risk_level/source/imported_from/has_usage/parse_ok/parse_error/body/usage — pattern metadata, not credentials."
+    - "usage.json content surfaced verbatim in detail: local pattern metadata, not secret-bearing; reader never reads auth.json / daemon token."
+    - "No logging added in this cycle; the crate touches no auth/token/network code."
+```
+```yaml
+dependency_spec_review:
+  - check: "no new third-party dependency introduced"
+    status: pass
+    severity_if_fail: P1
+    spec_ref: "docs/architecture/tech-stack.yaml + docs/ops/contributing.md §6"
+    evidence_ref: "crates/symphony-patterns/Cargo.toml uses only existing workspace deps serde/serde_json/serde_yaml_bw/thiserror/symphony-storage; no addition to root [workspace.dependencies]"
+```
+'''
 class GradeLintTests(unittest.TestCase):
     def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME):
         with tempfile.TemporaryDirectory() as td:
@@ -353,6 +471,18 @@ class GradeLintTests(unittest.TestCase):
         with self.subTest('not applicable'):
             proc,p=self.run_lint('code','low',CYCLE017_SUFFICIENT_GRADE,CYCLE017_STYLE_OUTCOME)
             self.assertEqual(proc.returncode,0,p)
+
+    def test_cycle018_real_secret_audit_bare_pass_probe_requires_shapes(self):
+        proc,p=self.run_lint('code','low',CYCLE018_SECRET_BARE_GRADE,CYCLE018_SECRET_BARE_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertIn('secret_leakage_audit.cleartext_secret_probe missing required token shapes', errors)
+        self.assertIn('json_or_quoted_token', errors)
+        self.assertIn('authorization_bearer', errors)
+
+    def test_cycle017_real_not_applicable_probe_with_negated_auth_terms_does_not_require_shapes(self):
+        proc,p=self.run_lint('code','low',CYCLE017_SECRET_NOT_APPLICABLE_GRADE,CYCLE017_SECRET_NOT_APPLICABLE_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
 
     def test_cycle017_style_path_root_acceptance_requires_symlink_or_canonical_coverage(self):
         proc,p=self.run_lint('code','low',CYCLE017_INSUFFICIENT_GRADE,CYCLE017_STYLE_OUTCOME)

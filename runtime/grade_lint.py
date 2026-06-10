@@ -36,6 +36,7 @@ SYMLINK_CONTAINMENT_TERMS=re.compile(r"symlink|canonical(?:ize|ise|ization|isati
 REQUEST_TARGET_TERMS=re.compile(r"request[-_\s]?target|request\s+line|raw\s+http|http/1\.1|path\s+segment|percent[-_\s]?encod|url[-_\s]?encod|crlf|control\s+char|request\s+delimiter", re.I)
 REQUEST_TARGET_FACET_TERMS=re.compile(r"delimiter|\?|#|\bspaces?\b|control|crlf|\\r|\\n|percent[-_\s]?encod|url[-_\s]?encod", re.I)
 SECRET_AUDIT_SCOPE_TERMS=re.compile(r"\b(?:auth|secret|token|credential|password|oauth|bearer|api[-_\s]?key|vendor[-_\s]?stderr|stderr|logs?|logging|traces?|tracing|events?|evidence|debug|display|errors?|serialization)\b", re.I)
+NEGATED_SCOPE_PREFIX=re.compile(r"(?:\bno\b|\bnot\b|\bnever\b|\bwithout\b|\bdoes\s+not\b|\bdo\s+not\b|\bdoesn't\b|\bdon't\b|\bnot_applicable\b)\W+(?:[\w/.-]+\W+){0,8}$", re.I)
 SECRET_TOKEN_SHAPE_PATTERNS={
     "bare_token_or_key": re.compile(r"\b(?:bare[-_\s]*(?:whitespace[-_\s]*)?(?:token|key|form|shape)|key[-_\s]?value|token[-_\s]?equals|api[-_\s]?key[-_\s]?equals)\b|\b(?:token|api[-_\s]?key)\s*=", re.I),
     "json_or_quoted_token": re.compile(r"\b(?:json(?:[-_\s]*or[-_\s]*quoted)?|quoted)[-_\s]*(?:token|api[-_\s]?key|form|shape)\b|[\"'](?:api[-_]?key|token)[\"']\s*:", re.I),
@@ -394,7 +395,15 @@ def secret_audit_scope_text(secret):
     )
 
 def secret_audit_requires_multi_shape(secret, outcome_blocks):
-    return outcome_has_auth_secret_surface(outcome_blocks) or bool(SECRET_AUDIT_SCOPE_TERMS.search(secret_audit_scope_text(secret)))
+    return outcome_has_auth_secret_surface(outcome_blocks) or has_non_negated_scope_term(SECRET_AUDIT_SCOPE_TERMS, secret_audit_scope_text(secret))
+
+def has_non_negated_scope_term(pattern, text):
+    for match in pattern.finditer(text or ''):
+        prefix=text[max(0,match.start()-80):match.start()]
+        if NEGATED_SCOPE_PREFIX.search(prefix):
+            continue
+        return True
+    return False
 
 def has_bare_sk_token(text):
     for match in SECRET_BARE_SK_PATTERN.finditer(text):
@@ -415,10 +424,14 @@ def validate_cleartext_secret_probe_shape(secret, outcome_blocks, errors):
         if probe not in {'pass','not_applicable'}:
             errors.append('secret_leakage_audit.cleartext_secret_probe must be pass|not_applicable or a structured shape list when status pass')
             return
+        if probe=='not_applicable':
+            return
     elif isinstance(probe,dict):
         probe_status=probe.get('status') or probe.get('result')
         if probe_status is not None and probe_status not in {'pass','not_applicable'}:
             errors.append('secret_leakage_audit.cleartext_secret_probe.status must be pass|not_applicable when status pass')
+            return
+        if probe_status=='not_applicable':
             return
     elif not isinstance(probe,list):
         errors.append('secret_leakage_audit.cleartext_secret_probe must be pass|not_applicable or a structured shape list when status pass')
