@@ -1,0 +1,56 @@
+baseline_ref: v1.4.12
+target_cycle: cycle-019
+cycles:
+- cycle: cycle-009
+  risk: medium
+  grade: grade_round_1.md
+  baseline_error_count: 16
+  new_error_count: 16
+  delta_errors: []
+- cycle: cycle-013
+  risk: medium
+  grade: grade_round_0.md
+  baseline_error_count: 10
+  new_error_count: 10
+  delta_errors: []
+- cycle: cycle-015
+  risk: low
+  grade: grade_round_0.md
+  baseline_error_count: 7
+  new_error_count: 7
+  delta_errors: []
+- cycle: cycle-016
+  risk: medium
+  grade: grade_round_0.md
+  baseline_error_count: 1
+  new_error_count: 1
+  delta_errors: []
+- cycle: cycle-017
+  risk: low
+  grade: grade_round_0.md
+  baseline_error_count: 2
+  new_error_count: 2
+  delta_errors: []
+- cycle: cycle-018
+  risk: medium
+  grade: grade_round_1.md
+  baseline_error_count: 14
+  new_error_count: 14
+  delta_errors: []
+- cycle: cycle-019
+  risk: medium
+  grade: grade_round_0.md
+  baseline_error_count: 0
+  new_error_count: 4
+  delta_errors:
+  - 'shape_forbidden_read_isolation_audit: Shape forbidden-read proof missing — grade
+    proves no-writes but not no-READS of memory-user/patterns-user/patterns-imported
+    (R-AGT-6/AGENT.md capabilities.forbidden)'
+  - 'outcome_capsule_v12_structural_schema.assumptions: Shape schema_version 1.2 assumptions
+    must be a list of objects with id,text,source,confirmed,risk_if_wrong'
+  - 'outcome_capsule_v12_structural_schema.output_contract.target: target ''pr'' must
+    equal one of output_contract.artifacts[*].type'
+  - 'shape_protocol_evidence: missing Grade evidence groups for Shape-agent work:
+    [critic_envelope_input, high_risk_classifier, qa_protocol, rejected_critic_gate]'
+must_fire: true
+misfire_candidates: []

@@ -1,7 +1,7 @@
 cycle: cycle-019
 r1: done
 r2: done
-skill_release: null
+skill_release: v1.4.13
 remediation: null
 escalated_to_human:
 - 'bs-skill contract.md §6: for code tasks implementing/modifying an OpenSymphony
@@ -33,4 +33,4 @@ escalated_to_human:
   + cite them in Grade; Grade may not stop at the shaped acceptance list when AGENT/schema
   contracts add stricter P0/P1 obligations. [needs_human; F1-F7]'
 closed: false
-updated_at: '2026-06-10T12:12:00Z'
+updated_at: '2026-06-10T12:52:38Z'
