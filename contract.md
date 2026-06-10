@@ -1,4 +1,4 @@
-# Bootstrap Development Workflow Contract v1.4.12
+# Bootstrap Development Workflow Contract v1.4.13
 
 > Universal workflow contract for bootstrap-driven repositories. The contract owns orchestration semantics; each repository owns only its binding, backlog, ledger, verification command, and red-line documents.
 
@@ -198,12 +198,12 @@ The driver spawns `codex app-server` in its own POSIX process group (`start_new_
 
 | file | sha256 |
 |---|---|
-| runtime/preflight.sh | 6e9342fdc7dd2e942effe07e0fe8c8c9a936c59603eb8623c27fae88f807b143 |
-| runtime/codex_driver.py | 1cec0b3587561f0392b658c021913d5b83aba60325fc3ce62882c18942e5bc56 |
+| runtime/preflight.sh | 69e6d9e6afdf78a18048af3f0c545276a3aa5c07c067c7d8a3eadde63bcd5db5 |
+| runtime/codex_driver.py | 2be9870adb904cd4b4e848b690053d4df2eef995535d0eb72d958ec2b40ac8b1 |
 | runtime/codex_fix_driver.py | 0ba1be44f6ddf4f8ff8d40a8a661bd317c85752c5e9597f6c2ac13afb9d1ae4a |
 | runtime/reshape_fix_round.py | ce6caf0114102fc706798963f6756e75c90b2d7d12caa854eca6352e30f9a73a |
 | runtime/conduct.sh | c9a7dab3798a384d3929256457e9b05da7a4b413b980ec128286f81c5f4b726e |
-| runtime/grade_lint.py | 4b4cff6a5099ca0fe49a5f1bc8bca5efd8d602e3796c52d976a6432a61d0d14b |
+| runtime/grade_lint.py | fe59dc2807f8b71a3106770f67e05507945236fdea5a9402177f703337385255 |
 | runtime/grade_verify.py | cd7baca6f0102d8920408bfd03d18711f76ad003d353cded54c74935c223407f |
 | runtime/sync_status_marker.py | 4e0371d55d855dd18b6fd403e5c57a27099de412d99349efcd469e2595a3555a |
 | commands/bs.md | 0a8dd8525ac93ce097f67808bec9720200099b7b4377921480796974e396b8cc |
@@ -220,6 +220,7 @@ No parallel cycles, enum extension, severity override, council-member override, 
 
 ## 11. Changelog
 
+- v1.4.13: Cycle-019 Shape-agent Grade hardening. `grade_lint.py` adds three deterministic facets scoped to Shape-agent implementation tasks (token-gated, so historical non-Shape cycles are unaffected): `shape_forbidden_read_isolation_audit` requires explicit no-READ proof for memory-user/patterns-user/patterns-imported (not merely no-writes; catches the R-AGT-6 / Shape AGENT.md capabilities.forbidden escape); `outcome_capsule_v12_structural_schema` validates schema_version 1.2 capsules (structured Assumption[]/Grounding[] objects, output_contract.target must equal one of artifacts[*].type, high_risk_actions required when risk_level high); `shape_protocol_evidence` requires Grade evidence for the 9-rule critic envelope+input, high-risk classifier fixtures, Q&A protocol + answer-merge, and a rejected-critic write-gate fixture. Paired must-fire (cycle-019) / must-not-fire (cycle-018) fixtures added. Runtime manifest relocked; driver/preflight client versions plus `skill.yaml` bumped to 1.4.13. No Conduct goal-RPC transport change.
 - v1.4.12: Cycle-018 close-gap and Grade/Shape hardening. `grade_lint.py` now enforces five additional hardening rules: subprocess-lifecycle facets, RPC cleanup negative-path evidence, per-source event emission evidence, multi-shape secret probes with scoped `not_applicable` exemption, and format-tolerant auth-status mapping evidence. Contract §6 and the Shape/Grade prompts now require facet-level clauses for these claims. Preflight now probes the cycle-018 post-merge close incident pattern (merged PR but Step 10 never ran) and routes recovery through `/bs resume` plus `/bs doctor`. Runtime manifest relocked; no Conduct goal-RPC transport change.
 - v1.4.11: Cycle-018 F5 secret-shape Grade hardening. `grade_lint.py` now requires in-scope `secret_leakage_audit` cleartext probes to show bare token/key-value, JSON/quoted token/API-key, and `Authorization: Bearer` shapes for auth/secret/log/evidence surfaces, while preserving scoped `not_applicable` audits. Runtime manifest relocked; driver/preflight client versions plus `skill.yaml` bumped to 1.4.11. No Conduct success-oracle or goal-RPC transport change.
 - v1.4.10: Property-obligation Grade hardening after cycle-017 escape analysis. `grade_lint.py` now reads code outcome YAML front matter as well as fenced YAML blocks, derives lightweight property obligations from P0/P1 acceptance text, and blocks example-only negative coverage for path/root containment (string traversal without symlink/canonical-root containment) and raw request-target/path-segment boundaries (generic request-target or malformed-request smoke without delimiter/control-character/CRLF/encoding coverage). Shape and Grade prompts now require property-facet evidence even for low-risk code when trust-boundary surfaces exist. Runtime manifest relocked; driver/preflight client versions plus `skill.yaml` bumped to 1.4.10. No Conduct success-oracle or goal-RPC transport change.

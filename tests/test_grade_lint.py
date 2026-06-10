@@ -1138,6 +1138,119 @@ EVENT_SOURCE_PER_SOURCE_GRADE=EVENT_SOURCE_AGGREGATE_GRADE.replace(
     'scenario: "A Claude stream missing goal/plan/terminal events would fail the aggregate exit-condition assertion."\n    evidence_ref: "tests/adapter_e2e.rs assert_exit_condition aggregate count"',
     'scenario: "Per-source regressions assert system/init and result each emit goal_snapshot rather than relying on aggregate counts."\n    evidence_ref: "tests::claude_system_init_emits_goal_snapshot + tests::claude_result_emits_goal_snapshot"'
 )
+CYCLE019_SHAPE_ESCAPE_OUTCOME='''---
+schema_version: "1.2"
+title: "M4 Shape Agent — outcome capsule draft + assumptions + Shape critic"
+goal: "Implement the symphony-shape crate: Shape Agent session driver, outcome capsule draft generation, Q&A round-trip, and Shape critic; expose symphony shape CLI subcommand."
+risk_level: medium
+non_goals:
+  - "Do NOT write to patterns-user/, patterns-imported/, or memory-user/ directories (R-AGT-6 P0)"
+context_pointers:
+  - "docs/agents/shape/AGENT.md"
+  - "prompts/agents/shape/critic.md"
+assumptions:
+  - "Pattern Library retrieval (D-P25) can be stubbed — call the existing symphony-patterns API but if patterns dir is empty, proceed with empty groundings"
+  - "The Q&A round-trip for the CLI path means: Shape generates the questions, prints them to stdout, reads answers from stdin (or accepts --skip flag per D-P6 power-user path), then merges into outcome.md"
+groundings: []
+output_contract:
+  artifacts:
+    - type: file_set
+      paths:
+        - "crates/symphony-shape/src/session.rs"
+        - "crates/symphony-shape/src/critic.rs"
+  target: pr
+acceptance:
+  - id: a4
+    severity: P1
+    text: "symphony shape --skip one-liner produces a well-formed outcome.md in .symphony/runs/<run-id>/outcome.md (file exists, YAML front matter parses, has required fields: schema_version, id, title, goal, non_goals, acceptance, verification, risk_level)"
+---
+# Background
+This milestone is deliberately scoped to the CLI-standalone path: `symphony shape --skip <one-liner>` runs without a daemon and directly produces `outcome.md` + `shape_session.md` + `shape_critic.yaml`.
+'''
+CYCLE019_SHAPE_ESCAPE_GRADE='''# Grade Round 0 — B-019 M4 Shape Agent
+```yaml
+grade_summary:
+  p0_count: 0
+  p1_count: 0
+  p2_count: 0
+```
+```yaml
+acceptance_status:
+  - id: a4
+    status: pass
+    severity: P1
+    text: "symphony shape --skip produces outcome.md with required schema_version 1.2 fields"
+    evidence_ref: "manual: T-20260610-112850-9ec58cb8/outcome.md present with schema_version 1.2"
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: a4
+    spec_ref: "docs/agents/shape/AGENT.md §3 runtime"
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: "manual: T-20260610-112850-9ec58cb8/outcome.md present with schema_version 1.2"
+    notes: "ShapeSession.run_skip writes outcome.md via write_new (create_new=true)"
+```
+```yaml
+negative_regression_tests:
+  - id: nr2
+    acceptance_id: a4
+    scenario: "malformed YAML front matter returns Err(Yaml) without process crash"
+    description: "parse_outcome_markdown on '---\\nbad: {unclosed\\n---\\n' returns Err(Yaml)"
+    test_name: "symphony-shape capsule::tests::malformed_yaml_returns_error_without_panic"
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: evidence/grade_verify_round_0.yaml
+```
+```yaml
+secret_leakage_audit:
+  status: pass
+  evidence_ref: evidence/grade_verify_round_0.yaml
+  checked_surfaces:
+    - "crates/symphony-shape/src/capsule.rs"
+    - "crates/symphony-shape/src/session.rs"
+    - "crates/symphony-shape/src/critic.rs"
+    - "crates/symphony-shape/src/qa.rs"
+  cleartext_secret_probe:
+    - shape: bare_token_or_key
+      result: pass
+      note: "probe for bare api_key= or TOKEN= patterns: none found"
+    - shape: json_or_quoted_token
+      result: not_applicable
+      reason: "no JSON serialization with 'api_key' or 'token' quoted fields"
+    - shape: bearer_header
+      result: not_applicable
+      reason: "no HTTP calls or Authorization bearer headers in this crate"
+```
+```yaml
+dependency_spec_review:
+  - name: symphony-patterns
+    spec_ref: "docs/architecture/api-contract.md §3.6 (B-005)"
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: evidence/grade_verify_round_0.yaml
+    notes: "workspace path dep; read-only list_patterns call per R-AGT-6; no write path introduced"
+```
+
+B-019 delivers a complete, standalone `symphony-shape` crate implementing Phase 2 M4 Shape Agent.
+All checks pass. R-AGT-6 upheld: symphony-shape calls symphony_patterns read-only only; writes only to `.symphony/runs/<run_id>/`.
+'''
+CYCLE018_ADAPTER_NON_SHAPE_GRADE=LOW_CODE_COMPLETE + '''
+
+## Trust-boundary notes
+
+- No write to `memory-user/` / `patterns-user/` / `patterns-imported/` (RL-1/RL-2); no
+  daemon/api/client dependency (correct adapter dependency direction, contributing §6).
+'''
+CYCLE018_ADAPTER_NON_SHAPE_OUTCOME=LOW_CODE_OUTCOME + '''
+
+## 4. Non-goals (explicit — out of scope this cycle)
+
+- **No Shape / Grade / Evolve agent runtime** (M4/M6/M7). This crate provides the
+  trait + adapters only; do not implement agents, critics, or their prompts.
+- Do not read or write `memory-user/` / `patterns-user/` / `patterns-imported/`
+  (RL-1/RL-2); they do not exist and must not be created.
+'''
 class GradeLintTests(unittest.TestCase):
     def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME):
         with tempfile.TemporaryDirectory() as td:
@@ -1314,6 +1427,24 @@ class GradeLintTests(unittest.TestCase):
     def test_clean_cycle_text_without_auth_status_mapping_does_not_trigger_auth_status(self):
         proc,p=self.run_lint('code','low',CYCLE016_LEDGER_CLEAN_GRADE,CYCLE016_LEDGER_CLEAN_OUTCOME)
         self.assertEqual(proc.returncode,0,p)
+
+    def test_cycle019_shape_excerpt_fires_forbidden_read_schema_and_protocol_facets(self):
+        proc,p=self.run_lint('code','low',CYCLE019_SHAPE_ESCAPE_GRADE,CYCLE019_SHAPE_ESCAPE_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertEqual(p['grade_lint']['errors'], [
+            'shape_forbidden_read_isolation_audit: Shape forbidden-read proof missing — grade proves no-writes but not no-READS of memory-user/patterns-user/patterns-imported (R-AGT-6/AGENT.md capabilities.forbidden)',
+            'outcome_capsule_v12_structural_schema.assumptions: Shape schema_version 1.2 assumptions must be a list of objects with id,text,source,confirmed,risk_if_wrong',
+            "outcome_capsule_v12_structural_schema.output_contract.target: target 'pr' must equal one of output_contract.artifacts[*].type",
+            'shape_protocol_evidence: missing Grade evidence groups for Shape-agent work: [critic_envelope_input, high_risk_classifier, qa_protocol, rejected_critic_gate]',
+        ])
+
+    def test_cycle018_adapter_excerpt_forbidden_roots_do_not_trigger_shape_facets(self):
+        proc,p=self.run_lint('code','low',CYCLE018_ADAPTER_NON_SHAPE_GRADE,CYCLE018_ADAPTER_NON_SHAPE_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertNotIn('shape_forbidden_read_isolation_audit', errors)
+        self.assertNotIn('outcome_capsule_v12_structural_schema', errors)
+        self.assertNotIn('shape_protocol_evidence', errors)
 
     def test_cycle018_rpc_cleanup_every_exit_claim_requires_negative_path_cleanup_evidence(self):
         proc,p=self.run_lint('code','low',RPC_CLEANUP_HAPPY_ONLY_GRADE,RPC_CLEANUP_OUTCOME)

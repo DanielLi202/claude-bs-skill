@@ -86,6 +86,17 @@ AUTH_STATUS_JSON_PARSE_EVIDENCE=re.compile(r"\b(?:json[-_\s]?pars(?:e|ed|es|ing)
 AUTH_STATUS_VARIANT_EVIDENCE=re.compile(r"\b(?:case[-_\s]?insensitive\s+(?:key|field)|key[-_\s]?case|camel[-_\s]?case|lower[-_\s]?case|whitespace[-_\s]?(?:variant|toleran(?:t|ce)|format|fixture)|format[-_\s]?variant|status[-_\s]?format[-_\s]?variant|status[-_\s]?fixture[-_\s]?matrix)\b", re.I)
 AUTH_STATUS_MULTI_VARIANT_EVIDENCE=re.compile(r"\b(?:multiple|both|two|several|matrix|parameteri[sz]ed)\b[^.;\n]{0,100}\b(?:login[-_\s]?status|auth[-_\s]?status|status|format|fixture|fixtures|variant|variants|loggedIn|loggedin|whitespace|key[-_\s]?case)\b", re.I)
 AUTH_STATUS_LITERAL_VARIANT_EVIDENCE=re.compile(r"(?:loggedIn[^.;\n]{0,100}loggedin|loggedin[^.;\n]{0,100}loggedIn|\"loggedIn\"\s*:\s*false[^.;\n]{0,100}\"loggedin\"\s*:\s*false|\"loggedin\"\s*:\s*false[^.;\n]{0,100}\"loggedIn\"\s*:\s*false)", re.I)
+SHAPE_STRONG_TASK_TOKENS=re.compile(r"\bsymphony\s+shape\b|\bShape Agent\b|docs/agents/shape/AGENT\.md|\bshape_session\b|\bshape_critic\b|prompts/agents/shape/", re.I)
+SHAPE_CRATE_TOKEN=re.compile(r"\bsymphony-shape\b", re.I)
+SHAPE_CRATE_PLACEHOLDER_CONTEXT=re.compile(r"\bfuture\s+work\b|\bplaceholder\b|\bfuture\b", re.I)
+SHAPE_FORBIDDEN_ROOTS=("memory-user","patterns-user","patterns-imported")
+SHAPE_FORBIDDEN_SCOPE=re.compile(r"\bR-AGT-6\b|\bmemory-user\b|\bpatterns-user\b|\bpatterns-imported\b", re.I)
+SHAPE_FORBIDDEN_SPEC_REF=re.compile(r"docs/agents/shape/AGENT\.md|\bR-AGT-6\b", re.I)
+SHAPE_NO_READ_EVIDENCE=re.compile(r"\bno\s+reads?\b|\bdoes\s+not\s+read\b|\bnot\s+read\b|\bread-boundary\b|\bno\s+code\s+path\s+reads\b|\bnever\s+(?:opens?|reads?)\b|\b(?:trees?|roots?)\s+are\s+never\s+opened\b", re.I)
+SHAPE_SCHEMA_ASSUMPTION_FIELDS=("id","text","source","confirmed","risk_if_wrong")
+SHAPE_SCHEMA_GROUNDING_FIELDS=("id","source_type","fetched_at","why_relevant","supports")
+SHAPE_HIGH_RISK_ACTIONS=("deploy","delete","db_write","external_api","payment","merge_pr")
+SHAPE_CRITIC_ENVELOPE_FIELDS=("verdict","rejected_reasons","approved_with_notes","incident","incident_class")
 class LintError(ValueError): pass
 
 def split_top_level(text, sep=','):
@@ -860,7 +871,137 @@ def validate_property_obligations(required_acceptance, neg, errors):
             errors.append(f"property_obligation[{acceptance_id}] missing required negative coverage facets: {','.join(missing)}")
     return calc
 
-def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_status, outcome_blocks=None, grade_claims=None):
+def shape_task_in_scope(*texts) -> bool:
+    blob=text_blob(*texts)
+    if SHAPE_STRONG_TASK_TOKENS.search(blob):
+        return True
+    for match in SHAPE_CRATE_TOKEN.finditer(blob):
+        context=blob[max(0,match.start()-80):match.end()+80]
+        if not SHAPE_CRATE_PLACEHOLDER_CONTEXT.search(context):
+            return True
+    return False
+
+def shape_forbidden_read_row_sufficient(row):
+    row_text=text_blob(row)
+    return (
+        bool(SHAPE_FORBIDDEN_SPEC_REF.search(row_text))
+        and all(root in row_text for root in SHAPE_FORBIDDEN_ROOTS)
+        and bool(SHAPE_NO_READ_EVIDENCE.search(row_text))
+    )
+
+def validate_shape_forbidden_read_isolation_audit(spec, neg, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    combined=text_blob(grade_text,outcome_text,outcome_blocks)
+    if not shape_task_in_scope(combined) or not SHAPE_FORBIDDEN_SCOPE.search(combined):
+        return
+    if any(shape_forbidden_read_row_sufficient(row) for row in spec+neg if isinstance(row,dict)):
+        return
+    errors.append('shape_forbidden_read_isolation_audit: Shape forbidden-read proof missing — grade proves no-writes but not no-READS of memory-user/patterns-user/patterns-imported (R-AGT-6/AGENT.md capabilities.forbidden)')
+
+def outcome_capsule_front_matter(outcome_blocks):
+    for block in outcome_blocks or []:
+        if isinstance(block,dict) and isinstance(block.get('schema_version'),str):
+            return block
+    return None
+
+def list_of_objects_with_fields(value, fields):
+    return isinstance(value,list) and all(isinstance(item,dict) and all(field in item for field in fields) for item in value)
+
+def validate_outcome_capsule_v12_structural_schema(outcome_blocks, errors, *, grade_text='', outcome_text=''):
+    if not shape_task_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    capsule=outcome_capsule_front_matter(outcome_blocks)
+    if not isinstance(capsule,dict) or str(capsule.get('schema_version'))!='1.2':
+        return
+    if 'assumptions' in capsule and not list_of_objects_with_fields(capsule.get('assumptions'),SHAPE_SCHEMA_ASSUMPTION_FIELDS):
+        errors.append('outcome_capsule_v12_structural_schema.assumptions: Shape schema_version 1.2 assumptions must be a list of objects with id,text,source,confirmed,risk_if_wrong')
+    groundings=capsule.get('groundings')
+    if groundings not in (None,[]) and not list_of_objects_with_fields(groundings,SHAPE_SCHEMA_GROUNDING_FIELDS):
+        errors.append('outcome_capsule_v12_structural_schema.groundings: Shape schema_version 1.2 groundings must be a list of objects with id,source_type,fetched_at,why_relevant,supports')
+    output_contract=capsule.get('output_contract')
+    if isinstance(output_contract,dict):
+        target=output_contract.get('target')
+        artifacts=output_contract.get('artifacts')
+        artifact_types={item.get('type') for item in artifacts if isinstance(item,dict) and isinstance(item.get('type'),str)} if isinstance(artifacts,list) else set()
+        if not isinstance(target,str) or target not in artifact_types:
+            errors.append(f"outcome_capsule_v12_structural_schema.output_contract.target: target {target!r} must equal one of output_contract.artifacts[*].type")
+    else:
+        errors.append('outcome_capsule_v12_structural_schema.output_contract.target: output_contract must be an object with target and artifacts')
+    if capsule.get('risk_level')=='high':
+        actions=capsule.get('high_risk_actions')
+        if not isinstance(actions,list) or not actions or not all(isinstance(item,dict) and item.get('action') and item.get('requires') for item in actions):
+            errors.append('outcome_capsule_v12_structural_schema.high_risk_actions: risk_level high requires a non-empty list of objects with action and requires')
+
+def text_has_all_terms(text, terms):
+    return all(re.search(rf"(?<![A-Za-z0-9_]){re.escape(term)}(?![A-Za-z0-9_])", text, re.I) for term in terms)
+
+def shape_has_nine_rule_evidence(text):
+    if re.search(r"\bnine[-\s]?rules?\b|\b9[-\s]?rules?\b|\b9[-\s]?rule\b", text, re.I):
+        return True
+    return all(re.search(rf"\brule\s*{i}\b", text, re.I) for i in range(1,10))
+
+def shape_high_risk_action_token_present(text, token):
+    if token in {'db_write','external_api','merge_pr'}:
+        return bool(re.search(rf"(?<![A-Za-z0-9_]){re.escape(token)}(?![A-Za-z0-9_])", text, re.I))
+    if token=='delete':
+        return bool(re.search(r"\bdelete\b|\bfile_delete\b", text, re.I))
+    if token=='payment':
+        return bool(re.search(r"\bpayment\b|\bpayment_api\b", text, re.I))
+    return bool(re.search(r"\bdeploy\b", text, re.I))
+
+def shape_has_high_risk_classifier_evidence(text):
+    return (
+        all(shape_high_risk_action_token_present(text, token) for token in SHAPE_HIGH_RISK_ACTIONS)
+        and bool(re.search(r"\brisk_level\s*[:=]\s*[\"']?high\b", text, re.I))
+        and bool(re.search(r"\bhigh_risk_actions\b", text, re.I))
+    )
+
+def shape_has_qa_protocol_evidence(text):
+    return (
+        'My assumption' in text
+        and 'Source' in text
+        and bool(re.search(r"\bSkip\s*(?:—|-)\s*agent decide\b|\bskip\s+agent\s+decide\b", text, re.I))
+        and bool(re.search(r"\bmerged into outcome\b|\bmerged into assumptions\b|\banswers merged\b", text, re.I))
+    )
+
+def shape_has_rejected_critic_fixture(text):
+    critic_rejected=(
+        re.search(r"\bcritic\b[^.\n]{0,160}\b(?:approved\s*[:=]\s*false|approved\s+false|rejected|disapproved)\b", text, re.I)
+        or re.search(r"\b(?:approved\s*[:=]\s*false|approved\s+false|rejected|disapproved)\b[^.\n]{0,160}\bcritic\b", text, re.I)
+    )
+    outcome_blocked=(
+        re.search(r"\boutcome(?:\.md)?\b[^.\n]{0,160}\b(?:not\s+(?:be\s+)?written|is\s+not\s+written|does\s+not\s+(?:advance|write)|not\s+advance|must\s+not\s+advance|no\s+advance)\b", text, re.I)
+        or re.search(r"\b(?:not\s+(?:be\s+)?written|does\s+not\s+(?:advance|write)|not\s+advance|must\s+not\s+advance|no\s+advance)\b[^.\n]{0,160}\boutcome(?:\.md)?\b", text, re.I)
+    )
+    return bool(critic_rejected and outcome_blocked)
+
+def validate_shape_protocol_evidence(bs, outcome_blocks, errors, *, grade_text='', outcome_text=''):
+    if not shape_task_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    evidence_text=text_blob(
+        grade_text,
+        first(bs,'spec_compliance_matrix'),
+        first(bs,'negative_regression_tests'),
+        first(bs,'adversarial_checks'),
+        first(bs,'trust_surface_inventory'),
+        first(bs,'deferred_claims'),
+    )
+    missing=[]
+    if not (
+        re.search(r"\bshape_session\b", evidence_text, re.I)
+        and text_has_all_terms(evidence_text, SHAPE_CRITIC_ENVELOPE_FIELDS)
+        and shape_has_nine_rule_evidence(evidence_text)
+    ):
+        missing.append('critic_envelope_input')
+    if not shape_has_high_risk_classifier_evidence(evidence_text):
+        missing.append('high_risk_classifier')
+    if not shape_has_qa_protocol_evidence(evidence_text):
+        missing.append('qa_protocol')
+    if not shape_has_rejected_critic_fixture(evidence_text):
+        missing.append('rejected_critic_gate')
+    if missing:
+        errors.append(f"shape_protocol_evidence: missing Grade evidence groups for Shape-agent work: [{', '.join(missing)}]")
+
+def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_status, outcome_blocks=None, grade_claims=None, grade_text='', outcome_text=''):
     """All code tasks need replayable spec/security/negative-test evidence."""
     required_acceptance = required_acceptance or acceptance_status_metadata(acceptance_status)
     required_ids=set(required_acceptance)
@@ -910,6 +1051,9 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
     if missing_neg: errors.append('negative_regression_tests missing P0/P1 outcome acceptance IDs: '+','.join(missing_neg))
     prop_calc=validate_property_obligations(required_acceptance, neg, errors)
     calc['P0']+=prop_calc['P0']; calc['P1']+=prop_calc['P1']
+    validate_shape_forbidden_read_isolation_audit(spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_outcome_capsule_v12_structural_schema(outcome_blocks, errors, grade_text=grade_text, outcome_text=outcome_text)
+    validate_shape_protocol_evidence(bs, outcome_blocks, errors, grade_text=grade_text, outcome_text=outcome_text)
     validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, spec+neg, errors, grade_claims)
     validate_rpc_cleanup_acceptance_obligations(required_acceptance, acceptance_status, spec+neg, errors)
     validate_event_source_obligations(required_acceptance, spec+neg, errors)
@@ -1019,8 +1163,10 @@ def lint(task_type,risk_level,grade_file,outcome_file):
     errors=[]; gbs=blocks(grade_file); summary=first(gbs,'grade_summary'); acceptance=first(gbs,'acceptance_status')
     validate_required(summary,acceptance,errors); gated=is_gate(task_type,risk_level); code_gate=(task_type=='code')
     obs=blocks(outcome_file, include_front_matter=True) if code_gate or gated else []
+    grade_text=grade_file.read_text(encoding='utf-8') if grade_file.exists() else ''
+    outcome_text=outcome_file.read_text(encoding='utf-8') if outcome_file.exists() and (code_gate or gated) else ''
     if code_gate:
-        validate_code_baseline(summary,gbs,errors,outcome_acceptance_metadata_from_file(obs,outcome_file),acceptance,obs,markdown_bullet_acceptance_metadata(grade_file))
+        validate_code_baseline(summary,gbs,errors,outcome_acceptance_metadata_from_file(obs,outcome_file),acceptance,obs,markdown_bullet_acceptance_metadata(grade_file),grade_text,outcome_text)
     if gated:
         validate_outcome(obs,errors)
         required=adversarial_acceptance_metadata(obs)
