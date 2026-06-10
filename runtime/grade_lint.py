@@ -36,6 +36,13 @@ SUBPROCESS_REAP_FACET=re.compile(r"\bchild\.wait\b|\.wait\(\)|\btry_wait\b|\bwai
 SUBPROCESS_STREAM_TERMS=re.compile(r"\bstream(?:ing|ed|s)?\b|\bstream[-_\s]?json\b|\bstdio\b|\bstdout\b|\bstderr\b|\breader(?:s)?\b|\braw[-_\s]?vendor[-_\s]?output\b|\bNDJSON\b", re.I)
 SUBPROCESS_STREAM_JOIN_FACET=re.compile(r"\bjoin(?:ed|s|ing)?\s+(?:stdout|stderr|reader|stream|task)s?\b|\b(?:stdout|stderr|reader|stream)[^.;,\n]{0,80}\b(?:join(?:ed|s|ing)?|await(?:ed)?|drain(?:ed)?|closed)\b|\bawait(?:ed)?\s+(?:stdout|stderr|reader|stream)[^.;,\n]{0,80}\btask\b|\bdrain(?:ed)?\s+(?:stdout|stderr|reader|stream)s?\b", re.I)
 SUBPROCESS_LIFECYCLE_EVIDENCE_KIND="subprocess_lifecycle_test"
+RPC_CLEANUP_EVERY_EXIT_CLAIM_TERMS=re.compile(r"\bcleanup\b[^.;,\n]{0,100}\b(?:on|for|across|in|runs?\s+on)\s+(?:every|each|all)\s+(?:exit[-_\s]?)?(?:path|paths|return|returns|outcome|outcomes)\b|\b(?:every|each|all)\s+(?:exit[-_\s]?)?(?:path|paths|return|returns|outcome|outcomes)\b[^.;,\n]{0,100}\bcleanup\b", re.I)
+RPC_CLEANUP_CLEAR_TERMS=re.compile(r"\bthread/goal/clear\b|\bgoal/clear\b|\bgoal[-_\s]?clear\b|\bclear(?:s|ed|ing)?\s+(?:the\s+)?(?:goal|thread\s+goal)\b", re.I)
+RPC_CLEANUP_ARCHIVE_TERMS=re.compile(r"\bthread/archive\b|\bthread[-_\s]?archive\b|\barchive(?:s|d|ing)?\s+(?:the\s+)?thread\b", re.I)
+RPC_CLEANUP_PAIR_TERMS=re.compile(r"(?:\bthread/goal/clear\b|\bgoal/clear\b|\bgoal[-_\s]?clear\b|\bclear(?:s|ed|ing)?\s+(?:the\s+)?(?:goal|thread\s+goal)\b|\bclear(?:s|ed|ing)?\b)[^.;,\n]{0,100}(?:\bthread/archive\b|\bthread[-_\s]?archive\b|\barchive(?:s|d|ing)?\s+(?:the\s+)?thread\b|\barchive(?:s|d|ing)?\b)|(?:\bthread/archive\b|\bthread[-_\s]?archive\b|\barchive(?:s|d|ing)?\s+(?:the\s+)?thread\b|\barchive(?:s|d|ing)?\b)[^.;,\n]{0,100}(?:\bthread/goal/clear\b|\bgoal/clear\b|\bgoal[-_\s]?clear\b|\bclear(?:s|ed|ing)?\s+(?:the\s+)?(?:goal|thread\s+goal)\b|\bclear(?:s|ed|ing)?\b)", re.I)
+RPC_CLEANUP_UNCONDITIONAL_TERMS=re.compile(r"\b(?:always|unconditional(?:ly)?)\b|\b(?:every|each|all)\s+(?:exit[-_\s]?)?(?:path|paths|return|returns|outcome|outcomes)\b|\ball\s+paths\b|\bsuccess\b[^.;,\n]{0,80}\bfailure\b[^.;,\n]{0,80}\btimeout\b[^.;,\n]{0,80}\bcancel(?:led|s|lation)?\b|\b(?:any|each|every)\s+failure\b|\bfailure\s*(?:[-=]?>|→|yields?\b|maps?\s+to\b)|\bsuccess\s*(?:[-=]?>|→|yields?\b|maps?\s+to\b)", re.I)
+RPC_CLEANUP_NEGATIVE_PATH_TERMS=re.compile(r"\b(?:timeout|error|cancel|cancelled|cancellation|abort|kill|killed|SIGINT|SIGTERM)[-_\s]*(?:path|case|branch)\s*(?:test|fixture|probe)?\b|\b(?:forced?|simulate[sd]?|simulating|induce[sd]?|inducing|inject(?:ed|ion)?|fake|fixture|test)\b[^.;,\n]{0,100}\b(?:timeout|error|cancel|cancelled|cancellation|abort|kill|killed|SIGINT|SIGTERM)\b|\b(?:timeout|error|cancel|cancelled|cancellation|abort|kill|killed|SIGINT|SIGTERM)\b[^.;,\n]{0,100}\b(?:forced?|simulate[sd]?|simulated|induced?|injected|fixture|test)\b|\berror[-_\s]?injection\b|\binduced\s+error\b|\bkills?\s+mid[-_\s]?turn\b|\bouter\s+timeout\s+(?:fires?|fired|expires?|expired)\b", re.I)
+RPC_CLEANUP_ASSERTION_TERMS=re.compile(r"\bassert(?:s|ed|ing)?\b[^.;,\n]{0,120}\b(?:cleanup|clear(?:s|ed|ing)?\s*(?:/|\+|and|then|->)\s*archive(?:s|d|ing)?|thread/goal/clear|goal/clear|thread/archive)\b|\b(?:thread/goal/clear|goal/clear|goal[-_\s]?clear)\b[^.;,\n]{0,100}\b(?:thread/archive|thread[-_\s]?archive|archive(?:s|d|ing)?)\b|\bclear(?:s|ed|ing)?\s*(?:/|\+|and|then|->)\s*archive(?:s|d|ing)?\b[^.;,\n]{0,100}\b(?:call(?:ed|s)?|record(?:ed|s)?|happen(?:ed|s)?|still|runs?|ran|emit(?:ted|s)?|sent)\b|\bcleanup\s+(?:calls?\s+)?(?:still\s+)?(?:happen(?:ed|s)?|runs?|ran|record(?:ed|s)?|emit(?:ted|s)?|sent)\b", re.I)
 PATH_ROOT_TERMS=re.compile(r"\bpath[-_\s]?traversal\b|\btravers(?:e|al|ing)\b.*\boutside\b|\boutside\b.*\b(?:root|roots|director(?:y|ies)|filesystem|file\s+tree)\b|\bescape\b.*\b(?:root|roots|director(?:y|ies)|filesystem|file\s+tree)\b|\broot[-_\s]?contain(?:ed|ment)?\b", re.I)
 PATH_ACCESS_TERMS=re.compile(r"\b(?:read|open|file|filesystem|path|dir|directory|directories|root|roots|skill[-_ ]?id|id)\b", re.I)
 STRING_TRAVERSAL_TERMS=re.compile(r"\.\.|slash|backslash|absolute\s+path|%2f|%5c|encoded\s+(?:slash|path)|path[-_\s]?traversal", re.I)
@@ -409,6 +416,29 @@ def validate_subprocess_lifecycle_evidence(item_id, claim_text, evidence_text, e
     if missing:
         errors.append(f"subprocess_lifecycle[{item_id}] missing facets: {','.join(missing)} — probe/stream subprocess surfaces require timeout + process-group + wait/reap (+ stream-task join) evidence")
 
+def rpc_cleanup_claimed(text):
+    if has_non_negated_scope_term(RPC_CLEANUP_EVERY_EXIT_CLAIM_TERMS, text):
+        return True
+    if has_non_negated_scope_term(RPC_CLEANUP_PAIR_TERMS, text) and has_non_negated_scope_term(RPC_CLEANUP_UNCONDITIONAL_TERMS, text):
+        return True
+    if has_non_negated_scope_term(RPC_CLEANUP_CLEAR_TERMS, text) and has_non_negated_scope_term(RPC_CLEANUP_ARCHIVE_TERMS, text) and has_non_negated_scope_term(RPC_CLEANUP_UNCONDITIONAL_TERMS, text):
+        return True
+    return False
+
+def rpc_cleanup_negative_evidence_text(text):
+    return has_non_negated_scope_term(RPC_CLEANUP_NEGATIVE_PATH_TERMS, text) and has_non_negated_scope_term(RPC_CLEANUP_ASSERTION_TERMS, text)
+
+def rpc_cleanup_negative_evidence_in_rows(rows):
+    return any(rpc_cleanup_negative_evidence_text(row_evidence_text([row])) for row in rows if isinstance(row,dict))
+
+def row_blocking_severity(row, required_acceptance):
+    rid=row_acceptance_ref(row)
+    return row.get('severity_if_fail') or row.get('severity') or required_acceptance.get(rid,{}).get('severity')
+
+def validate_rpc_cleanup_evidence(item_id, claim_text, rows, errors):
+    if rpc_cleanup_claimed(claim_text) and not rpc_cleanup_negative_evidence_in_rows(rows):
+        errors.append(f"rpc_cleanup[{item_id}] cleanup-on-every-exit-path claimed but no timeout/error-path cleanup evidence (negative-path test required)")
+
 def validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, rows, errors):
     by_acceptance={}
     for row in rows:
@@ -422,6 +452,29 @@ def validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, ro
         claim_text=text_blob(meta.get('text',''), related)
         evidence_text=subprocess_lifecycle_evidence_text(related)
         validate_subprocess_lifecycle_evidence(acceptance_id, claim_text, evidence_text, errors, kind_in_scope=subprocess_lifecycle_kind_in_scope(related))
+
+def validate_rpc_cleanup_acceptance_obligations(required_acceptance, acceptance_status, rows, errors):
+    status_meta=acceptance_status_metadata(acceptance_status)
+    by_acceptance={}
+    for row in rows:
+        rid=row_acceptance_ref(row)
+        if rid:
+            by_acceptance.setdefault(rid,[]).append(row)
+    ids=set(required_acceptance) | set(status_meta) | set(by_acceptance)
+    for acceptance_id in sorted(ids):
+        related=by_acceptance.get(acceptance_id,[])
+        severities=[
+            required_acceptance.get(acceptance_id,{}).get('severity'),
+            status_meta.get(acceptance_id,{}).get('severity'),
+        ] + [row_blocking_severity(row, required_acceptance) for row in related if isinstance(row,dict)]
+        if not any(severity in BLOCKING for severity in severities):
+            continue
+        claim_text=text_blob(
+            required_acceptance.get(acceptance_id,{}).get('text',''),
+            status_meta.get(acceptance_id,{}).get('text',''),
+            related,
+        )
+        validate_rpc_cleanup_evidence(acceptance_id, claim_text, related, errors)
 
 def outcome_has_auth_secret_surface(outcome_blocks):
     rs=first(outcome_blocks or [],'risk_surface')
@@ -568,6 +621,7 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
     prop_calc=validate_property_obligations(required_acceptance, neg, errors)
     calc['P0']+=prop_calc['P0']; calc['P1']+=prop_calc['P1']
     validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, spec+neg, errors)
+    validate_rpc_cleanup_acceptance_obligations(required_acceptance, acceptance_status, spec+neg, errors)
 
     secret=first(bs,'secret_leakage_audit')
     if not isinstance(secret,dict):
@@ -644,6 +698,8 @@ def validate_adv(summary,bs,errors,required_acceptance=None):
                 errors.append(f'adversarial_checks[{i}] {row.get("id")} panic/no-panic audit cannot be mere grep')
         if st!='not_applicable':
             validate_subprocess_lifecycle_evidence(row.get('id') or i, combined_text, subprocess_lifecycle_evidence_text([row]), errors, kind_in_scope=evidence_kind(row)==SUBPROCESS_LIFECYCLE_EVIDENCE_KIND)
+            if sv in BLOCKING or any(ref.get('severity') in BLOCKING for ref in referenced):
+                validate_rpc_cleanup_evidence(row.get('id') or i, combined_text, [row], errors)
     missing_acceptance=sorted(set(required_acceptance)-covered_acceptance_ids)
     if missing_acceptance: errors.append('adversarial_checks missing shaped adversarial_acceptance IDs: '+','.join(missing_acceptance))
     for k in ('adversarial_p0_count','adversarial_p1_count'):

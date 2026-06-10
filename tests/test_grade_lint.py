@@ -452,6 +452,112 @@ SUBPROCESS_LIFECYCLE_COMPLETE_GRADE=SUBPROCESS_LIFECYCLE_INSUFFICIENT_GRADE.repl
     'src/codex/mod.rs:327-404 real in-process round trip + ephemeral-negative; failures map to VersionTooOld/LoginRequired/GoalRpcUnavailable; never builds an exec/--json/text-goal fallback argv; tests codex_fake_vendor_probe_exercises_goal_rpc_round_trip + codex_probe_maps_not_logged_in_without_secret_leakage + handoff_argv_uses_goal_rpc_without_exec_json_or_text_goal_fallback (nextest green)',
     'src/process.rs spawn_process_group .process_group(0) own process-group isolation; every probe/version/auth-status/ping helper command is wrapped in time::timeout wait timeout/deadline; after SIGTERM/SIGKILL the child.wait().await wait/reap path runs; stream-json stdout/stderr reader tasks are awaited, joined, and drained before return; nextest green'
 )
+RPC_CLEANUP_OUTCOME='''# Outcome Capsule — B-018 M5 Conduct adapter (cycle-018, Phase 2)
+```yaml
+acceptance:
+  - id: B018-A6
+    severity: P1
+    statement: >
+      Codex handoff uses app-server non-ephemeral goal-RPC only. Cleanup
+      (`thread/goal/clear` + `thread/archive`) runs on every exit path.
+```
+'''
+RPC_CLEANUP_HAPPY_ONLY_GRADE='''# Grade — B-018 M5 Conduct adapter (cycle-018, round 1)
+```yaml
+grade_summary:
+  p0_count: 0
+  p1_count: 0
+  p2_count: 0
+```
+```yaml
+acceptance_status:
+  - id: B018-A6
+    status: pass
+    severity: P1
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: B018-A6
+    status: pass
+    severity_if_fail: P1
+    spec_refs: ["docs/architecture/adapters/codex.md", "docs/agents/conduct/AGENT.md"]
+    evidence_ref: "src/codex/mod.rs:242-276 5s inferred-completion timer after item/completed final answer -> session.emit_inferred_task_end(); explicit turn/completed wins; test codex_fake_vendor_infers_terminal_event_after_final_answer_race resolves ~5s (nextest pass)"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: B018-A6
+    status: pass
+    severity_if_fail: P1
+    scenario: "A turn whose final answer arrives but whose explicit turn/completed is missing/raced must still resolve to a terminal task_end (inferred) within ~5s rather than hanging to the full timeout."
+    evidence_ref: "src/codex/mod.rs:242-276; test codex_fake_vendor_infers_terminal_event_after_final_answer_race asserts TaskEnd + extra.inferred_completion=true (nextest pass)"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: rpc cleanup fixture has no auth/token/log secret surface
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: no dependency changes in this fixture
+```
+'''
+RPC_CLEANUP_TIMEOUT_EVIDENCE_GRADE=RPC_CLEANUP_HAPPY_ONLY_GRADE.replace(
+    'scenario: "A turn whose final answer arrives but whose explicit turn/completed is missing/raced must still resolve to a terminal task_end (inferred) within ~5s rather than hanging to the full timeout."\n    evidence_ref: "src/codex/mod.rs:242-276; test codex_fake_vendor_infers_terminal_event_after_final_answer_race asserts TaskEnd + extra.inferred_completion=true (nextest pass)"',
+    'scenario: "A timeout path test forces the outer timeout after non-ephemeral thread creation and asserts thread/goal/clear + thread/archive are recorded before return."\n    evidence_ref: "tests codex_timeout_path_cleans_goal_and_archives_thread asserts clear/archive calls still happen (nextest pass)"'
+)
+RPC_CLEANUP_SOURCE_ROW_OUTCOME='''# Outcome Capsule — B-018 M5 Conduct adapter (cycle-018, Phase 2)
+```yaml
+acceptance:
+  - id: B018-A5
+    severity: P1
+    statement: >
+      Codex RPC check performs a real non-ephemeral goal-RPC round trip and
+      fails closed when the round trip is unavailable.
+```
+'''
+RPC_CLEANUP_SOURCE_ROW_GRADE='''# Grade — B-018 M5 Conduct adapter (cycle-018, round 1)
+```yaml
+grade_summary:
+  p0_count: 0
+  p1_count: 0
+  p2_count: 0
+```
+```yaml
+acceptance_status:
+  - id: B018-A5
+    status: pass
+    severity: P1
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: B018-A5
+    status: pass
+    severity_if_fail: P1
+    spec_refs: ["docs/architecture/adapters/codex.md", "docs/agents/conduct/AGENT.md"]
+    evidence_ref: "src/codex/mod.rs:327-404 run_codex_goal_rpc_probe — real in-process initialize{experimentalApi}(goals:true) -> thread/start(ephemeral:false) -> goal/set -> goal/get(active) -> goal/clear -> archive + ephemeral-negative (ephemeral:true goal/set must /error); failure->GoalRpcUnavailable, success->capability_probe_result=supported; tests codex_fake_vendor_probe_exercises_goal_rpc_round_trip (nextest pass)"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: B018-A5
+    status: pass
+    severity_if_fail: P1
+    scenario: "Each probe failure must map to the correct AdapterError with no fallback: a handshake/round-trip/ephemeral-negative failure -> GoalRpcUnavailable."
+    evidence_ref: "tests codex_probe_maps_not_logged_in_without_secret_leakage + handoff_argv_uses_goal_rpc_without_exec_json_or_text_goal_fallback (nextest pass)"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: rpc cleanup fixture has no auth/token/log secret surface
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: no dependency changes in this fixture
+```
+'''
 CYCLE016_LEDGER_CLEAN_OUTCOME='''# Outcome — cycle-016 B-004 Run Event Ledger + State Machine Projection
 ```yaml
 acceptance:
@@ -593,6 +699,28 @@ class GradeLintTests(unittest.TestCase):
         self.assertEqual(proc.returncode,0,p)
 
     def test_cycle016_clean_ledger_timeout_text_does_not_trigger_subprocess_lifecycle(self):
+        proc,p=self.run_lint('code','low',CYCLE016_LEDGER_CLEAN_GRADE,CYCLE016_LEDGER_CLEAN_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_cycle018_real_rpc_clear_archive_source_claim_requires_negative_path_cleanup_evidence(self):
+        proc,p=self.run_lint('code','low',RPC_CLEANUP_SOURCE_ROW_GRADE,RPC_CLEANUP_SOURCE_ROW_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertEqual(p['grade_lint']['errors'], [
+            'rpc_cleanup[B018-A5] cleanup-on-every-exit-path claimed but no timeout/error-path cleanup evidence (negative-path test required)'
+        ])
+
+    def test_cycle018_rpc_cleanup_every_exit_claim_requires_negative_path_cleanup_evidence(self):
+        proc,p=self.run_lint('code','low',RPC_CLEANUP_HAPPY_ONLY_GRADE,RPC_CLEANUP_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertEqual(p['grade_lint']['errors'], [
+            'rpc_cleanup[B018-A6] cleanup-on-every-exit-path claimed but no timeout/error-path cleanup evidence (negative-path test required)'
+        ])
+
+    def test_rpc_cleanup_every_exit_claim_passes_with_forced_timeout_cleanup_test(self):
+        proc,p=self.run_lint('code','low',RPC_CLEANUP_TIMEOUT_EVIDENCE_GRADE,RPC_CLEANUP_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_cycle016_clean_ledger_timeout_text_does_not_trigger_rpc_cleanup(self):
         proc,p=self.run_lint('code','low',CYCLE016_LEDGER_CLEAN_GRADE,CYCLE016_LEDGER_CLEAN_OUTCOME)
         self.assertEqual(proc.returncode,0,p)
 
