@@ -1,8 +1,20 @@
 cycle: cycle-020
 r1: done
-r2: null
+r2: done
 skill_release: null
 remediation: null
-escalated_to_human: []
+escalated_to_human:
+- 'bs-skill prompts/grade/role.md: tell Grade to FAIL Grade-agent tasks when evidence proves only benign
+  examples instead of the required hostile fixtures (arbitrary command/path isolation, normative risk_level:high
+  D-P13 capsule, unforgeable dual signal, llm_judge empty-evidence fail-closed, schema non-defaults, substantive
+  critic rejection, detached-grandchild reaping), and count each missing facet as P0/P1 per the violated
+  contract. [needs_human; cycle-020 F1-F7]'
+- 'bs-skill prompts/grade/critic.md: expand critic rules for Grade-agent tasks — reject seeded-pass critics,
+  trace-only evidence_refs, forgeable second-signal substrings (e.g. ''second_signal_pass''), per-acceptance-marker-only
+  D-P13 tests, and process-group-only no-orphan claims. [needs_human; cycle-020 F3,F4,F6,F7]'
+- 'bs-skill prompts/shape/role.md: for tasks whose PRIMARY deliverable is a verifier/Grade agent, require
+  Shape to author hostile acceptance fixtures for arbitrary command/path isolation, normative high-risk
+  capsules, llm_judge empty evidence_refs, schema non-defaults, critic rejection, and detached-grandchild
+  timeout cases. [needs_human; cycle-020 F1-F7]'
 closed: false
-updated_at: '2026-06-11T05:13:06Z'
+updated_at: '2026-06-11T05:23:46Z'
