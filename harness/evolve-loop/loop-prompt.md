@@ -20,8 +20,8 @@ no incomplete closure exists. Leftover work is structurally impossible: unfinish
 an open ledger, and the next turn resumes it from disk — never from context memory.
 
 ## Hard invariants
-1. **SERIAL.** One awaited subagent or one codex/Bash at a time; no parallel stages; hold
-   the `RUNNING` lock for the whole turn.
+1. **SERIAL.** Exactly ONE in-flight stage at any time (backgrounded or not); no parallel
+   stages; the `RUNNING` lock spans the whole iteration.
 0. **NEVER hold the turn open waiting for an external process.** Long work runs in
    background and the turn ENDS; notifications/wakeups re-invoke you. A turn held open by
    polling freezes every pending ScheduleWakeup — the loop's entire recovery layer.
@@ -50,18 +50,27 @@ CORPUS="$BS_LOOP_TARGET_REPO/.prompts/dogfood" # historical cycle artifacts (mac
 ```
 First-ever launch: `python3 "$HARNESS/bin/loop-state.py" init --target … --skill … --mode auto --max 5`.
 
-**Codex invocation (MANDATORY form — cycle-019 incident):** every codex call goes through
-the fail-closed wrapper, launched with `run_in_background: true`, after which you END YOUR
-TURN and let the completion notification re-invoke you:
+**Codex invocation (MANDATORY form — cycle-019 incident; maintainer ruling: duration
+never kills, only "no longer working" is an exception):** every codex call goes through
+the liveness wrapper, launched with `run_in_background: true`, after which you END YOUR
+TURN and let the completion notification (or a check-in wake) re-invoke you:
 ```bash
-bash "$HARNESS/bin/run-codex-staged.sh" --stage <iterNNN-stagename> --budget <sec> \
-  --prompt <prompt-file> --log <log-file> --cwd <dir> [-- --sandbox read-only|--sandbox workspace-write --full-auto]
+bash "$HARNESS/bin/run-codex-staged.sh" --stage <iterNNN-stagename> --stall-sec 1200 \
+  --prompt <prompt-file> --log <log-file> --cwd <dir> [--expect-writes] \
+  [-- --sandbox read-only|--sandbox workspace-write --full-auto]
 ```
-Budgets: reviews/verifies 5400s; implementation/remediation 7200s. The wrapper runs codex
-in its own process group, records an inflight file
-(`$BS_LOOP_STATE_DIR/inflight/<stage>.json`), and at budget TERM→KILLs the whole group and
-exits 124 — a hung codex becomes an ordinary stage failure (retry once, else
-pause-and-surface), never a hung loop.
+(`--expect-writes` on implementation/remediation stages only.) The wrapper runs codex in
+its own process group, refreshes `$BS_LOOP_STATE_DIR/inflight/<stage>.json` every sample
+(`last_progress_at`, `suspect[]`), and treats three signals as liveness — log growth,
+process-group CPU delta, workdir file activity. ALL quiet for stall-sec ⇒ evidence
+snapshot (`<log>.stall_evidence/`) → group reaped → **exit 125** = ordinary stage failure:
+salvage any partial delta by gates → retry the stage once → else pause-and-surface.
+There is NO wall-clock kill: a genuinely productive 6-hour run keeps running.
+- **Fake-alive (busy-loop) is handled by JUDGMENT, not by rules:** the wrapper only FLAGS
+  suspicion (`repetitive_output`, `workspace_stagnant`) into the inflight record. After
+  backgrounding a stage, arm `ScheduleWakeup(2700s, reason: "stage check-in", prompt:
+  WAKE_PROMPT)`. Check-in wakes land in Step 0's lock-held triage, which adjudicates (see
+  Step 0.4).
 - **NEVER hold the turn open waiting** — no foreground polling, no sleep/grep watcher
   loops, no repeated Read-polling of the log. A held turn FREEZES every pending
   ScheduleWakeup (this is exactly how the cycle-019 remediation hung 12h+ with zero
@@ -89,19 +98,26 @@ pause-and-surface), never a hung loop.
    dies mid-iteration (session kill — observed twice in cycle-018), this probe resumes the
    loop from the closure ledger; after a NORMAL iteration it wakes into a held lock or a
    stop condition and exits harmlessly.
-4. `loop-guard.sh acquire` → exit 11 (locked: another iteration may be live) ⇒ run the
-   **takeover triage** before bouncing:
-   - read `$BS_LOOP_STATE_DIR/inflight/*.json`; for each: is the recorded `pgid` alive
-     (`kill -0 -- -<pgid>`)? is it past its `budget_sec` (+10min slack)?
-   - if every inflight pgid is DEAD or OVERDUE **and** the lock mtime is older than the
-     newest stage artifact by >30min (the iteration is making no progress) ⇒ the holder is
-     dead/wedged: reap overdue pgids (`kill -TERM -- -<pgid>`, +60s `-KILL`), delete the
-     inflight files, `rm RUNNING.lock`, and PROCEED with this turn as the new owner
-     (closure scan resumes the open stage; salvage uncommitted deltas by gates, as ever).
-   - otherwise the holder looks alive ⇒ `ScheduleWakeup(delaySeconds: 1800, reason:
-     "lock-held retry probe", prompt: WAKE_PROMPT)` then END. With the per-stage lease
-     refresh, a wedged holder is taken over within ≤2h (stale-clear) and a hung codex
-     within its budget +10min.
+4. `loop-guard.sh acquire` → exit 11 (locked: an iteration is in flight — possibly this
+   session's own backgrounded stage) ⇒ run the **lock-held triage**:
+   a. read `$BS_LOOP_STATE_DIR/inflight/*.json`. NO inflight files + lock stale-aged ⇒
+      holder died between stages: `rm RUNNING.lock`, PROCEED as the new owner (closure
+      scan resumes; salvage uncommitted deltas by gates, as ever).
+   b. inflight present, recorded `pgid` DEAD (`kill -0 -- -<pgid>` fails) but the stage
+      artifact/log shows no completion ⇒ the wrapper died with its session: reap leftovers,
+      delete the inflight file, `rm RUNNING.lock`, PROCEED as owner (re-run the stage,
+      salvaging by gates).
+   c. inflight present + pgid alive + `suspect` non-empty OR the stage has run >90min ⇒
+      **JUDGMENT REVIEW (orchestrator self-adjudicates — maintainer ruling):** read the
+      log tail (~200 lines) and, for write stages, `git -C <cwd> diff --stat`. Ask: is
+      this CONVERGING (varied output, evolving errors, advancing work) or LOOPING (same
+      error/action repeating, workspace frozen)? Converging ⇒ re-arm
+      `ScheduleWakeup(2700s, check-in)` and END. Looping ⇒ snapshot the evidence into the
+      iter dir, reap the group (TERM→poll→KILL), salvage partial delta by gates, retry the
+      stage once; a second stall/loop verdict on the same stage ⇒ pause-and-surface with
+      both evidence sets.
+   d. otherwise (alive, no suspicion, young) ⇒ `ScheduleWakeup(delaySeconds: 1800,
+      reason: "lock-held retry probe", prompt: WAKE_PROMPT)` then END.
 5. **Closure scan:** `python3 "$HARNESS/bin/closure.py" --reviews-root "$REVIEWS" newest-open`
    - prints a dir ⇒ resume that closure: `closure.py --dir <dir> next` → jump to that stage
      (r1→Stage 2, r2→Stage 3, skill_release→Stage 4, remediation→Stage 5, close→Stage 6).
@@ -110,12 +126,18 @@ pause-and-surface), never a hung loop.
      Stage 2. Otherwise → Stage 1 (new cycle).
 6. `loop-state.py begin-iteration`.
 
-## Stage 1 — Dev cycle via `/bs` (subagent)
-Spawn ONE awaited `general-purpose` subagent: run `/bs` to completion in
-`$BS_LOOP_TARGET_REPO` (it self-commits, merges its PR, closes ledger+backlog atomically),
-return ONLY the JSON: `{selected_task, title, cycle_id, cycle_dir, start_commit,
-merge_commit, pr, merged, grade_pass, backlog_exhausted, hard_stop, hard_stop_options,
-escalated, notes}`.
+## Stage 1 — Dev cycle via `/bs` (BACKGROUND subagent)
+Spawn ONE `general-purpose` subagent **with `run_in_background: true`, then END YOUR TURN**
+(an awaited subagent would hold the turn for the whole multi-hour cycle and freeze every
+wakeup — same trap as foreground codex). Arm `ScheduleWakeup(2700s, check-in)` before
+ending. Subagent task: run `/bs` to completion in `$BS_LOOP_TARGET_REPO` (it self-commits,
+merges its PR, closes ledger+backlog atomically), return ONLY the JSON: `{selected_task,
+title, cycle_id, cycle_dir, start_commit, merge_commit, pr, merged, grade_pass,
+backlog_exhausted, hard_stop, hard_stop_options, escalated, notes}`.
+Check-in wakes triage via Step 0.4 — for this stage the liveness/judgment evidence is the
+cycle dir itself: `step_events.jsonl` mtime, conduct evidence growth, and whether
+`conduct.sh`/`codex_driver.py` processes are alive (`/bs` has its own internal driver
+supervision; the loop only detects a wedged/dead subagent, not a slow one).
 - `backlog_exhausted` ⇒ `loop-state.py set stop_reason backlog_exhausted`; release; report; END.
 - `hard_stop || escalated || !merged || !grade_pass` ⇒ pause-and-surface (invariant 3).
 - else `closure.py --dir "$REVIEWS/<cycle_id>" init`; commit closure.yaml; → Stage 2.
