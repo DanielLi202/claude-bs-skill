@@ -54,6 +54,13 @@ class CommandFlowTests(unittest.TestCase):
         self.assertIn('recovery_decision.yaml', text)
         self.assertIn('workflow_reflection.yaml', text)
 
+    def test_agent_schema_acceptance_sources_are_loaded_and_cited(self):
+        text = COMMAND.read_text(encoding='utf-8')
+        self.assertIn('MUST load those files as acceptance sources', text)
+        self.assertIn('carry only the small normative enums/lists into the capsule per contract §6', text)
+        self.assertIn('Grade MUST load and cite those files in `spec_compliance_matrix`', text)
+        self.assertIn('MUST NOT stop at the shaped acceptance list', text)
+
     def test_resume_documents_merged_pr_step10_recovery(self):
         text = RESUME_COMMAND.read_text(encoding='utf-8')
         self.assertIn('recovery_required=merged_pr_needs_step10_close cycle=<NNN> task=<ID>', text)
