@@ -256,6 +256,13 @@ backtest summary (fires/adjudications), remediation commit, and **every
 - **Pause (graceful, for release windows):** `touch "$BS_LOOP_TARGET_REPO/.prompts/loop/PAUSE"`
   — the current iteration finishes WITH full supervision; the chain simply doesn't re-arm
   at Stage 7. Release the skill in the quiet window, then `rm PAUSE` and relaunch.
+- **Relaunch checklist** (after ANY stop — `stop_reason` is a LATCH and survives the
+  condition that set it): `rm -f STOP PAUSE`; `loop-state.py set stop_reason null`;
+  confirm `iteration < max_iterations` (raise via `set max_iterations N` if at the
+  ceiling); then `loop-state.py should-stop` must print nothing (exit 0) BEFORE typing
+  the /loop line. When a turn latches `stop_reason`, it should record only the durable
+  reason (e.g. `backlog_exhausted`), never transient conditions like a max-iterations
+  ceiling that the operator may later raise.
 - **Inspect:** `closure.py --dir "$REVIEWS/cycle-NNN" get` · `loop-state.py get history` ·
   `git -C $BS_LOOP_SKILL_REPO log --oneline`.
 - A closure stuck on a contested adjudication or an escalated decision pauses the loop —
