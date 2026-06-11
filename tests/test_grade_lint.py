@@ -1251,6 +1251,172 @@ CYCLE018_ADAPTER_NON_SHAPE_OUTCOME=LOW_CODE_OUTCOME + '''
 - Do not read or write `memory-user/` / `patterns-user/` / `patterns-imported/`
   (RL-1/RL-2); they do not exist and must not be created.
 '''
+CYCLE020_GRADE_AGENT_ESCAPE_OUTCOME='''---
+schema_version: "1.2"
+id: "T-20260611-042208-1870ceb1"
+title: "M6 Grade Agent + Critic — independent verdict + structured grade_result"
+goal: "Implement the symphony-grade crate: an independent, read-only Grade Agent that verifies vendor output via command / artifact / llm_judge / manual_review paths, enforces the high-risk second-signal gate, runs the Grade critic, and exposes a symphony grade CLI subcommand."
+risk_level: medium
+non_goals:
+  - "Do NOT read or write .symphony/memory-user/, .symphony/patterns-user/, or .symphony/patterns-imported/ (R-AGT-6 P0); Grade is read-only over source and may only read its own run dir + git"
+context_pointers:
+  - "docs/agents/grade/AGENT.md"
+  - "docs/agents/shape/AGENT.md"
+  - "crates/symphony-shape/src/lib.rs"
+assumptions:
+  - "The high-risk second-signal gate (D-P13) is exercised from outcome.high_risk_actions[]: any acceptance whose high_risk_action_id is non-null requires both deterministic_check_passed AND llm_judge_passed."
+output_contract:
+  artifacts:
+    - type: file_set
+      paths:
+        - "crates/symphony-grade/src/lib.rs"
+        - "crates/symphony-grade/src/result.rs"
+        - "crates/symphony-grade/src/paths.rs"
+        - "crates/symphony-grade/src/critic.rs"
+        - "apps/symphony/src/main.rs"
+  target: pr
+acceptance:
+  - id: a10
+    severity: P0
+    text: "high-risk second-signal gate is enforced: a high_risk_action_id acceptance with only deterministic_check_passed (llm_judge_passed=false) yields verdict fail"
+  - id: adv1
+    severity: P1
+    text: "A command-type acceptance whose command exceeds timeout_sec is fail-closed and reaped with no orphaned/hung process"
+  - id: adv7
+    severity: P0
+    text: "Grade does not read or write memory-user/, patterns-user/, or patterns-imported/ and outcome.md byte content is unchanged after grading"
+---
+
+## Background
+B-020 follows Shape (M4/B-019) and Conduct (M5/B-018). These Shape references are
+cross-references only: docs/agents/shape/AGENT.md and symphony-shape are not the
+primary deliverable for this cycle.
+'''
+CYCLE020_GRADE_AGENT_ESCAPE_GRADE='''# Grade — cycle-020 / B-020 — round 1 (fix-round)
+
+Task: **B-020 M6 Grade Agent + Critic — independent verdict + structured grade_result** (type=code, risk_level=medium)
+
+Independent verification covered `crates/symphony-grade`; this Grade text also cross-references
+docs/agents/shape/AGENT.md and symphony-shape only as prior-stage context.
+
+```yaml
+grade_summary:
+  verdict: pass
+  p0_count: 0
+  p1_count: 0
+  adversarial_p0_count: 0
+  adversarial_p1_count: 0
+  p2_count: 0
+```
+
+```yaml
+acceptance_status:
+  - id: a10
+    status: pass
+  - id: adv1
+    status: pass
+  - id: adv7
+    status: pass
+```
+
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: a10
+    severity_if_fail: P0
+    status: pass
+    spec_ref: "docs/decisions/product.md"
+    evidence_ref: "high_risk_second_signal_incomplete_fails_grade 1 passed"
+  - acceptance_id: adv1
+    severity_if_fail: P1
+    status: pass
+    spec_ref: "docs/agents/grade/AGENT.md"
+    evidence_ref: "command_timeout_fails_and_reaps 1 passed ~1.04s; bounded timeout; process_group(0) on spawn + negative-pgid SIGTERM/SIGKILL wait/reap"
+  - acceptance_id: adv7
+    severity_if_fail: P0
+    status: pass
+    spec_ref: "docs/ops/risks.md"
+    evidence_ref: "read_only_isolation_does_not_touch_forbidden_dirs 1 passed"
+```
+
+```yaml
+negative_regression_tests:
+  - acceptance_id: a10
+    severity_if_fail: P0
+    status: pass
+    scenario: "high_risk_action with only deterministic_check_passed yields verdict fail; incomplete second signal fails grade"
+    evidence_kind: schema_validation_test
+    evidence_ref: "high_risk_second_signal_incomplete_fails_grade 1 passed"
+  - acceptance_id: adv1
+    severity_if_fail: P1
+    status: pass
+    scenario: "command-type acceptance exceeding timeout_sec is marked fail and the whole process group is reaped, no orphan grandchild, no hang"
+    evidence_kind: subprocess_lifecycle_test
+    evidence_ref: "command_timeout_fails_and_reaps 1 passed ~1.04s; bounded timeout; process_group(0) + terminate_process_group/kill_process_group + child.wait"
+  - acceptance_id: adv7
+    severity_if_fail: P0
+    status: pass
+    scenario: "grade run leaves outcome byte-identical before and after and never creates the forbidden memory or patterns dirs"
+    evidence_kind: schema_validation_test
+    evidence_ref: "read_only_isolation_does_not_touch_forbidden_dirs 1 passed"
+```
+
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: "The Grade agent performs no authentication and handles no secrets."
+  scope_basis_ref: "outcome.md risk_surface.auth_or_secret not_applicable with reason"
+```
+
+```yaml
+dependency_spec_review:
+  - status: pass
+    spec_ref: "docs/architecture/tech-stack.yaml and workspace Cargo.toml"
+    evidence_ref: "crates/symphony-grade/Cargo.toml uses serde, serde_json, serde_yaml_bw, thiserror, time, symphony-storage all .workspace = true"
+```
+
+```yaml
+adversarial_checks:
+  - id: adv1
+    acceptance_id: adv1
+    status: pass
+    severity_if_fail: P1
+    evidence_kind: subprocess_lifecycle_test
+    evidence_ref: "command_timeout_fails_and_reaps 1 passed ~1.04s (fix-round 1)"
+    note: "The command path now spawns sh -c with process_group(0); on Duration timeout it sends SIGTERM to the negative pgid, waits a 250ms grace, then SIGKILL the group, then reaps via child.wait. A backgrounded grandchild can no longer orphan."
+  - id: adv7
+    acceptance_id: adv7
+    status: pass
+    severity_if_fail: P0
+    evidence_kind: schema_validation_test
+    evidence_ref: "read_only_isolation_does_not_touch_forbidden_dirs 1 passed"
+    note: "read-only isolation: outcome.md is byte-identical before and after; forbidden dirs never created"
+```
+
+```yaml
+trust_surface_inventory:
+  external_subprocess:
+    trusted_by: "bounded timeout plus child reap, no orphan, adv1"
+    status: pass
+  runtime_files:
+    trusted_by: "writes confined to the run dir, run-id validated, no source or outcome mutation, adv7"
+    status: pass
+  unverified_items: []
+```
+
+```yaml
+deferred_claims: []
+```
+
+## Notes
+
+- **High-risk second signal** (D-P13 P0): `high_risk_second_signal_incomplete_fails_grade`
+  proves an incomplete second signal fails the grade.
+- **Structured verdict, no naked verdict** (D-P16 P0): per-acceptance `trace_ref` +
+  `evidence_refs` + resolvable reasoning anchors are enforced by the schema.
+- **Grade critic**: `check_critic.py` found an approved verdict and 5 per-rule findings.
+- **Read-only isolation** (R-AGT-6 P0): outcome.md is byte-stable and forbidden dirs are
+  never created.
+'''
 class GradeLintTests(unittest.TestCase):
     def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME):
         with tempfile.TemporaryDirectory() as td:
@@ -1445,6 +1611,66 @@ class GradeLintTests(unittest.TestCase):
         self.assertNotIn('shape_forbidden_read_isolation_audit', errors)
         self.assertNotIn('outcome_capsule_v12_structural_schema', errors)
         self.assertNotIn('shape_protocol_evidence', errors)
+
+    def test_cycle020_grade_with_shape_cross_refs_does_not_trigger_shape_facets(self):
+        proc,p=self.run_lint('code','low',CYCLE020_GRADE_AGENT_ESCAPE_GRADE,CYCLE020_GRADE_AGENT_ESCAPE_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertNotIn('shape_forbidden_read_isolation_audit', errors)
+        self.assertNotIn('outcome_capsule_v12_structural_schema', errors)
+        self.assertNotIn('shape_protocol_evidence', errors)
+
+    def assert_cycle020_grade_error(self, expected):
+        proc,p=self.run_lint('code','low',CYCLE020_GRADE_AGENT_ESCAPE_GRADE,CYCLE020_GRADE_AGENT_ESCAPE_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn(expected, '\n'.join(p['grade_lint']['errors']))
+
+    def assert_cycle016_clean_lacks_error(self, unexpected):
+        proc,p=self.run_lint('code','low',CYCLE016_LEDGER_CLEAN_GRADE,CYCLE016_LEDGER_CLEAN_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+        self.assertNotIn(unexpected, '\n'.join(p['grade_lint']['errors']))
+
+    def test_grade_agent_read_only_isolation_audit_cycle020_must_fire(self):
+        self.assert_cycle020_grade_error('grade_agent_read_only_isolation_audit')
+
+    def test_grade_agent_read_only_isolation_audit_cycle016_must_not_fire(self):
+        self.assert_cycle016_clean_lacks_error('grade_agent_read_only_isolation_audit')
+
+    def test_grade_agent_dp13_schema_trigger_cycle020_must_fire(self):
+        self.assert_cycle020_grade_error('grade_agent_dp13_schema_trigger')
+
+    def test_grade_agent_dp13_schema_trigger_cycle016_must_not_fire(self):
+        self.assert_cycle016_clean_lacks_error('grade_agent_dp13_schema_trigger')
+
+    def test_grade_agent_second_signal_unforgeable_cycle020_must_fire(self):
+        self.assert_cycle020_grade_error('grade_agent_second_signal_unforgeable')
+
+    def test_grade_agent_second_signal_unforgeable_cycle016_must_not_fire(self):
+        self.assert_cycle016_clean_lacks_error('grade_agent_second_signal_unforgeable')
+
+    def test_grade_agent_llm_judge_fail_closed_cycle020_must_fire(self):
+        self.assert_cycle020_grade_error('grade_agent_llm_judge_fail_closed')
+
+    def test_grade_agent_llm_judge_fail_closed_cycle016_must_not_fire(self):
+        self.assert_cycle016_clean_lacks_error('grade_agent_llm_judge_fail_closed')
+
+    def test_grade_agent_outcome_path_schema_fields_cycle020_must_fire(self):
+        self.assert_cycle020_grade_error('grade_agent_outcome_path_schema_fields')
+
+    def test_grade_agent_outcome_path_schema_fields_cycle016_must_not_fire(self):
+        self.assert_cycle016_clean_lacks_error('grade_agent_outcome_path_schema_fields')
+
+    def test_grade_agent_critic_substance_cycle020_must_fire(self):
+        self.assert_cycle020_grade_error('grade_agent_critic_substance')
+
+    def test_grade_agent_critic_substance_cycle016_must_not_fire(self):
+        self.assert_cycle016_clean_lacks_error('grade_agent_critic_substance')
+
+    def test_subprocess_lifecycle_descendant_escape_cycle020_must_fire(self):
+        self.assert_cycle020_grade_error('subprocess_lifecycle[adv1] missing facets: descendant_escape_fixture')
+
+    def test_subprocess_lifecycle_descendant_escape_cycle016_must_not_fire(self):
+        self.assert_cycle016_clean_lacks_error('descendant_escape_fixture')
 
     def test_cycle018_rpc_cleanup_every_exit_claim_requires_negative_path_cleanup_evidence(self):
         proc,p=self.run_lint('code','low',RPC_CLEANUP_HAPPY_ONLY_GRADE,RPC_CLEANUP_OUTCOME)

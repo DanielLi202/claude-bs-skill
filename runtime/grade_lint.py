@@ -39,6 +39,9 @@ SUBPROCESS_PROCESS_GROUP_FACET=re.compile(r"\.process_group\(0\)|\bprocess[-_\s]
 SUBPROCESS_REAP_FACET=re.compile(r"\bchild\.wait\b|\.wait\(\)|\btry_wait\b|\bwaitpid\b|\breap(?:ed|s|ing)?\b|\bwait/reap\b|\bwait\s+after\s+(?:SIGTERM|SIGKILL|kill|signal)\b|after\s+(?:SIGTERM|SIGKILL|kill|signal)[^.;,\n]*\bwait\b", re.I)
 SUBPROCESS_STREAM_TERMS=re.compile(r"\bstream(?:ing|ed|s)?\b|\bstream[-_\s]?json\b|\bstdio\b|\bstdout\b|\bstderr\b|\breader(?:s)?\b|\braw[-_\s]?vendor[-_\s]?output\b|\bNDJSON\b", re.I)
 SUBPROCESS_STREAM_JOIN_FACET=re.compile(r"\bjoin(?:ed|s|ing)?\s+(?:stdout|stderr|reader|stream|task)s?\b|\b(?:stdout|stderr|reader|stream)[^.;,\n]{0,80}\b(?:join(?:ed|s|ing)?|await(?:ed)?|drain(?:ed)?|closed)\b|\bawait(?:ed)?\s+(?:stdout|stderr|reader|stream)[^.;,\n]{0,80}\btask\b|\bdrain(?:ed)?\s+(?:stdout|stderr|reader|stream)s?\b", re.I)
+SUBPROCESS_DESCENDANT_CLAIM_TERMS=re.compile(r"\bno[-_\s]?orphan(?:ed)?\b|\borphan(?:ed)?\s+grandchild\b|\bno[-_\s]?hang\b|\bhung\s+process\b|\bbackground(?:ed)?[-_\s]?grandchild\b|\bwhole[-_\s]?process[-_\s]?tree\b|\bprocess[-_\s]?tree\s+(?:containment|reap|kill|audit)\b|\bdescendant(?:s)?\b", re.I)
+SUBPROCESS_DESCENDANT_ESCAPE_FIXTURE=re.compile(r"\b(?:detached|new[-_\s]?session|setsid|start_new_session|setpgid|daemonized|background(?:ed)?)\b[^.;\n]{0,160}\b(?:grandchild|descendant|child[-_\s]?of[-_\s]?child|escape|leader\s+exit|parent\s+exit)\b|\b(?:grandchild|descendant|escape)\b[^.;\n]{0,160}\b(?:detached|new[-_\s]?session|setsid|start_new_session|setpgid|daemonized|background(?:ed)?|leader\s+exit|parent\s+exit)\b", re.I)
+SUBPROCESS_DESCENDANT_AUDIT_FACET=re.compile(r"\bdescendant[-_\s]?audit\b|\bprocess[-_\s]?tree[-_\s]?containment\b|\bwalk(?:s|ed|ing)?\s+(?:the\s+)?(?:process[-_\s]?)?tree\b|\b(?:pgrep|ps)\b[^.;\n]{0,80}\b(?:P|ppid|parent|child|descendant)\b|\bassert(?:s|ed|ion)?\b[^.;\n]{0,120}\b(?:no\s+descendant|no\s+grandchild|no\s+orphan|process[-_\s]?tree)\b|\b(?:grandchild|descendant)\b[^.;\n]{0,120}\b(?:reaped|killed|gone|absent|not\s+running|does\s+not\s+remain)\b", re.I)
 SUBPROCESS_LIFECYCLE_EVIDENCE_KIND="subprocess_lifecycle_test"
 RPC_CLEANUP_EVERY_EXIT_CLAIM_TERMS=re.compile(r"\bcleanup\b[^.;,\n]{0,100}\b(?:on|for|across|in|runs?\s+on)\s+(?:every|each|all)\s+(?:exit[-_\s]?)?(?:path|paths|return|returns|outcome|outcomes)\b|\b(?:every|each|all)\s+(?:exit[-_\s]?)?(?:path|paths|return|returns|outcome|outcomes)\b[^.;,\n]{0,100}\bcleanup\b", re.I)
 RPC_CLEANUP_CLEAR_TERMS=re.compile(r"\bthread/goal/clear\b|\bgoal/clear\b|\bgoal[-_\s]?clear\b|\bclear(?:s|ed|ing)?\s+(?:the\s+)?(?:goal|thread\s+goal)\b", re.I)
@@ -86,7 +89,8 @@ AUTH_STATUS_JSON_PARSE_EVIDENCE=re.compile(r"\b(?:json[-_\s]?pars(?:e|ed|es|ing)
 AUTH_STATUS_VARIANT_EVIDENCE=re.compile(r"\b(?:case[-_\s]?insensitive\s+(?:key|field)|key[-_\s]?case|camel[-_\s]?case|lower[-_\s]?case|whitespace[-_\s]?(?:variant|toleran(?:t|ce)|format|fixture)|format[-_\s]?variant|status[-_\s]?format[-_\s]?variant|status[-_\s]?fixture[-_\s]?matrix)\b", re.I)
 AUTH_STATUS_MULTI_VARIANT_EVIDENCE=re.compile(r"\b(?:multiple|both|two|several|matrix|parameteri[sz]ed)\b[^.;\n]{0,100}\b(?:login[-_\s]?status|auth[-_\s]?status|status|format|fixture|fixtures|variant|variants|loggedIn|loggedin|whitespace|key[-_\s]?case)\b", re.I)
 AUTH_STATUS_LITERAL_VARIANT_EVIDENCE=re.compile(r"(?:loggedIn[^.;\n]{0,100}loggedin|loggedin[^.;\n]{0,100}loggedIn|\"loggedIn\"\s*:\s*false[^.;\n]{0,100}\"loggedin\"\s*:\s*false|\"loggedin\"\s*:\s*false[^.;\n]{0,100}\"loggedIn\"\s*:\s*false)", re.I)
-SHAPE_STRONG_TASK_TOKENS=re.compile(r"\bsymphony\s+shape\b|\bShape Agent\b|docs/agents/shape/AGENT\.md|\bshape_session\b|\bshape_critic\b|prompts/agents/shape/", re.I)
+SHAPE_PRIMARY_TASK_TOKENS=re.compile(r"\bsymphony\s+shape\b|\bShape Agent\b|\bcrates/symphony-shape\b|docs/agents/shape/AGENT\.md", re.I)
+SHAPE_STRONG_TASK_TOKENS=SHAPE_PRIMARY_TASK_TOKENS
 SHAPE_CRATE_TOKEN=re.compile(r"\bsymphony-shape\b", re.I)
 SHAPE_CRATE_PLACEHOLDER_CONTEXT=re.compile(r"\bfuture\s+work\b|\bplaceholder\b|\bfuture\b", re.I)
 SHAPE_FORBIDDEN_ROOTS=("memory-user","patterns-user","patterns-imported")
@@ -97,6 +101,32 @@ SHAPE_SCHEMA_ASSUMPTION_FIELDS=("id","text","source","confirmed","risk_if_wrong"
 SHAPE_SCHEMA_GROUNDING_FIELDS=("id","source_type","fetched_at","why_relevant","supports")
 SHAPE_HIGH_RISK_ACTIONS=("deploy","delete","db_write","external_api","payment","merge_pr")
 SHAPE_CRITIC_ENVELOPE_FIELDS=("verdict","rejected_reasons","approved_with_notes","incident","incident_class")
+GRADE_AGENT_PRIMARY_TASK_TOKENS=re.compile(r"\bM6\s+Grade\s+Agent\b|\bGrade Agent\b|\bcrates/symphony-grade\b|\bsymphony\s+grade\b|docs/agents/grade/AGENT\.md", re.I)
+GRADE_AGENT_READ_ONLY_CLAIM=re.compile(r"\bR-AGT-6\b|\bread[-_\s]?only\b|\bforbidden[-_\s]?root\b|\bforbidden\s+(?:dirs?|directories|roots?)\b|\bmemory-user\b|\bpatterns-user\b|\bpatterns-imported\b|\boutcome\.md\b[^.;\n]{0,120}\b(?:byte[-_\s]?identical|unchanged|stable)\b", re.I)
+GRADE_AGENT_HOSTILE_TERMS=re.compile(r"\bhostile\b|\bmalicious\b|\badversarial\b|\bnegative\b|\bescape\b|\bcrafted\b|\bfixture\b|\bprobe\b|\battempt(?:s|ed|ing)?\b", re.I)
+GRADE_AGENT_COMMAND_TERMS=re.compile(r"\bacceptance\s+command\b|\bcommand(?:-type)?\b|\bshell\b|\bsh\s+-c\b|\bbash\b|\bCommand\b", re.I)
+GRADE_AGENT_WRITE_TERMS=re.compile(r"\bwrite(?:s|n|d|ing)?\b|\btouch(?:es|ed|ing)?\b|\bappend(?:s|ed|ing)?\b|\bmodify(?:ies|ied|ing)?\b|\boverwrite(?:s|n|ing)?\b|\bcreate(?:s|d|ing)?\b|fs::write|cat\s*>|>>|sed\s+-i", re.I)
+GRADE_AGENT_WRITE_TARGET_TERMS=re.compile(r"\boutcome\.md\b|\bsource\b|\bsrc/|\bcrates/|\bforbidden\b|\bmemory-user\b|\bpatterns-user\b|\bpatterns-imported\b", re.I)
+GRADE_AGENT_ARTIFACT_TERMS=re.compile(r"\bartifact(?:_path)?\b|\bartifact\s+path\b", re.I)
+GRADE_AGENT_READ_OR_TRAVERSAL_TERMS=re.compile(r"\bread(?:s|ing)?\b|\bopen(?:s|ed|ing)?\b|\b\.\.\b|\bpath[-_\s]?traversal\b|\bforbidden[-_\s]?root\b|\bmemory-user\b|\bpatterns-user\b|\bpatterns-imported\b", re.I)
+GRADE_AGENT_CONTAINMENT_TERMS=re.compile(r"\bcanonical(?:ize|ise|ized|ised|ization|isation)?\b|\brealpath\b|\bstarts?_with\b|\broot[-_\s]?contain(?:ed|ment)?\b|\bwithin\s+(?:the\s+)?(?:run|workspace|artifact)?\s*root\b", re.I)
+GRADE_AGENT_DENYLIST_TERMS=re.compile(r"\bdeny[-_\s]?list\b|\bforbidden\b|\bmemory-user\b|\bpatterns-user\b|\bpatterns-imported\b|\ballow[-_\s]?list\b", re.I)
+GRADE_AGENT_STABILITY_TERMS=re.compile(r"\bpost[-_\s]?run\b|\bbefore\b[^.;\n]{0,80}\bafter\b|\bafter\b[^.;\n]{0,80}\bbefore\b|\brecheck(?:s|ed|ing)?\b", re.I)
+GRADE_AGENT_HASH_BYTE_TERMS=re.compile(r"\bsha256\b|\bhash(?:es|ed|ing)?\b|\bbyte[-_\s]?(?:identical|stable|stability)\b|\bunchanged\b|\bno\s+mutation\b", re.I)
+GRADE_AGENT_DP13_CLAIM=re.compile(r"\bD-P13\b|\bhigh[-_\s]?risk\b|\bsecond[-_\s]?signal\b|\bhigh_risk_actions?\b|\bllm_judge\b|\bhuman_review\b", re.I)
+GRADE_AGENT_HIGH_RISK_ACTIONS_TOP_LEVEL=re.compile(r"\brisk_level\s*[:=]\s*[\"']?high[\"']?\b[\s\S]{0,500}\bhigh_risk_actions\s*:", re.I)
+GRADE_AGENT_SECOND_SIGNAL_BRANCH=re.compile(r"\bsecond[-_\s]?signal\b[\s\S]{0,180}\b(?:both_required|llm_judge|deterministic_check|fail|passes?|branch)\b|\b(?:both_required|llm_judge|deterministic_check|fail|passes?|branch)\b[\s\S]{0,180}\bsecond[-_\s]?signal\b", re.I)
+GRADE_AGENT_HUMAN_REVIEW_BRANCH=re.compile(r"\bhuman_review\b[\s\S]{0,180}\b(?:needs_human|requires\s+human_review|branch|artifact)\b|\b(?:needs_human|requires\s+human_review|branch|artifact)\b[\s\S]{0,180}\bhuman_review\b", re.I)
+GRADE_AGENT_SUBSTRING_UNFORGEABLE=re.compile(r"\b(?:criteria|criterion|text|substring|prose|string)\b[\s\S]{0,180}\bsecond_signal_pass\b[\s\S]{0,180}\b(?:cannot|can't|does\s+not|must\s+not|not\s+set|ignored|rejected)\b[\s\S]{0,120}\bllm_judge_passed\b|\bsecond_signal_pass\b[\s\S]{0,180}\b(?:cannot|can't|does\s+not|must\s+not|not\s+set|ignored|rejected)\b[\s\S]{0,120}\bllm_judge_passed\b", re.I)
+GRADE_AGENT_STRUCTURED_SECOND_SIGNAL=re.compile(r"\b(?:structured|JSON|YAML)\b[\s\S]{0,120}\b(?:independent\s+)?judge\s+result\b|\bindependent[-_\s]?judge[-_\s]?result\b|\bllm_judge_result\b|\bhuman_review\b[\s\S]{0,120}\bartifact\b", re.I)
+GRADE_AGENT_EMPTY_EVIDENCE_REFS_FAIL=re.compile(r"\b(?:empty|\[\]|zero)\b[\s\S]{0,80}\bevidence_refs?\b[\s\S]{0,120}\b(?:fail|fails|rejected?|invalid|closed)\b|\bevidence_refs?\b[\s\S]{0,80}\b(?:empty|\[\]|zero)\b[\s\S]{0,120}\b(?:fail|fails|rejected?|invalid|closed)\b", re.I)
+GRADE_AGENT_MISSING_EVIDENCE_REF_FAIL=re.compile(r"\b(?:missing|null|absent|omitted)\b[\s\S]{0,80}\bevidence_refs?\b[\s\S]{0,120}\b(?:fail|fails|rejected?|invalid|closed)\b|\bevidence_refs?\b[\s\S]{0,80}\b(?:missing|null|absent|omitted)\b[\s\S]{0,120}\b(?:fail|fails|rejected?|invalid|closed)\b", re.I)
+GRADE_AGENT_HARD_GATE_DEFAULT_CLOSED=re.compile(r"\bhard[-_\s]?gate\b[\s\S]{0,120}\bdefault(?:s|ed)?\b[\s\S]{0,120}\b(?:false|closed|fail|fails|reject)\b|\bdefault(?:s|ed)?\b[\s\S]{0,120}\bhard[-_\s]?gate\b[\s\S]{0,120}\b(?:false|closed|fail|fails|reject)\b", re.I)
+GRADE_AGENT_FABRICATED_TRACE_REF_REJECTED=re.compile(r"\b(?:self[-_\s]?fabricated|fabricated|synthetic|made[-_\s]?up)\b[\s\S]{0,120}\btrace_ref\b[\s\S]{0,160}\b(?:not\s+acceptable|not\s+accepted|rejected?|invalid|cannot|must\s+not)\b|\btrace_ref\b[\s\S]{0,120}\b(?:only|sole)\b[\s\S]{0,80}\bevidence_refs?\b[\s\S]{0,120}\b(?:not\s+acceptable|rejected?|invalid|cannot|must\s+not)\b", re.I)
+GRADE_AGENT_REQUIRED_EXIT_NON_DEFAULT=re.compile(r"\brequired_exit_code\s*[:=]\s*(?![\"']?0[\"']?\b)[\"']?-?\d+\b|\bnon[-_\s]?default\b[\s\S]{0,80}\brequired_exit_code\b|\brequired_exit_code\b[\s\S]{0,80}\bnon[-_\s]?default\b", re.I)
+GRADE_AGENT_PER_ACCEPTANCE_CWD=re.compile(r"\bper[-_\s]?acceptance\b[\s\S]{0,120}\bcwd\b|\bcwd\s*[:=]\s*[\"'][^\"']+[\"']", re.I)
+GRADE_AGENT_MIN_SIZE_BYTES=re.compile(r"\bmin_size_bytes\s*[:=]\s*\d+\b", re.I)
+GRADE_AGENT_REJECTED_CRITIC_FIXTURE=re.compile(r"\b(?:seeded[-_\s]?pass|naked[-_\s]?verdict)\b[\s\S]{0,180}\bcritic\b[\s\S]{0,180}\b(?:reject(?:s|ed)?|approved\s*[:=]\s*false|verdict\s*[:=]\s*rejected)\b|\bcritic\b[\s\S]{0,180}\b(?:seeded[-_\s]?pass|naked[-_\s]?verdict)\b[\s\S]{0,180}\b(?:reject(?:s|ed)?|approved\s*[:=]\s*false|verdict\s*[:=]\s*rejected)\b", re.I)
 class LintError(ValueError): pass
 
 def split_top_level(text, sep=','):
@@ -532,6 +562,11 @@ def subprocess_lifecycle_missing_facets(claim_text, evidence_text, *, kind_in_sc
     missing=[name for name,pattern in facets if not has_non_negated_scope_term(pattern, evidence_text)]
     if has_non_negated_scope_term(SUBPROCESS_STREAM_TERMS, claim_text) and not has_non_negated_scope_term(SUBPROCESS_STREAM_JOIN_FACET, evidence_text):
         missing.append('stream_join')
+    if has_non_negated_scope_term(SUBPROCESS_DESCENDANT_CLAIM_TERMS, claim_text):
+        if not has_non_negated_scope_term(SUBPROCESS_DESCENDANT_ESCAPE_FIXTURE, evidence_text):
+            missing.append('descendant_escape_fixture')
+        if not has_non_negated_scope_term(SUBPROCESS_DESCENDANT_AUDIT_FACET, evidence_text):
+            missing.append('descendant_audit_or_tree_containment')
     return missing
 
 def validate_subprocess_lifecycle_evidence(item_id, claim_text, evidence_text, errors, *, kind_in_scope=False):
@@ -871,15 +906,58 @@ def validate_property_obligations(required_acceptance, neg, errors):
             errors.append(f"property_obligation[{acceptance_id}] missing required negative coverage facets: {','.join(missing)}")
     return calc
 
-def shape_task_in_scope(*texts) -> bool:
-    blob=text_blob(*texts)
-    if SHAPE_STRONG_TASK_TOKENS.search(blob):
+def output_contract_artifact_text(capsule):
+    if not isinstance(capsule,dict):
+        return ''
+    output_contract=capsule.get('output_contract')
+    if not isinstance(output_contract,dict):
+        return ''
+    return text_blob(output_contract.get('artifacts'), output_contract.get('artifact'), output_contract.get('paths'))
+
+def primary_outcome_subject_text(outcome_blocks):
+    capsule=outcome_capsule_front_matter(outcome_blocks)
+    if not isinstance(capsule,dict):
+        return ''
+    return text_blob(
+        capsule.get('title'),
+        capsule.get('goal'),
+        capsule.get('subject'),
+        capsule.get('deliverable'),
+        capsule.get('task'),
+        capsule.get('task_title'),
+        capsule.get('task_goal'),
+        capsule.get('backlog_target'),
+        capsule.get('backlog_subject'),
+        capsule.get('context_subject'),
+        output_contract_artifact_text(capsule),
+    )
+
+def primary_grade_header_text(grade_text):
+    lines=[]
+    for line in (grade_text or '').splitlines()[:80]:
+        stripped=line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith('#') or re.match(r"(?i)^(task|title|goal|subject|deliverable|scope|backlog|context)\s*:", stripped):
+            lines.append(stripped)
+    return '\n'.join(lines)
+
+def shape_primary_deliverable_in_scope(grade_text='', outcome_text='', outcome_blocks=None) -> bool:
+    primary=text_blob(primary_outcome_subject_text(outcome_blocks), primary_grade_header_text(grade_text))
+    if SHAPE_PRIMARY_TASK_TOKENS.search(primary):
         return True
-    for match in SHAPE_CRATE_TOKEN.finditer(blob):
-        context=blob[max(0,match.start()-80):match.end()+80]
+    for match in SHAPE_CRATE_TOKEN.finditer(primary):
+        context=primary[max(0,match.start()-80):match.end()+80]
         if not SHAPE_CRATE_PLACEHOLDER_CONTEXT.search(context):
             return True
     return False
+
+def shape_task_in_scope(*texts) -> bool:
+    return shape_primary_deliverable_in_scope(*texts)
+
+def grade_agent_task_in_scope(grade_text, outcome_text, outcome_blocks) -> bool:
+    primary=text_blob(primary_outcome_subject_text(outcome_blocks), primary_grade_header_text(grade_text))
+    return bool(GRADE_AGENT_PRIMARY_TASK_TOKENS.search(primary))
 
 def shape_forbidden_read_row_sufficient(row):
     row_text=text_blob(row)
@@ -891,7 +969,7 @@ def shape_forbidden_read_row_sufficient(row):
 
 def validate_shape_forbidden_read_isolation_audit(spec, neg, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
     combined=text_blob(grade_text,outcome_text,outcome_blocks)
-    if not shape_task_in_scope(combined) or not SHAPE_FORBIDDEN_SCOPE.search(combined):
+    if not shape_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks) or not SHAPE_FORBIDDEN_SCOPE.search(combined):
         return
     if any(shape_forbidden_read_row_sufficient(row) for row in spec+neg if isinstance(row,dict)):
         return
@@ -907,7 +985,7 @@ def list_of_objects_with_fields(value, fields):
     return isinstance(value,list) and all(isinstance(item,dict) and all(field in item for field in fields) for item in value)
 
 def validate_outcome_capsule_v12_structural_schema(outcome_blocks, errors, *, grade_text='', outcome_text=''):
-    if not shape_task_in_scope(grade_text,outcome_text,outcome_blocks):
+    if not shape_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
         return
     capsule=outcome_capsule_front_matter(outcome_blocks)
     if not isinstance(capsule,dict) or str(capsule.get('schema_version'))!='1.2':
@@ -975,7 +1053,7 @@ def shape_has_rejected_critic_fixture(text):
     return bool(critic_rejected and outcome_blocked)
 
 def validate_shape_protocol_evidence(bs, outcome_blocks, errors, *, grade_text='', outcome_text=''):
-    if not shape_task_in_scope(grade_text,outcome_text,outcome_blocks):
+    if not shape_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
         return
     evidence_text=text_blob(
         grade_text,
@@ -1000,6 +1078,123 @@ def validate_shape_protocol_evidence(bs, outcome_blocks, errors, *, grade_text='
         missing.append('rejected_critic_gate')
     if missing:
         errors.append(f"shape_protocol_evidence: missing Grade evidence groups for Shape-agent work: [{', '.join(missing)}]")
+
+def grade_agent_evidence_text(bs, grade_text):
+    return text_blob(
+        grade_text,
+        first(bs,'spec_compliance_matrix'),
+        first(bs,'negative_regression_tests'),
+        first(bs,'adversarial_checks'),
+        first(bs,'trust_surface_inventory'),
+        first(bs,'deferred_claims'),
+    )
+
+def text_has_evidence_segment(text, patterns):
+    segments=re.split(r"\n\s*-\s+|\n\n|[.;]\s+", text or '')
+    return any(all(pattern.search(segment) for pattern in patterns) for segment in segments)
+
+def validate_grade_agent_read_only_isolation_audit(bs, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not grade_agent_task_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    claim_text=text_blob(grade_text,outcome_text)
+    if not GRADE_AGENT_READ_ONLY_CLAIM.search(claim_text):
+        return
+    evidence_text=grade_agent_evidence_text(bs, grade_text)
+    missing=[]
+    if not text_has_evidence_segment(evidence_text, (GRADE_AGENT_HOSTILE_TERMS, GRADE_AGENT_COMMAND_TERMS, GRADE_AGENT_WRITE_TERMS, GRADE_AGENT_WRITE_TARGET_TERMS)):
+        missing.append('hostile_write_command')
+    if not text_has_evidence_segment(evidence_text, (GRADE_AGENT_HOSTILE_TERMS, GRADE_AGENT_ARTIFACT_TERMS, GRADE_AGENT_READ_OR_TRAVERSAL_TERMS)):
+        missing.append('hostile_artifact_forbidden_read_or_traversal')
+    if not (GRADE_AGENT_CONTAINMENT_TERMS.search(evidence_text) and GRADE_AGENT_DENYLIST_TERMS.search(evidence_text)):
+        missing.append('canonical_containment_or_denylist')
+    if not text_has_evidence_segment(evidence_text, (GRADE_AGENT_STABILITY_TERMS, GRADE_AGENT_HASH_BYTE_TERMS, re.compile(r"\bsource\b|\boutcome\.md\b", re.I))):
+        missing.append('post_run_source_outcome_hash_or_byte_stability')
+    if missing:
+        errors.append('grade_agent_read_only_isolation_audit: missing evidence facets: '+','.join(missing))
+
+def validate_grade_agent_dp13_schema_trigger(bs, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not grade_agent_task_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    claim_text=text_blob(grade_text,outcome_text)
+    if not GRADE_AGENT_DP13_CLAIM.search(claim_text):
+        return
+    evidence_text=grade_agent_evidence_text(bs, grade_text)
+    missing=[]
+    if not GRADE_AGENT_HIGH_RISK_ACTIONS_TOP_LEVEL.search(evidence_text):
+        missing.append('high_risk_capsule_with_top_level_high_risk_actions')
+    if not GRADE_AGENT_SECOND_SIGNAL_BRANCH.search(evidence_text):
+        missing.append('second_signal_branch')
+    if not GRADE_AGENT_HUMAN_REVIEW_BRANCH.search(evidence_text):
+        missing.append('human_review_branch')
+    if missing:
+        errors.append('grade_agent_dp13_schema_trigger: missing evidence facets: '+','.join(missing))
+
+def validate_grade_agent_second_signal_unforgeable(bs, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not grade_agent_task_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    claim_text=text_blob(grade_text,outcome_text)
+    if not GRADE_AGENT_DP13_CLAIM.search(claim_text):
+        return
+    evidence_text=grade_agent_evidence_text(bs, grade_text)
+    missing=[]
+    if not GRADE_AGENT_SUBSTRING_UNFORGEABLE.search(evidence_text):
+        missing.append('criteria_substring_cannot_set_llm_judge_passed')
+    if not GRADE_AGENT_STRUCTURED_SECOND_SIGNAL.search(evidence_text):
+        missing.append('structured_independent_judge_or_human_review_artifact')
+    if missing:
+        errors.append('grade_agent_second_signal_unforgeable: missing evidence facets: '+','.join(missing))
+
+def validate_grade_agent_llm_judge_fail_closed(bs, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not grade_agent_task_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    claim_text=text_blob(grade_text,outcome_text)
+    if not re.search(r"\bllm_judge\b|\bhard[-_\s]?gate\b|\bevidence_refs?\b|\btrace_ref\b", claim_text, re.I):
+        return
+    evidence_text=grade_agent_evidence_text(bs, grade_text)
+    missing=[]
+    if not GRADE_AGENT_EMPTY_EVIDENCE_REFS_FAIL.search(evidence_text):
+        missing.append('empty_evidence_refs_fail')
+    if not GRADE_AGENT_MISSING_EVIDENCE_REF_FAIL.search(evidence_text):
+        missing.append('missing_evidence_ref_fail')
+    if not GRADE_AGENT_HARD_GATE_DEFAULT_CLOSED.search(evidence_text):
+        missing.append('hard_gate_defaults_closed_false')
+    if not GRADE_AGENT_FABRICATED_TRACE_REF_REJECTED.search(evidence_text):
+        missing.append('self_fabricated_trace_ref_not_sole_evidence')
+    if missing:
+        errors.append('grade_agent_llm_judge_fail_closed: missing evidence facets: '+','.join(missing))
+
+def validate_grade_agent_outcome_path_schema_fields(bs, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not grade_agent_task_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    evidence_text=grade_agent_evidence_text(bs, grade_text)
+    missing=[]
+    if not GRADE_AGENT_REQUIRED_EXIT_NON_DEFAULT.search(evidence_text):
+        missing.append('command_required_exit_code_non_default')
+    if not GRADE_AGENT_PER_ACCEPTANCE_CWD.search(evidence_text):
+        missing.append('per_acceptance_cwd')
+    if not GRADE_AGENT_MIN_SIZE_BYTES.search(evidence_text):
+        missing.append('artifact_min_size_bytes')
+    if missing:
+        errors.append('grade_agent_outcome_path_schema_fields: missing evidence facets: '+','.join(missing))
+
+def validate_grade_agent_critic_substance(bs, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not grade_agent_task_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    claim_text=text_blob(grade_text,outcome_text)
+    if not re.search(r"\bGrade critic\b|\bcritic\b|\bgrade_critic\.md\b", claim_text, re.I):
+        return
+    evidence_text=grade_agent_evidence_text(bs, grade_text)
+    missing=[]
+    if not GRADE_AGENT_REJECTED_CRITIC_FIXTURE.search(evidence_text):
+        missing.append('rejected_seeded_pass_or_naked_verdict_critic_fixture')
+    if not (re.search(r"\brule[ _-]?1\b", evidence_text, re.I) and re.search(r"\boutcome\.md\b", evidence_text, re.I)):
+        missing.append('rule1_consumes_outcome_md')
+    if not (re.search(r"\brule[ _-]?3\b", evidence_text, re.I) and re.search(r"\bgrade_result\.md\b", evidence_text, re.I)):
+        missing.append('rule3_consumes_grade_result_md')
+    if not (re.search(r"\brule[ _-]?4\b", evidence_text, re.I) and re.search(r"\bevidence\b", evidence_text, re.I) and re.search(r"\btrace(?:_|\s|-)?json\b|\btrace.*\.json\b", evidence_text, re.I)):
+        missing.append('rule4_consumes_evidence_files_and_trace_json')
+    if missing:
+        errors.append('grade_agent_critic_substance: missing evidence facets: '+','.join(missing))
 
 def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_status, outcome_blocks=None, grade_claims=None, grade_text='', outcome_text=''):
     """All code tasks need replayable spec/security/negative-test evidence."""
@@ -1054,6 +1249,12 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
     validate_shape_forbidden_read_isolation_audit(spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_outcome_capsule_v12_structural_schema(outcome_blocks, errors, grade_text=grade_text, outcome_text=outcome_text)
     validate_shape_protocol_evidence(bs, outcome_blocks, errors, grade_text=grade_text, outcome_text=outcome_text)
+    validate_grade_agent_read_only_isolation_audit(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_grade_agent_dp13_schema_trigger(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_grade_agent_second_signal_unforgeable(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_grade_agent_llm_judge_fail_closed(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_grade_agent_outcome_path_schema_fields(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_grade_agent_critic_substance(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, spec+neg, errors, grade_claims)
     validate_rpc_cleanup_acceptance_obligations(required_acceptance, acceptance_status, spec+neg, errors)
     validate_event_source_obligations(required_acceptance, spec+neg, errors)
