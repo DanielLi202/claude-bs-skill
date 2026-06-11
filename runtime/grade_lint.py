@@ -127,6 +127,25 @@ GRADE_AGENT_REQUIRED_EXIT_NON_DEFAULT=re.compile(r"\brequired_exit_code\s*[:=]\s
 GRADE_AGENT_PER_ACCEPTANCE_CWD=re.compile(r"\bper[-_\s]?acceptance\b[\s\S]{0,120}\bcwd\b|\bcwd\s*[:=]\s*[\"'][^\"']+[\"']", re.I)
 GRADE_AGENT_MIN_SIZE_BYTES=re.compile(r"\bmin_size_bytes\s*[:=]\s*\d+\b", re.I)
 GRADE_AGENT_REJECTED_CRITIC_FIXTURE=re.compile(r"\b(?:seeded[-_\s]?pass|naked[-_\s]?verdict)\b[\s\S]{0,180}\bcritic\b[\s\S]{0,180}\b(?:reject(?:s|ed)?|approved\s*[:=]\s*false|verdict\s*[:=]\s*rejected)\b|\bcritic\b[\s\S]{0,180}\b(?:seeded[-_\s]?pass|naked[-_\s]?verdict)\b[\s\S]{0,180}\b(?:reject(?:s|ed)?|approved\s*[:=]\s*false|verdict\s*[:=]\s*rejected)\b", re.I)
+EVOLVE_AGENT_PRIMARY_TASK_TOKENS=re.compile(r"\bM7\s+Evolve\s+Agent\b|\bEvolve\s+Agent\b|\bcrates/symphony-evolve\b|\bsymphony\s+evolve\b|docs/agents/evolve/AGENT\.md", re.I)
+EVOLVE_METADATA_CLAIM=re.compile(r"\bD-P21\b|\bmetadata\s+complete(?:ness)?\b|\bcomplete\s+D-P21\s+metadata\b|\bfull\s+metadata\b|\bcommit_hash\b|\brevert_hint\b", re.I)
+EVOLVE_REAL_COMMIT_HASH_RE=re.compile(r"\bcommit_hash\s*[:=]\s*[\"']?(?!pending\b)[0-9a-f]{7,40}[\"']?\b|\bcommit_hash\b[\s\S]{0,160}\b(?:patched|updated|replaced|read\s*back|readback)\b[\s\S]{0,160}\bpending\b[\s\S]{0,120}\b[0-9a-f]{7,40}\b|\bpending\b[\s\S]{0,120}(?:->|→|to)\s*[0-9a-f]{7,40}\b", re.I)
+EVOLVE_POST_COMMIT_READBACK_RE=re.compile(r"\bpost[-_\s]?commit\b[\s\S]{0,120}\b(?:read[-_\s]?back|readback|re[-_\s]?open(?:ed)?|reload(?:ed)?|verify|verified)\b|\b(?:read[-_\s]?back|readback|re[-_\s]?open(?:ed)?|reload(?:ed)?)\b[\s\S]{0,120}\bafter\b[\s\S]{0,80}\bgit\s+commit\b", re.I)
+EVOLVE_REVERT_HINT_REAL_COMMIT_RE=re.compile(r"\brevert_hint\s*[:=][^\n]{0,120}\bgit\s+revert\s+[0-9a-f]{7,40}\b|\bgit\s+revert\s+[0-9a-f]{7,40}\b[\s\S]{0,120}\brevert_hint\b", re.I)
+EVOLVE_L2_METADATA_RE=re.compile(r"\b(?:L2|pattern(?:s)?(?:-pending)?|PROPOSAL\.md|skill)\b[\s\S]{0,220}\b(?:D-P21|metadata)\b[\s\S]{0,220}\b(?:commit_hash|revert_hint|source_run_ids?|validation|owner_scope)\b|\b(?:D-P21|metadata)\b[\s\S]{0,220}\b(?:L2|pattern(?:s)?(?:-pending)?|PROPOSAL\.md|skill)\b[\s\S]{0,220}\b(?:commit_hash|revert_hint|source_run_ids?|validation|owner_scope)\b", re.I)
+EVOLVE_CRITIC_PREFILTER_CLAIM=re.compile(r"\bevolve[-_\s]?critic\b|\bcritic[_\s-]?review\b|\bmechanical[-_\s]?pre[-_\s]?filter\b|\bpre[-_\s]?filter\b|\bcritic\b[\s\S]{0,80}\b(?:approved|pass|passes|verdict)\b", re.I)
+EVOLVE_GRADE_COMPLETED_TRACE_RE=re.compile(r"\bgrade_completed\b[\s\S]{0,180}\b(?:trace(?:ability|_ref)?|source(?:_run)?|run_ids?|grade_result|evidence_refs?|handoff|overall_status|evolve_handoff_status)\b|\b(?:trace(?:ability|_ref)?|source(?:_run)?|run_ids?|grade_result|evidence_refs?|handoff|overall_status|evolve_handoff_status)\b[\s\S]{0,180}\bgrade_completed\b", re.I)
+EVOLVE_VALIDATION_ANCHOR_BLACKLIST_RE=re.compile(r"\bvalidation\b[\s\S]{0,160}\b(?:observable[-_\s]?anchor|anchor)\b[\s\S]{0,160}\b(?:blacklist|template[-_\s]?blacklist|generic[-_\s]?template)\b|\b(?:blacklist|template[-_\s]?blacklist|generic[-_\s]?template)\b[\s\S]{0,160}\bvalidation\b[\s\S]{0,160}\b(?:observable[-_\s]?anchor|anchor)\b", re.I)
+EVOLVE_GRADE_CONSISTENCY_RE=re.compile(r"\bgrade[-_\s]?consistency\b|\b(?:grade_status|grade_handoff_status|overall_status|grade_pass|grade_fail)\b[\s\S]{0,160}\b(?:consistent|consistency|matches?|aligns?|cross[-_\s]?checks?|rejects?)\b|\b(?:consistent|consistency|matches?|aligns?|cross[-_\s]?checks?|rejects?)\b[\s\S]{0,160}\b(?:grade_status|grade_handoff_status|overall_status|grade_pass|grade_fail)\b", re.I)
+EVOLVE_PER_CANDIDATE_VERDICT_RE=re.compile(r"\bper[-_\s]?candidate\b[\s\S]{0,160}\b(?:structured\s+)?verdict\b|\b(?:candidate_id|candidate)\b[\s\S]{0,100}\b(?:structured\s+)?verdict\b|\bevolve_critic_verdict\b", re.I)
+EVOLVE_WRITE_GIT_LOG_CLAIM=re.compile(r"\bevolve[-_\s]?log\b|\bmemory[-_\s]?artifact\b|\bnon[-_\s]?git[-_\s]?surfaces?\b|\bD-T1\b|\bwrite[-_\s]?with[-_\s]?git\b|\bgit[-_\s]?commit\b|\bcommit_hash\b", re.I)
+EVOLVE_LOG_TERMS=re.compile(r"\bevolve[-_\s]?log\b|\.symphony/evolve-log\b", re.I)
+EVOLVE_GIT_COMMIT_TERMS=re.compile(r"\bwrite[-_\s]?with[-_\s]?git\b|\bgit\s+commit\b|\bgit[-_\s]?committed\b|\bcommitted\b|\bcommit_hash\b", re.I)
+EVOLVE_MEMORY_ARTIFACT_GIT_RE=re.compile(r"\b(?:every|each|all)\b[\s\S]{0,120}\b(?:memory[-_\s]?artifact|L1|L2|artifact|memory/|patterns/|patterns-pending)\b[\s\S]{0,160}\b(?:write[-_\s]?with[-_\s]?git|git\s+commit|committed|commit_hash)\b|\b(?:memory[-_\s]?artifact|L1|L2|artifact|memory/|patterns/|patterns-pending)\b[\s\S]{0,160}\b(?:every|each|all)\b[\s\S]{0,120}\b(?:write[-_\s]?with[-_\s]?git|git\s+commit|committed|commit_hash)\b", re.I)
+EVOLVE_LOG_REAL_COUNTS_RE=re.compile(r"\bcounts?\b[\s\S]{0,160}\b(?:total_candidates|l1_written|l2_written|l1_proposed|l2_proposed)\b[\s\S]{0,180}\b(?:real|actual|candidate\s+writes?|non[-_\s]?zero|[1-9]\d*|invariant|matches?)\b|\b(?:total_candidates|l1_written|l2_written|l1_proposed|l2_proposed)\b[\s\S]{0,160}\b(?:real|actual|candidate\s+writes?|non[-_\s]?zero|[1-9]\d*|invariant|matches?)\b", re.I)
+EVOLVE_LIGHTWEIGHT_CLAIM=re.compile(r"\bL0\.?5\b|\blightweight[-_\s]?memory\b|\bRecent\s+Runs\b|\brecent-runs\b|\binline[-_\s]?write\b|\bMEMORY\.md\b", re.I)
+EVOLVE_RECENT_RUNS_GIT_COMMIT_RE=re.compile(r"\b(?:Recent\s+Runs|recent-runs|MEMORY\.md)\b[\s\S]{0,160}\b(?:git\s+commit|committed|commit_hash|chore\(memory\):\s*index)\b|\b(?:git\s+commit|committed|commit_hash|chore\(memory\):\s*index)\b[\s\S]{0,160}\b(?:Recent\s+Runs|recent-runs|MEMORY\.md)\b", re.I)
+EVOLVE_RECENT_RUNS_IDEMPOTENCE_RE=re.compile(r"\b(?:idempotent|idempotence|replay|re-run|rerun|same\s+digest|duplicate)\b[\s\S]{0,180}\b(?:Recent\s+Runs|recent-runs|MEMORY\.md|line|digest)\b[\s\S]{0,120}\b(?:no\s+duplicate|dedup|does\s+not\s+duplicate|single\s+line|one\s+line|unchanged)\b|\b(?:Recent\s+Runs|recent-runs|MEMORY\.md|line|digest)\b[\s\S]{0,180}\b(?:same\s+digest|replay|rerun|idempotent|idempotence)\b[\s\S]{0,120}\b(?:no\s+duplicate|dedup|does\s+not\s+duplicate|single\s+line|one\s+line|unchanged)\b", re.I)
 class LintError(ValueError): pass
 
 def split_top_level(text, sep=','):
@@ -959,6 +978,10 @@ def grade_agent_task_in_scope(grade_text, outcome_text, outcome_blocks) -> bool:
     primary=text_blob(primary_outcome_subject_text(outcome_blocks), primary_grade_header_text(grade_text))
     return bool(GRADE_AGENT_PRIMARY_TASK_TOKENS.search(primary))
 
+def evolve_agent_task_in_scope(grade_text, outcome_text, outcome_blocks) -> bool:
+    primary=text_blob(primary_outcome_subject_text(outcome_blocks), primary_grade_header_text(grade_text))
+    return bool(EVOLVE_AGENT_PRIMARY_TASK_TOKENS.search(primary))
+
 def shape_forbidden_read_row_sufficient(row):
     row_text=text_blob(row)
     return (
@@ -1093,6 +1116,10 @@ def text_has_evidence_segment(text, patterns):
     segments=re.split(r"\n\s*-\s+|\n\n|[.;]\s+", text or '')
     return any(all(pattern.search(segment) for pattern in patterns) for segment in segments)
 
+def raw_line_has_evidence_segment(text, patterns):
+    segments=re.split(r"\n+|[.;]\s+", text or '')
+    return any(all(pattern.search(segment) for pattern in patterns) for segment in segments)
+
 def validate_grade_agent_read_only_isolation_audit(bs, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
     if not grade_agent_task_in_scope(grade_text,outcome_text,outcome_blocks):
         return
@@ -1196,6 +1223,84 @@ def validate_grade_agent_critic_substance(bs, errors, *, grade_text='', outcome_
     if missing:
         errors.append('grade_agent_critic_substance: missing evidence facets: '+','.join(missing))
 
+def evolve_agent_evidence_text(bs, grade_text):
+    return text_blob(
+        grade_text,
+        first(bs,'spec_compliance_matrix'),
+        first(bs,'negative_regression_tests'),
+        first(bs,'adversarial_checks'),
+        first(bs,'trust_surface_inventory'),
+        first(bs,'deferred_claims'),
+    )
+
+def validate_evolve_metadata_persisted_post_commit(bs, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not evolve_agent_task_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    claim_text=text_blob(grade_text,outcome_text)
+    if not EVOLVE_METADATA_CLAIM.search(claim_text):
+        return
+    evidence_text=evolve_agent_evidence_text(bs, grade_text)
+    missing=[]
+    if not (EVOLVE_REAL_COMMIT_HASH_RE.search(evidence_text) and EVOLVE_POST_COMMIT_READBACK_RE.search(evidence_text)):
+        missing.append('post_commit_commit_hash_readback')
+    if not EVOLVE_REVERT_HINT_REAL_COMMIT_RE.search(evidence_text):
+        missing.append('revert_hint_real_commit')
+    if not EVOLVE_L2_METADATA_RE.search(evidence_text):
+        missing.append('l2_pattern_d_p21_metadata')
+    if missing:
+        errors.append('evolve_metadata_persisted_post_commit: missing evidence facets: '+','.join(missing))
+
+def validate_evolve_critic_prefilter_substance(bs, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not evolve_agent_task_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    claim_text=text_blob(grade_text,outcome_text)
+    if not EVOLVE_CRITIC_PREFILTER_CLAIM.search(claim_text):
+        return
+    evidence_text=evolve_agent_evidence_text(bs, grade_text)
+    missing=[]
+    if not EVOLVE_GRADE_COMPLETED_TRACE_RE.search(evidence_text):
+        missing.append('grade_completed_traceability')
+    if not EVOLVE_VALIDATION_ANCHOR_BLACKLIST_RE.search(evidence_text):
+        missing.append('validation_anchor_blacklist')
+    if not EVOLVE_GRADE_CONSISTENCY_RE.search(evidence_text):
+        missing.append('grade_consistency')
+    if not EVOLVE_PER_CANDIDATE_VERDICT_RE.search(evidence_text):
+        missing.append('per_candidate_structured_verdict')
+    if missing:
+        errors.append('evolve_critic_prefilter_substance: missing evidence facets: '+','.join(missing))
+
+def validate_evolve_write_with_git_and_log_counts(bs, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not evolve_agent_task_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    claim_text=text_blob(grade_text,outcome_text)
+    if not EVOLVE_WRITE_GIT_LOG_CLAIM.search(claim_text):
+        return
+    evidence_text=evolve_agent_evidence_text(bs, grade_text)
+    missing=[]
+    if not raw_line_has_evidence_segment(grade_text, (EVOLVE_LOG_TERMS, EVOLVE_GIT_COMMIT_TERMS)):
+        missing.append('evolve_log_git_commit')
+    if not EVOLVE_MEMORY_ARTIFACT_GIT_RE.search(evidence_text):
+        missing.append('memory_artifacts_git_commit')
+    if not EVOLVE_LOG_REAL_COUNTS_RE.search(evidence_text):
+        missing.append('evolve_log_real_counts')
+    if missing:
+        errors.append('evolve_write_with_git_and_log_counts: missing evidence facets: '+','.join(missing))
+
+def validate_evolve_lightweight_commit_idempotence(bs, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not evolve_agent_task_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    claim_text=text_blob(grade_text,outcome_text)
+    if not EVOLVE_LIGHTWEIGHT_CLAIM.search(claim_text):
+        return
+    evidence_text=evolve_agent_evidence_text(bs, grade_text)
+    missing=[]
+    if not EVOLVE_RECENT_RUNS_GIT_COMMIT_RE.search(evidence_text):
+        missing.append('recent_runs_git_commit')
+    if not EVOLVE_RECENT_RUNS_IDEMPOTENCE_RE.search(evidence_text):
+        missing.append('same_digest_idempotence')
+    if missing:
+        errors.append('evolve_lightweight_commit_idempotence: missing evidence facets: '+','.join(missing))
+
 def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_status, outcome_blocks=None, grade_claims=None, grade_text='', outcome_text=''):
     """All code tasks need replayable spec/security/negative-test evidence."""
     required_acceptance = required_acceptance or acceptance_status_metadata(acceptance_status)
@@ -1255,6 +1360,10 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
     validate_grade_agent_llm_judge_fail_closed(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_grade_agent_outcome_path_schema_fields(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_grade_agent_critic_substance(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_evolve_metadata_persisted_post_commit(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_evolve_critic_prefilter_substance(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_evolve_write_with_git_and_log_counts(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_evolve_lightweight_commit_idempotence(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, spec+neg, errors, grade_claims)
     validate_rpc_cleanup_acceptance_obligations(required_acceptance, acceptance_status, spec+neg, errors)
     validate_event_source_obligations(required_acceptance, spec+neg, errors)

@@ -1,6 +1,9 @@
 from pathlib import Path
-import json, subprocess, sys, tempfile, textwrap, unittest
+import importlib.util, json, subprocess, sys, tempfile, textwrap, unittest
 LINTER=Path(__file__).resolve().parents[1]/'runtime'/'grade_lint.py'
+GRADE_LINT_SPEC=importlib.util.spec_from_file_location('grade_lint_runtime', LINTER)
+GRADE_LINT=importlib.util.module_from_spec(GRADE_LINT_SPEC)
+GRADE_LINT_SPEC.loader.exec_module(GRADE_LINT)
 BASIC='''# Grade
 ```yaml
 grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
@@ -1417,6 +1420,107 @@ deferred_claims: []
 - **Read-only isolation** (R-AGT-6 P0): outcome.md is byte-stable and forbidden dirs are
   never created.
 '''
+CYCLE021_EVOLVE_AGENT_ESCAPE_OUTCOME='''---
+schema_version: "1.2"
+id: "T-20260611-072700-b021e7c1"
+title: "M7 Evolve Agent (Layer-2) — L0.5 memory + grade-gated candidates + revert-aware writes"
+goal: "Implement the symphony-evolve crate: L0.5 lightweight-memory inline writer (daemon main thread), the Evolve batch processor that generates L1 memory candidates only from grade-pass runs (negative_reflection only from grade-fail runs), full D-P21 metadata before write, the .evolve.lock advisory-lock IPC + storage marker layout, git-commit-with-revert-footer for every accepted write, and a revert-history check that suppresses user-reverted candidates; expose symphony evolve CLI subcommand."
+risk_level: medium
+non_goals:
+  - "Do NOT write any memory/pattern artifact without complete D-P21 metadata (RL-10) and do NOT write any artifact without a git commit carrying source + revert footer (D-T1 / D-P24 / RL-11)"
+  - "Do NOT run Evolve inline at the grade_completed event — that is the daemon main-thread L0.5 inline write; the Evolve batch is scheduler-triggered"
+context_pointers:
+  - "docs/agents/evolve/AGENT.md"
+  - "docs/architecture/schemas/lightweight-memory.md"
+  - "docs/architecture/schemas/evolve-log.md"
+output_contract:
+  artifacts:
+    - type: file_set
+      paths:
+        - "crates/symphony-evolve/src/lib.rs"
+        - "crates/symphony-evolve/src/lightweight.rs"
+        - "crates/symphony-evolve/src/critic.rs"
+        - "crates/symphony-evolve/src/git_write.rs"
+        - "apps/symphony/src/main.rs"
+  target: pr
+---
+
+## Background
+This cycle's primary deliverable is the M7 Evolve Agent and the `symphony evolve` CLI.
+'''
+CYCLE021_EVOLVE_AGENT_ESCAPE_GRADE='''# Grade Round 2 — B-021 M7 Evolve Agent (Layer-2)
+
+Task type: code · risk_level: medium · round: 2
+
+The delta is materially complete and the non-git surfaces all pass: D-P21 metadata
+completeness, the evolve-critic and mechanical pre-filter pass, the evolve-log artifact
+is atomically written, and L0.5 lightweight-memory writes the Recent Runs line.
+
+```yaml
+grade_summary:
+  p0_count: 0
+  p1_count: 0
+  p2_count: 0
+```
+
+```yaml
+acceptance_status:
+  - id: a4
+    status: pass
+  - id: a6
+    status: pass
+  - id: a9
+    status: pass
+  - id: a12
+    status: pass
+```
+
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: a4
+    spec_ref: "docs/architecture/schemas/lightweight-memory.md"
+    evidence_ref: "src/lightweight.rs lightweight_memory_inline_write_recent_runs_only (PASS); placement-only check proves MEMORY.md Recent Runs section receives the digest narrative"
+    status: pass
+    severity_if_fail: P1
+  - acceptance_id: a6
+    spec_ref: "docs/decisions/product.md D-P21"
+    evidence_ref: "src/lib.rs incomplete_metadata_rejected_before_write + metadata_complete_rejects_missing_fields (PASS); pre-write in-memory candidate metadata includes source_run_id, validation, owner_scope, revert_hint, and commit_hash: pending"
+    status: pass
+    severity_if_fail: P0
+  - acceptance_id: a9
+    spec_ref: "docs/agents/evolve/AGENT.md; docs/architecture/schemas/evolve-log.md"
+    evidence_ref: "dogfood_batch_end_to_end writes >=1 memory fact and records a git commit for that fact; evolve-log atomic-write smoke reviewed as a non-git surface"
+    status: pass
+    severity_if_fail: P1
+  - acceptance_id: a12
+    spec_ref: "docs/agents/evolve/AGENT.md critic + mechanical_pre_filter"
+    evidence_ref: "mechanical pre-filter length/risk/path-only smoke; in-process evolve-critic returns approved for the batch"
+    status: pass
+    severity_if_fail: P1
+```
+
+```yaml
+negative_regression_tests:
+  - acceptance_id: a6
+    scenario: "Candidate missing any D-P21 metadata field is rejected before write/commit"
+    evidence_ref: "src/lib.rs incomplete_metadata_rejected_before_write (PASS)"
+    status: pass
+    severity_if_fail: P0
+```
+
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: "symphony-evolve handles run traces / grade verdicts / memory candidates; it has no auth/secret/token/API-key surface."
+```
+
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: "fixture focuses on Evolve evidence completeness, not dependency changes"
+```
+'''
 class GradeLintTests(unittest.TestCase):
     def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME):
         with tempfile.TemporaryDirectory() as td:
@@ -1625,10 +1729,64 @@ class GradeLintTests(unittest.TestCase):
         self.assertEqual(proc.returncode,1)
         self.assertIn(expected, '\n'.join(p['grade_lint']['errors']))
 
+    def assert_cycle021_evolve_error(self, expected):
+        proc,p=self.run_lint('code','low',CYCLE021_EVOLVE_AGENT_ESCAPE_GRADE,CYCLE021_EVOLVE_AGENT_ESCAPE_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn(expected, '\n'.join(p['grade_lint']['errors']))
+
+    def assert_cycle018_non_evolve_lacks_error(self, unexpected):
+        proc,p=self.run_lint('code','low',CYCLE018_ADAPTER_NON_SHAPE_GRADE,CYCLE018_ADAPTER_NON_SHAPE_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+        self.assertNotIn(unexpected, '\n'.join(p['grade_lint']['errors']))
+
+    def outcome_blocks_from_text(self, outcome_text):
+        with tempfile.TemporaryDirectory() as td:
+            path=Path(td)/'outcome.md'
+            path.write_text(textwrap.dedent(outcome_text))
+            return GRADE_LINT.blocks(path, include_front_matter=True)
+
     def assert_cycle016_clean_lacks_error(self, unexpected):
         proc,p=self.run_lint('code','low',CYCLE016_LEDGER_CLEAN_GRADE,CYCLE016_LEDGER_CLEAN_OUTCOME)
         self.assertEqual(proc.returncode,0,p)
         self.assertNotIn(unexpected, '\n'.join(p['grade_lint']['errors']))
+
+    def test_evolve_agent_scope_cycle021_true_and_cycle018_cross_ref_false(self):
+        cycle021_outcome=textwrap.dedent(CYCLE021_EVOLVE_AGENT_ESCAPE_OUTCOME)
+        cycle018_outcome=textwrap.dedent(CYCLE018_ADAPTER_NON_SHAPE_OUTCOME)
+        self.assertTrue(GRADE_LINT.evolve_agent_task_in_scope(
+            textwrap.dedent(CYCLE021_EVOLVE_AGENT_ESCAPE_GRADE),
+            cycle021_outcome,
+            self.outcome_blocks_from_text(cycle021_outcome),
+        ))
+        self.assertFalse(GRADE_LINT.evolve_agent_task_in_scope(
+            textwrap.dedent(CYCLE018_ADAPTER_NON_SHAPE_GRADE),
+            cycle018_outcome,
+            self.outcome_blocks_from_text(cycle018_outcome),
+        ))
+
+    def test_evolve_metadata_persisted_post_commit_cycle021_must_fire(self):
+        self.assert_cycle021_evolve_error('evolve_metadata_persisted_post_commit')
+
+    def test_evolve_metadata_persisted_post_commit_cycle018_must_not_fire(self):
+        self.assert_cycle018_non_evolve_lacks_error('evolve_metadata_persisted_post_commit')
+
+    def test_evolve_critic_prefilter_substance_cycle021_must_fire(self):
+        self.assert_cycle021_evolve_error('evolve_critic_prefilter_substance')
+
+    def test_evolve_critic_prefilter_substance_cycle018_must_not_fire(self):
+        self.assert_cycle018_non_evolve_lacks_error('evolve_critic_prefilter_substance')
+
+    def test_evolve_write_with_git_and_log_counts_cycle021_must_fire(self):
+        self.assert_cycle021_evolve_error('evolve_write_with_git_and_log_counts')
+
+    def test_evolve_write_with_git_and_log_counts_cycle018_must_not_fire(self):
+        self.assert_cycle018_non_evolve_lacks_error('evolve_write_with_git_and_log_counts')
+
+    def test_evolve_lightweight_commit_idempotence_cycle021_must_fire(self):
+        self.assert_cycle021_evolve_error('evolve_lightweight_commit_idempotence')
+
+    def test_evolve_lightweight_commit_idempotence_cycle018_must_not_fire(self):
+        self.assert_cycle018_non_evolve_lacks_error('evolve_lightweight_commit_idempotence')
 
     def test_grade_agent_read_only_isolation_audit_cycle020_must_fire(self):
         self.assert_cycle020_grade_error('grade_agent_read_only_isolation_audit')
