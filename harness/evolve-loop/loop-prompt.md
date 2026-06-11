@@ -143,7 +143,16 @@ supervision; the loop only detects a wedged/dead subagent, not a slow one).
 - else `closure.py --dir "$REVIEWS/<cycle_id>" init`; commit closure.yaml; → Stage 2.
 
 ## Stage 2 — r1: independent delivery review (codex, read-only)
-As v1: adversarial review of the merged delta vs outcome.md + the cycle's own grade docs;
+**Escalated cycles** (the adopted cycle closed `escalated` — its delta is UNMERGED, held
+on `bootstrap/cycle-NNN`): r1 reviews `git diff main...bootstrap/cycle-NNN` plus the
+escalation evidence (all grade rounds, the step_events escalation reason), and the review
+question widens to BOTH "what escaped" AND "why did the fix loop fail to converge"
+(rubric drift between rounds? unfixable shaping? tooling bug like locale-dependent
+parsing?). Stage 5 for such cycles = drive the held delta to mergeable (worktree from
+that branch, fix the escalation blockers, full gates, PR → merge) or, if gates prove it
+unsalvageable, escalate-to-human with the evidence — never silently abandon a
+materially-complete delta.
+Merged cycles, as before: adversarial review of the merged delta vs outcome.md + the cycle's own grade docs;
 output ends with fenced `r1_verdict` YAML (`escaped_findings[{id,severity,where,why,
 evidence}]`). Write `$REVIEWS/<cycle>/r1.md`; validate the block exists.
 → `closure.py set r1 done`; `git add/commit/push` (bs-skill) the r1 + closure update.
@@ -228,6 +237,11 @@ backtest summary (fires/adjudications), remediation commit, and **every
    stop condition on its next firing.
 2. `loop-state.py get mode` == `dry-run` ⇒ single-iteration mode: report and END with NO
    reschedule.
+2b. **Graceful quiesce:** if `$BS_LOOP_STATE_DIR/PAUSE` exists ⇒ report "paused at
+   iteration boundary (PAUSE present — typically a release window)" and END with NO
+   reschedule. Unlike STOP, PAUSE never aborts an in-flight iteration or its supervision
+   wakes — it only declines to start the next one. Do NOT delete the file (the operator
+   removes it and relaunches).
 3. Else **re-arm the chain:** `ScheduleWakeup(delaySeconds: 90, reason: "next bs-evolve
    iteration", prompt: WAKE_PROMPT)` — always the canonical WAKE_PROMPT line, never this
    file's contents.
@@ -236,8 +250,12 @@ backtest summary (fires/adjudications), remediation commit, and **every
 ---
 
 ## Operator controls
-- **Stop:** `touch "$BS_LOOP_TARGET_REPO/.prompts/loop/STOP"` (honored at next Step 0; this
-  IS the cancel — ScheduleWakeup has no external cancel). Resume: delete it.
+- **Stop (hard):** `touch "$BS_LOOP_TARGET_REPO/.prompts/loop/STOP"` (honored at next Step 0
+  by EVERY wake incl. in-flight supervision; this IS the cancel — ScheduleWakeup has no
+  external cancel). Resume: delete it.
+- **Pause (graceful, for release windows):** `touch "$BS_LOOP_TARGET_REPO/.prompts/loop/PAUSE"`
+  — the current iteration finishes WITH full supervision; the chain simply doesn't re-arm
+  at Stage 7. Release the skill in the quiet window, then `rm PAUSE` and relaunch.
 - **Inspect:** `closure.py --dir "$REVIEWS/cycle-NNN" get` · `loop-state.py get history` ·
   `git -C $BS_LOOP_SKILL_REPO log --oneline`.
 - A closure stuck on a contested adjudication or an escalated decision pauses the loop —
