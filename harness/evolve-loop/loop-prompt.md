@@ -22,6 +22,9 @@ an open ledger, and the next turn resumes it from disk — never from context me
 ## Hard invariants
 1. **SERIAL.** One awaited subagent or one codex/Bash at a time; no parallel stages; hold
    the `RUNNING` lock for the whole turn.
+0. **NEVER hold the turn open waiting for an external process.** Long work runs in
+   background and the turn ENDS; notifications/wakeups re-invoke you. A turn held open by
+   polling freezes every pending ScheduleWakeup — the loop's entire recovery layer.
 2. **Thin orchestrator.** Heavy work runs in the `/bs` subagent or `codex … > file`; you
    ingest summaries + ledger files only.
 3. **Pause-and-surface, never fabricate.** Hard-stop / unrecoverable failure → write the
@@ -47,13 +50,30 @@ CORPUS="$BS_LOOP_TARGET_REPO/.prompts/dogfood" # historical cycle artifacts (mac
 ```
 First-ever launch: `python3 "$HARNESS/bin/loop-state.py" init --target … --skill … --mode auto --max 5`.
 
-**Codex invocation:** NEVER pass `-m` (ChatGPT-auth rejects `gpt-5.2`; the config default,
-e.g. `gpt-5.5`, is the account's best model). Always `-c model_reasoning_effort="xhigh"`,
-prompt via stdin (`… - < prompt.txt`), stdout → artifact file. Reviews/verifies:
-`--sandbox read-only`. Implementation: `--sandbox workspace-write --full-auto`. **codex CANNOT git-commit under
-this sandbox (`.git` is read-only)** — run ONE codex exec PER ITEM; the ORCHESTRATOR
-verifies each result (suite + targeted greps) and makes that item's commit itself. Only
-release.sh tags/pushes.
+**Codex invocation (MANDATORY form — cycle-019 incident):** every codex call goes through
+the fail-closed wrapper, launched with `run_in_background: true`, after which you END YOUR
+TURN and let the completion notification re-invoke you:
+```bash
+bash "$HARNESS/bin/run-codex-staged.sh" --stage <iterNNN-stagename> --budget <sec> \
+  --prompt <prompt-file> --log <log-file> --cwd <dir> [-- --sandbox read-only|--sandbox workspace-write --full-auto]
+```
+Budgets: reviews/verifies 5400s; implementation/remediation 7200s. The wrapper runs codex
+in its own process group, records an inflight file
+(`$BS_LOOP_STATE_DIR/inflight/<stage>.json`), and at budget TERM→KILLs the whole group and
+exits 124 — a hung codex becomes an ordinary stage failure (retry once, else
+pause-and-surface), never a hung loop.
+- **NEVER hold the turn open waiting** — no foreground polling, no sleep/grep watcher
+  loops, no repeated Read-polling of the log. A held turn FREEZES every pending
+  ScheduleWakeup (this is exactly how the cycle-019 remediation hung 12h+ with zero
+  wake-ups). Background + end turn is the only allowed waiting pattern.
+- NEVER pass `-m` (ChatGPT-auth rejects `gpt-5.2`; the config default, e.g. `gpt-5.5`, is
+  the account's best model); the wrapper already forces `xhigh` + stdin prompt.
+- **codex CANNOT git-commit under the sandbox** (`.git` read-only) — one codex run per
+  item; the ORCHESTRATOR verifies each result (suite + targeted greps) and commits.
+  Only release.sh tags/pushes.
+- **Lease refresh:** after EVERY completed stage, `touch "$BS_LOOP_STATE_DIR/RUNNING.lock"`.
+  The 2h stale threshold then means "no stage progress for 2h", which (with all budgets
+  < 2h) cleanly separates a dead iteration from a healthy long one.
 
 ---
 
@@ -69,10 +89,19 @@ release.sh tags/pushes.
    dies mid-iteration (session kill — observed twice in cycle-018), this probe resumes the
    loop from the closure ledger; after a NORMAL iteration it wakes into a held lock or a
    stop condition and exits harmlessly.
-4. `loop-guard.sh acquire` → exit 11 (locked: another iteration is live) ⇒
-   `ScheduleWakeup(delaySeconds: 1800, reason: "lock-held retry probe", prompt:
-   WAKE_PROMPT)` then END. Combined with the 2h stale-lock auto-clear, a dead lock-holder
-   is resumed within ~2-3h; a live one keeps ownership (the probe just bounces).
+4. `loop-guard.sh acquire` → exit 11 (locked: another iteration may be live) ⇒ run the
+   **takeover triage** before bouncing:
+   - read `$BS_LOOP_STATE_DIR/inflight/*.json`; for each: is the recorded `pgid` alive
+     (`kill -0 -- -<pgid>`)? is it past its `budget_sec` (+10min slack)?
+   - if every inflight pgid is DEAD or OVERDUE **and** the lock mtime is older than the
+     newest stage artifact by >30min (the iteration is making no progress) ⇒ the holder is
+     dead/wedged: reap overdue pgids (`kill -TERM -- -<pgid>`, +60s `-KILL`), delete the
+     inflight files, `rm RUNNING.lock`, and PROCEED with this turn as the new owner
+     (closure scan resumes the open stage; salvage uncommitted deltas by gates, as ever).
+   - otherwise the holder looks alive ⇒ `ScheduleWakeup(delaySeconds: 1800, reason:
+     "lock-held retry probe", prompt: WAKE_PROMPT)` then END. With the per-stage lease
+     refresh, a wedged holder is taken over within ≤2h (stale-clear) and a hung codex
+     within its budget +10min.
 5. **Closure scan:** `python3 "$HARNESS/bin/closure.py" --reviews-root "$REVIEWS" newest-open`
    - prints a dir ⇒ resume that closure: `closure.py --dir <dir> next` → jump to that stage
      (r1→Stage 2, r2→Stage 3, skill_release→Stage 4, remediation→Stage 5, close→Stage 6).
@@ -147,9 +176,12 @@ backlog file.
 ## Stage 5 — Remediate the r1 findings in the TARGET repo (under the NEW gates)
 Direct codex fix (maintainer decision: not via `/bs` — lexicographic task selection cannot
 prioritize a dynamic remediation task), with the full gate stack:
-1. codex (workspace-write, `-C $BS_LOOP_TARGET_REPO`, on branch `remediate/<cycle>`): fix
-   EVERY r1 finding; add a negative/regression test per finding; run the binding's
-   `verify.grade.code` commands until green.
+1. **ISOLATED WORKTREE, never the main checkout** (cycle-019 incident left the user's main
+   repo stranded on a remediation branch):
+   `git -C $BS_LOOP_TARGET_REPO worktree add /private/tmp/remediate-<cycle> -b remediate/<cycle>`,
+   then codex (workspace-write, `--cwd` the worktree) fixes EVERY r1 finding; add a
+   negative/regression test per finding; run the binding's `verify.grade.code` commands
+   until green. Remove the worktree after merge.
 2. Author `$REVIEWS/<cycle>/remediation_grade.md` (spec_compliance_matrix over the r1
    findings + negative_regression_tests + secret_leakage_audit + dependency_spec_review,
    same schema as a bs Grade) and run the **NEW** `grade_lint.py` on it — this is the
