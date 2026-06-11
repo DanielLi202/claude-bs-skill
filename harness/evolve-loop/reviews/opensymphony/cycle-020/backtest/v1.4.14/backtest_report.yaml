@@ -1,0 +1,67 @@
+baseline_ref: v1.4.13
+target_cycle: cycle-020
+cycles:
+- cycle: cycle-009
+  risk: medium
+  grade: grade_round_1.md
+  baseline_error_count: 16
+  new_error_count: 16
+  delta_errors: []
+- cycle: cycle-013
+  risk: medium
+  grade: grade_round_0.md
+  baseline_error_count: 10
+  new_error_count: 10
+  delta_errors: []
+- cycle: cycle-015
+  risk: low
+  grade: grade_round_0.md
+  baseline_error_count: 7
+  new_error_count: 7
+  delta_errors: []
+- cycle: cycle-016
+  risk: medium
+  grade: grade_round_0.md
+  baseline_error_count: 1
+  new_error_count: 1
+  delta_errors: []
+- cycle: cycle-017
+  risk: low
+  grade: grade_round_0.md
+  baseline_error_count: 2
+  new_error_count: 2
+  delta_errors: []
+- &id001
+  cycle: cycle-018
+  risk: medium
+  grade: grade_round_1.md
+  baseline_error_count: 14
+  new_error_count: 15
+  delta_errors:
+  - 'subprocess_lifecycle[B018-A9] missing facets: descendant_escape_fixture,descendant_audit_or_tree_containment
+    — probe/stream subprocess surfaces require timeout + process-group + wait/reap
+    (+ stream-task join) evidence'
+- cycle: cycle-019
+  risk: medium
+  grade: grade_round_0.md
+  baseline_error_count: 4
+  new_error_count: 4
+  delta_errors: []
+- cycle: cycle-020
+  risk: medium
+  grade: grade_round_1.md
+  baseline_error_count: 0
+  new_error_count: 7
+  delta_errors:
+  - 'grade_agent_read_only_isolation_audit: missing evidence facets: hostile_write_command,hostile_artifact_forbidden_read_or_traversal,canonical_containment_or_denylist,post_run_source_outcome_hash_or_byte_stability'
+  - 'grade_agent_dp13_schema_trigger: missing evidence facets: high_risk_capsule_with_top_level_high_risk_actions,human_review_branch'
+  - 'grade_agent_second_signal_unforgeable: missing evidence facets: criteria_substring_cannot_set_llm_judge_passed,structured_independent_judge_or_human_review_artifact'
+  - 'grade_agent_llm_judge_fail_closed: missing evidence facets: empty_evidence_refs_fail,hard_gate_defaults_closed_false,self_fabricated_trace_ref_not_sole_evidence'
+  - 'grade_agent_outcome_path_schema_fields: missing evidence facets: command_required_exit_code_non_default,per_acceptance_cwd,artifact_min_size_bytes'
+  - 'grade_agent_critic_substance: missing evidence facets: rejected_seeded_pass_or_naked_verdict_critic_fixture,rule1_consumes_outcome_md,rule3_consumes_grade_result_md,rule4_consumes_evidence_files_and_trace_json'
+  - 'subprocess_lifecycle[adv1] missing facets: descendant_audit_or_tree_containment
+    — probe/stream subprocess surfaces require timeout + process-group + wait/reap
+    (+ stream-task join) evidence'
+must_fire: true
+misfire_candidates:
+- *id001
