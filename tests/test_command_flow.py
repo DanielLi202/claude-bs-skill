@@ -56,9 +56,10 @@ class CommandFlowTests(unittest.TestCase):
 
     def test_agent_schema_acceptance_sources_are_loaded_and_cited(self):
         text = COMMAND.read_text(encoding='utf-8')
-        self.assertIn('MUST load those files as acceptance sources', text)
+        self.assertIn('contract §6 agent-contract predicate is hit', text)
+        self.assertIn('MUST load the referenced AGENT/schema docs as acceptance sources', text)
         self.assertIn('carry only the small normative enums/lists into the capsule per contract §6', text)
-        self.assertIn('Grade MUST load and cite those files in `spec_compliance_matrix`', text)
+        self.assertIn('Grade MUST load and cite the referenced AGENT/schema docs in `spec_compliance_matrix`', text)
         self.assertIn('MUST NOT stop at the shaped acceptance list', text)
 
     def test_resume_documents_merged_pr_step10_recovery(self):
