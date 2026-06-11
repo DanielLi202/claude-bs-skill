@@ -4,45 +4,52 @@ r2: done
 skill_release: v1.4.13
 remediation: 77f9563
 escalated_to_human:
-- 'bs-skill contract.md §6: for code tasks implementing/modifying an OpenSymphony
-  agent, require Grade to include an agent/schema contract review sourced from the
-  referenced docs/agents/*/AGENT.md + schemas (capabilities.forbidden, outputs.gate,
-  critic contract, Q&A protocol, risk/high_risk_actions, output schema); unverified
-  P0/P1 contract rows are blocking even if shaped acceptance ids pass. [needs_human;
+- 'bs-skill contract.md §6: for code tasks implementing/modifying an OpenSymphony agent, require Grade
+  to include an agent/schema contract review sourced from the referenced docs/agents/*/AGENT.md + schemas
+  (capabilities.forbidden, outputs.gate, critic contract, Q&A protocol, risk/high_risk_actions, output
+  schema); unverified P0/P1 contract rows are blocking even if shaped acceptance ids pass. [needs_human;
   expected_catch F1-F7]'
-- 'bs-skill prompts/grade/role.md: instruct Grade to treat docs/agents/shape/AGENT.md
-  + outcome-capsule.md as NORMATIVE (not background) for Shape-agent work; inspect
-  implementation for forbidden reads, nested schema structs, output_contract consistency,
-  9-rule critic behavior, high-risk examples, Q&A answer merge, rejected-critic write
-  blocking; artifact existence / approved:true is insufficient. [needs_human; F1-F7]'
-- 'bs-skill prompts/grade/critic.md: fail a Shape-work Grade that lacks field-by-field
-  AGENT/schema evidence, downgrades current-scope critic/Q&A/risk obligations as deferred,
-  or carries only happy-path approved-critic + --skip/session-existence evidence.
-  [needs_human; F4-F7]'
-- 'bs-skill prompts/shape/role.md: require Shape outcomes for agent-implementation
-  tasks to copy AGENT capabilities.forbidden + output gates verbatim into non_goals/acceptance/adversarial_acceptance
-  (no narrowing read/write red lines to writes-only); add explicit acceptances for
-  structured Outcome Capsule fields, high-risk classifier examples, protocol-compliant
-  Q&A merge, critic-rejection blocking. [needs_human; F1,F2,F3,F5,F6,F7]'
-- 'bs-skill prompts/shape/critic.md: reject shaped outcomes that weaken referenced
-  AGENT red lines, omit nested schema-object validation, omit high-risk action fixtures,
-  omit Q&A protocol/merge checks, or lack a rejected-critic/no-write gate; require
-  flagging target/artifact mismatches before Conduct. [needs_human; F1,F2,F3,F5,F6,F7]'
-- 'bs-skill commands/bs.md: in Shape + Grade steps, when outcome context_pointers/spec_refs
-  include docs/agents/*/AGENT.md or schemas, load those files as acceptance sources
-  + cite them in Grade; Grade may not stop at the shaped acceptance list when AGENT/schema
-  contracts add stricter P0/P1 obligations. [needs_human; F1-F7]'
-- 'bs-skill runtime/codex_driver.py + conduct.sh: add a `turn_progress_suspect` decision
-  point (fake-alive / busy-loop detection) — the driver''s progress definition is
-  currently last_progress_kind=stdout, so a vendor stuck in an infinite retry loop
-  (same error repeating) or editing the same file back and forth satisfies every existing
-  detector (idle_timeout / no_work_items_stale / terminal_candidate are all SILENCE-shaped).
-  Proposed: structured-signal suspicion — workspace_delta hash stagnant across N polls
-  + repeated identical exec commands + low event-type novelty — emitted as observe-only
-  telemetry by default with an opt-in --on-progress-suspect action, mirroring the
-  v1.4.7 turn_terminal_candidate design language (''noise is not progress'' as the
-  dual of ''silence is not failure''). [needs_human; origin: cycle-019 12h-hang incident
-  analysis; the loop-level wrapper (run-codex-staged.sh) covers loop codex calls but
-  cannot see Conduct vendor turns inside /bs]'
+- 'bs-skill prompts/grade/role.md: instruct Grade to treat docs/agents/shape/AGENT.md + outcome-capsule.md
+  as NORMATIVE (not background) for Shape-agent work; inspect implementation for forbidden reads, nested
+  schema structs, output_contract consistency, 9-rule critic behavior, high-risk examples, Q&A answer
+  merge, rejected-critic write blocking; artifact existence / approved:true is insufficient. [needs_human;
+  F1-F7]'
+- 'bs-skill prompts/grade/critic.md: fail a Shape-work Grade that lacks field-by-field AGENT/schema evidence,
+  downgrades current-scope critic/Q&A/risk obligations as deferred, or carries only happy-path approved-critic
+  + --skip/session-existence evidence. [needs_human; F4-F7]'
+- 'bs-skill prompts/shape/role.md: require Shape outcomes for agent-implementation tasks to copy AGENT
+  capabilities.forbidden + output gates verbatim into non_goals/acceptance/adversarial_acceptance (no
+  narrowing read/write red lines to writes-only); add explicit acceptances for structured Outcome Capsule
+  fields, high-risk classifier examples, protocol-compliant Q&A merge, critic-rejection blocking. [needs_human;
+  F1,F2,F3,F5,F6,F7]'
+- 'bs-skill prompts/shape/critic.md: reject shaped outcomes that weaken referenced AGENT red lines, omit
+  nested schema-object validation, omit high-risk action fixtures, omit Q&A protocol/merge checks, or
+  lack a rejected-critic/no-write gate; require flagging target/artifact mismatches before Conduct. [needs_human;
+  F1,F2,F3,F5,F6,F7]'
+- 'bs-skill commands/bs.md: in Shape + Grade steps, when outcome context_pointers/spec_refs include docs/agents/*/AGENT.md
+  or schemas, load those files as acceptance sources + cite them in Grade; Grade may not stop at the shaped
+  acceptance list when AGENT/schema contracts add stricter P0/P1 obligations. [needs_human; F1-F7]'
+- 'bs-skill runtime/codex_driver.py + conduct.sh: add a `turn_progress_suspect` decision point (fake-alive
+  / busy-loop detection) — the driver''s progress definition is currently last_progress_kind=stdout, so
+  a vendor stuck in an infinite retry loop (same error repeating) or editing the same file back and forth
+  satisfies every existing detector (idle_timeout / no_work_items_stale / terminal_candidate are all SILENCE-shaped).
+  Proposed: structured-signal suspicion — workspace_delta hash stagnant across N polls + repeated identical
+  exec commands + low event-type novelty — emitted as observe-only telemetry by default with an opt-in
+  --on-progress-suspect action, mirroring the v1.4.7 turn_terminal_candidate design language (''noise
+  is not progress'' as the dual of ''silence is not failure''). [needs_human; origin: cycle-019 12h-hang
+  incident analysis; the loop-level wrapper (run-codex-staged.sh) covers loop codex calls but cannot see
+  Conduct vendor turns inside /bs]'
 closed: true
 updated_at: '2026-06-11T04:11:23Z'
+escalations_disposition:
+  adjudicated_by: maintainer, per AI-council verdict ~/.claude/council-logs/20260611-102822-cycle019-escalations.md
+  adjudicated_at: '2026-06-11'
+  E1_E6_agent_contract_acceptance: 'APPROVED with 5 council-binding modifications — SHIPPED as bs-skill
+    v1.4.15 (tag; contract §6 dual-condition predicate + Grade/Shape role+critic scoped clauses + bs.md
+    load-and-cite; lint untouched, sanity zero-delta vs v1.4.14). Renumbered from working title v1.4.14
+    (taken by the loop''s autonomous cycle-020 release). Charter: docs/v1.4.14-plan.md.'
+  E7_turn_progress_suspect: APPROVED as Track B (observe-only telemetry, multi-signal quorum incl. repeated
+    error-signature; delta-aware action; >=2-cycle soak gate) — NOT YET IMPLEMENTED; ships as v1.4.16+
+    per charter Track B.
+  post_release_acceptance_watch: zero Grade false-blocking on non-agent code tasks across subsequent cycles;
+    first violation triggers a precision-refinement cycle (v1.4.12 precedent).
