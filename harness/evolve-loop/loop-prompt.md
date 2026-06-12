@@ -146,7 +146,14 @@ cycle dir itself: `step_events.jsonl` mtime, conduct evidence growth, and whethe
 `conduct.sh`/`codex_driver.py` processes are alive (`/bs` has its own internal driver
 supervision; the loop only detects a wedged/dead subagent, not a slow one).
 - `backlog_exhausted` ⇒ `loop-state.py set stop_reason backlog_exhausted`; release; report; END.
-- `hard_stop || escalated || !merged || !grade_pass` ⇒ pause-and-surface (invariant 3).
+- `hard_stop` because a task is `in_progress` AND its cycle dir shows an interrupted-but-
+  recoverable state (e.g. a conduct round whose launch log / driver_events show
+  `conduct_result: completed` but step_events lacks the terminal pair — a session died
+  mid-cycle) ⇒ do NOT surface yet: spawn ONE background subagent running **`/bs-resume`**
+  (the contract's interrupted-cycle recovery; it replays evidence, appends the missing
+  terminal events, and continues the cycle to close), same JSON return + check-in arm as
+  a normal Stage 1. Only if resume itself hard-stops ⇒ pause-and-surface.
+- other `hard_stop || escalated || !merged || !grade_pass` ⇒ pause-and-surface (invariant 3).
 - else `closure.py --dir "$REVIEWS/<cycle_id>" init`; commit closure.yaml; → Stage 2.
 
 ## Stage 2 — r1: independent delivery review (codex, read-only)
