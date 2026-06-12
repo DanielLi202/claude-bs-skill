@@ -69,7 +69,7 @@ There is NO wall-clock kill: a genuinely productive 6-hour run keeps running.
 - **Fake-alive (busy-loop) is handled by JUDGMENT, not by rules:** the wrapper only FLAGS
   suspicion (`repetitive_output`, `workspace_stagnant`) into the inflight record. After
   backgrounding a stage, arm `ScheduleWakeup(2700s, reason: "stage check-in", prompt:
-  WAKE_PROMPT)`. Check-in wakes land in Step 0's lock-held triage, which adjudicates (see
+  WAKE_PROMPT)` as the FINAL action of the turn (ScheduleWakeup is terminal — Step 0.3). Check-in wakes land in Step 0's lock-held triage, which adjudicates (see
   Step 0.4).
 - **NEVER hold the turn open waiting** — no foreground polling, no sleep/grep watcher
   loops, no repeated Read-polling of the log. A held turn FREEZES every pending
@@ -93,20 +93,16 @@ There is NO wall-clock kill: a genuinely productive 6-hour run keeps running.
    having no external cancel.
 2. `loop-state.py should-stop` → a reason prints ⇒ report it; END with NO reschedule
    (stop conditions absorb stray heartbeats the same way).
-3. **Fallback heartbeat (arm BEFORE taking the lock):** `ScheduleWakeup(delaySeconds:
-   3600, reason: "bs-evolve fallback heartbeat", prompt: WAKE_PROMPT)`. If this turn later
-   dies mid-iteration (session kill — observed twice in cycle-018), this probe resumes the
-   loop from the closure ledger; after a NORMAL iteration it wakes into a held lock or a
-   stop condition and exits harmlessly.
-   ⚠️ **DO NOT END THE TURN HERE.** After this call the harness prints "Nothing more to do
-   this turn — the harness re-invokes you when the wakeup fires". That hint is WRONG for
-   this specific arm — it describes the normal work-then-schedule pattern, but this
-   heartbeat is a pre-work SAFETY NET. IGNORE the hint and continue to Step 0.4 in the
-   SAME turn. (A model that obeys the hint produces an idle do-nothing loop that re-arms
-   a heartbeat every hour forever — observed with the Step-0.3 arm on 2026-06-12.) In
-   this loop, a turn legitimately ends after ScheduleWakeup in exactly THREE places:
-   Stage-7 chain re-arm, the check-in arm right after backgrounding a stage, and the
-   Step-0.4 exit-11 retry arm. Nowhere else.
+3. **ScheduleWakeup is TERMINAL — harness semantics, empirically verified 2026-06-12
+   across two sessions/models: the turn ENDS at that call, regardless of any instruction
+   to continue (an earlier design armed a pre-work heartbeat here and produced idle
+   one-shot turns that re-armed hourly and did nothing; a prompt-level override was
+   attempted and FAILED — the termination is runtime-enforced, not model obedience).**
+   Therefore: arm NOTHING here. The rule for the whole loop is: every NON-TERMINATING
+   turn ends with EXACTLY ONE ScheduleWakeup as its FINAL action — the check-in arm
+   right after backgrounding a stage, the Stage-7 chain re-arm, or the Step-0.4 exit-11
+   retry arm. Mid-turn death without a pending wake is covered by the lock-held takeover
+   triage at the next wake (scheduled or manual).
 4. `loop-guard.sh acquire` → exit 11 (locked: an iteration is in flight — possibly this
    session's own backgrounded stage) ⇒ run the **lock-held triage**:
    a. read `$BS_LOOP_STATE_DIR/inflight/*.json`. NO inflight files + lock stale-aged ⇒
@@ -138,8 +134,7 @@ There is NO wall-clock kill: a genuinely productive 6-hour run keeps running.
 ## Stage 1 — Dev cycle via `/bs` (BACKGROUND subagent)
 Spawn ONE `general-purpose` subagent **with `run_in_background: true`, then END YOUR TURN**
 (an awaited subagent would hold the turn for the whole multi-hour cycle and freeze every
-wakeup — same trap as foreground codex). Arm `ScheduleWakeup(2700s, check-in)` before
-ending. Subagent task: run `/bs` to completion in `$BS_LOOP_TARGET_REPO` (it self-commits,
+wakeup — same trap as foreground codex). As the FINAL action of this turn, arm `ScheduleWakeup(2700s, check-in)`. Subagent task: run `/bs` to completion in `$BS_LOOP_TARGET_REPO` (it self-commits,
 merges its PR, closes ledger+backlog atomically), return ONLY the JSON: `{selected_task,
 title, cycle_id, cycle_dir, start_commit, merge_commit, pr, merged, grade_pass,
 backlog_exhausted, hard_stop, hard_stop_options, escalated, notes}`.
