@@ -1,12 +1,27 @@
 cycle: cycle-023
 r1: done
 r2: done
-skill_release: null
+skill_release: v1.4.19
 remediation: null
 escalated_to_human:
-- "bs-skill prompts/shape/role.md: scoped UI-contract rule — frontend deliverables citing design-brief sections / UX-N / prototype atoms must create acceptance rows binding each in-scope referenced obligation (small labels/enums verbatim with source_ref); cited UI sections must not be narrowed away in non_goals. [needs_human; origin cycle-023 r2; F1-F5]"
-- "bs-skill prompts/shape/critic.md: fail UI shapes whose acceptance is presence-only when the cited source requires behavior/affordances (terminal enum coverage; design-brief §4.5 blocking+running Inspector regions; §4.6 jump/show-all actions; UX-11 visible phase labels; DA-30 snapshot retention during degraded retry). [needs_human; cycle-023 r2; F1-F5]"
-- "bs-skill prompts/grade/role.md: judge referenced UI-source semantics, not shaped happy-path DOM presence — headings/landmarks/metadata/sigils insufficient when the cited section requires state regions, actions, labels, terminal-enum coverage, or SWR display behavior. [needs_human; cycle-023 r2; F1-F5]"
-- "bs-skill prompts/grade/critic.md: fail-closed UI review checks — reject Grades citing design-brief/UX/prototype refs without row-level evidence for the required states/actions/labels, and reject DA-30 claims proving only initial loading/empty/error instead of retained snapshot during reconnect/degraded retry. [needs_human; cycle-023 r2; F1-F5]"
+- 'bs-skill prompts/shape/role.md: scoped UI-contract rule — frontend deliverables
+  citing design-brief sections / UX-N / prototype atoms must create acceptance rows
+  binding each in-scope referenced obligation (small labels/enums verbatim with source_ref);
+  cited UI sections must not be narrowed away in non_goals. [needs_human; origin cycle-023
+  r2; F1-F5]'
+- 'bs-skill prompts/shape/critic.md: fail UI shapes whose acceptance is presence-only
+  when the cited source requires behavior/affordances (terminal enum coverage; design-brief
+  §4.5 blocking+running Inspector regions; §4.6 jump/show-all actions; UX-11 visible
+  phase labels; DA-30 snapshot retention during degraded retry). [needs_human; cycle-023
+  r2; F1-F5]'
+- 'bs-skill prompts/grade/role.md: judge referenced UI-source semantics, not shaped
+  happy-path DOM presence — headings/landmarks/metadata/sigils insufficient when the
+  cited section requires state regions, actions, labels, terminal-enum coverage, or
+  SWR display behavior. [needs_human; cycle-023 r2; F1-F5]'
+- 'bs-skill prompts/grade/critic.md: fail-closed UI review checks — reject Grades
+  citing design-brief/UX/prototype refs without row-level evidence for the required
+  states/actions/labels, and reject DA-30 claims proving only initial loading/empty/error
+  instead of retained snapshot during reconnect/degraded retry. [needs_human; cycle-023
+  r2; F1-F5]'
 closed: false
-updated_at: '2026-06-12T10:29:26Z'
+updated_at: '2026-06-12T10:46:40Z'
