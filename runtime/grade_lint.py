@@ -146,6 +146,20 @@ EVOLVE_LOG_REAL_COUNTS_RE=re.compile(r"\bcounts?\b[\s\S]{0,160}\b(?:total_candid
 EVOLVE_LIGHTWEIGHT_CLAIM=re.compile(r"\bL0\.?5\b|\blightweight[-_\s]?memory\b|\bRecent\s+Runs\b|\brecent-runs\b|\binline[-_\s]?write\b|\bMEMORY\.md\b", re.I)
 EVOLVE_RECENT_RUNS_GIT_COMMIT_RE=re.compile(r"\b(?:Recent\s+Runs|recent-runs|MEMORY\.md)\b[\s\S]{0,160}\b(?:git\s+commit|committed|commit_hash|chore\(memory\):\s*index)\b|\b(?:git\s+commit|committed|commit_hash|chore\(memory\):\s*index)\b[\s\S]{0,160}\b(?:Recent\s+Runs|recent-runs|MEMORY\.md)\b", re.I)
 EVOLVE_RECENT_RUNS_IDEMPOTENCE_RE=re.compile(r"\b(?:idempotent|idempotence|replay|re-run|rerun|same\s+digest|duplicate)\b[\s\S]{0,180}\b(?:Recent\s+Runs|recent-runs|MEMORY\.md|line|digest)\b[\s\S]{0,120}\b(?:no\s+duplicate|dedup|does\s+not\s+duplicate|single\s+line|one\s+line|unchanged)\b|\b(?:Recent\s+Runs|recent-runs|MEMORY\.md|line|digest)\b[\s\S]{0,180}\b(?:same\s+digest|replay|rerun|idempotent|idempotence)\b[\s\S]{0,120}\b(?:no\s+duplicate|dedup|does\s+not\s+duplicate|single\s+line|one\s+line|unchanged)\b", re.I)
+FRONTEND_PRIMARY_TASK_TOKENS=re.compile(r"\bUI[-_\s]?M0\b|\bfrontend\b|\bwebview\b|\bTauri\b|\bReact\b|\bVite\b|\bTypeScript\b|\bEventSource\b|\buseSyncExternalStore\b|\bZustand\b|apps/[A-Za-z0-9_.-]*-ui(?:/|\b)|(?:^|[^\w.-])package\.json\b|(?:^|[^\w.-])pnpm-lock\.yaml\b|vite\.config\.(?:ts|js|mts|mjs)\b|src/[^\s`'\"|]+\.tsx\b|\.tsx\b", re.I)
+FRONTEND_SSE_SCOPE_TERMS=re.compile(r"\bSSE\b|\bEventSource\b|\bheartbeat\b|\bconnected[-_\s]?event\b", re.I)
+FRONTEND_SSE_OLD_SOURCE_CLOSE=re.compile(r"\b(?:old|previous|prior|stale|existing)\b[^.;\n]{0,80}\b(?:EventSource|source|connection)\b[^.;\n]{0,80}\b(?:close|dispose|abort|cleanup)|\b(?:close|dispose|abort|cleanup)\b[^.;\n]{0,80}\b(?:old|previous|prior|stale|existing)\b[^.;\n]{0,80}\b(?:EventSource|source|connection)\b|\.close\(\)", re.I)
+FRONTEND_SSE_NEW_SOURCE_CREATION=re.compile(r"\b(?:new|second|fresh|recreated?|re-open(?:ed)?|create(?:d)?\s+again|factory\s+(?:called|invoked)\s+again|called\s+(?:twice|2x))\b[^.;\n]{0,100}\b(?:EventSource|source|connection|factory)\b|\b(?:EventSource|source|connection|factory)\b[^.;\n]{0,100}\b(?:new|second|fresh|recreated?|again|called\s+(?:twice|2x))\b", re.I)
+FRONTEND_SSE_STALE_OLD_EVENTS_REJECTED=re.compile(r"\b(?:stale|old|previous|prior)\b[^.;\n]{0,80}\b(?:event|message|connected)\b[^.;\n]{0,120}\b(?:ignored|rejected|cannot|can't|must\s+not|not\s+accepted|does\s+not\s+satisfy|cannot\s+satisfy)\b|\b(?:ignored|rejected|not\s+accepted)\b[^.;\n]{0,80}\b(?:stale|old|previous|prior)\b[^.;\n]{0,80}\b(?:event|message|connected)\b", re.I)
+FRONTEND_SSE_FULL_GET_REFRESH=re.compile(r"\bGET\s+/api/v1/state\b|\bfull[-_\s]?(?:state[-_\s]?)?refresh\b|\brefresh\(\)\b[^.;\n]{0,120}\b(?:reconnect|new\s+connection|EventSource)\b", re.I)
+FRONTEND_SSE_SNAPSHOT_WRITES_DISABLED=re.compile(r"\bsnapshot\b[^.;\n]{0,100}\b(?:retained|preserved|not\s+cleared|never\s+blank(?:ed|s)?|never\s+cleared)\b[^.;\n]{0,120}\b(?:writesDisabled|writes\s+disabled|blocks?\s+writes|write\s+commands?\s+disabled)\b|\b(?:writesDisabled|writes\s+disabled|blocks?\s+writes|write\s+commands?\s+disabled)\b[^.;\n]{0,120}\bsnapshot\b[^.;\n]{0,100}\b(?:retained|preserved|not\s+cleared|never\s+blank(?:ed|s)?|never\s+cleared)\b", re.I)
+FRONTEND_IDENTITY_SCOPE_TERMS=re.compile(r"\bidentity\b|\binstance[-_\s]?id\b|\bX-Symphony-Instance-Id\b|\bstale[-_\s]?daemon\b", re.I)
+FRONTEND_IDENTITY_MISMATCH_TERMS=re.compile(r"\bmismatch(?:ed|es)?\b|\bdifferent\b|\bchanged\b|\bstale[-_\s]?daemon\b", re.I)
+FRONTEND_IDENTITY_RESPONSE_REJECTED=re.compile(r"\b(?:mismatch(?:ed)?|stale[-_\s]?daemon|wrong\s+instance|different\s+instance)\b[^.;\n]{0,100}\b(?:response|HTTP|data|payload)\b[^.;\n]{0,140}\b(?:reject(?:ed|s)?|throw(?:s|n)?|no\s+data\s+acceptance|not\s+accepted|ignored)\b|\b(?:reject(?:ed|s)?|throw(?:s|n)?|no\s+data\s+acceptance|not\s+accepted|ignored)\b[^.;\n]{0,100}\b(?:mismatch(?:ed)?|stale[-_\s]?daemon|wrong\s+instance|different\s+instance)\b[^.;\n]{0,100}\b(?:response|HTTP|data|payload)\b", re.I)
+FRONTEND_IDENTITY_CALLBACK_ONLY_INSUFFICIENT=re.compile(r"\bcallback[-_\s]?only\b[^.;\n]{0,120}\b(?:insufficient|not\s+enough|does\s+not\s+prove|cannot\s+prove|not\s+accepted)\b|\b(?:side[-_\s]?effect|callback)\b[^.;\n]{0,80}\b(?:only|alone)\b[^.;\n]{0,120}\b(?:insufficient|not\s+enough|does\s+not\s+prove|cannot\s+prove|not\s+accepted)\b", re.I)
+FRONTEND_IDENTITY_MATCH_BEFORE_CONNECTED=re.compile(r"\b(?:connected\(\)|connected|write(?:s)?\s+re[-_\s]?enable|re[-_\s]?enable(?:s|d)?\s+writes|writesDisabled\s*[:=]\s*false)\b[^.;\n]{0,160}\b(?:until|after|only\s+after)\b[^.;\n]{0,120}\b(?:fresh|new)\b[^.;\n]{0,80}\b(?:matching|same|matched)\b[^.;\n]{0,80}\b(?:identity|instance[-_\s]?id)\b|\b(?:no|not)\b[^.;\n]{0,80}\b(?:connected\(\)|connected|write(?:s)?\s+re[-_\s]?enable|re[-_\s]?enable(?:s|d)?\s+writes)\b[^.;\n]{0,160}\b(?:fresh|new)\b[^.;\n]{0,80}\b(?:matching|matched)\b[^.;\n]{0,80}\b(?:identity|instance[-_\s]?id)\b", re.I)
+FRONTEND_IDENTITY_SSE_CONNECTED_MISMATCH_REJECTED=re.compile(r"\bSSE\b[^.;\n]{0,80}\bconnected\b[^.;\n]{0,120}\b(?:mismatch(?:ed)?|different|wrong)\b[^.;\n]{0,80}\b(?:identity|instance[-_\s]?id)\b[^.;\n]{0,140}\b(?:not\s+accepted|rejected|ignored|not\s+success|cannot\s+succeed|does\s+not\s+succeed)\b|\bconnected\b[^.;\n]{0,80}\b(?:event)?\b[^.;\n]{0,120}\b(?:mismatch(?:ed)?|different|wrong)\b[^.;\n]{0,80}\b(?:identity|instance[-_\s]?id)\b[^.;\n]{0,140}\b(?:not\s+accepted|rejected|ignored|not\s+success|cannot\s+succeed|does\s+not\s+succeed)\b", re.I)
+EXACT_VERSION_RE=re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 class LintError(ValueError): pass
 
 def split_top_level(text, sep=','):
@@ -982,6 +996,320 @@ def evolve_agent_task_in_scope(grade_text, outcome_text, outcome_blocks) -> bool
     primary=text_blob(primary_outcome_subject_text(outcome_blocks), primary_grade_header_text(grade_text))
     return bool(EVOLVE_AGENT_PRIMARY_TASK_TOKENS.search(primary))
 
+def primary_outcome_header_text(outcome_text):
+    lines=[]
+    for line in (outcome_text or '').splitlines()[:80]:
+        stripped=line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith('#') or re.match(r"(?i)^(task|title|goal|subject|deliverable|scope|backlog|context)\s*:", stripped):
+            lines.append(stripped)
+    return '\n'.join(lines)
+
+def frontend_primary_deliverable_in_scope(grade_text='', outcome_text='', outcome_blocks=None) -> bool:
+    primary=text_blob(
+        primary_outcome_subject_text(outcome_blocks),
+        primary_outcome_header_text(outcome_text),
+        primary_grade_header_text(grade_text),
+    )
+    return has_non_negated_scope_term(FRONTEND_PRIMARY_TASK_TOKENS, primary)
+
+def frontend_evidence_text(bs, grade_text):
+    return text_blob(
+        grade_text,
+        first(bs,'spec_compliance_matrix'),
+        first(bs,'negative_regression_tests'),
+        first(bs,'adversarial_checks'),
+        first(bs,'trust_surface_inventory'),
+        first(bs,'deferred_claims'),
+    )
+
+def row_collection_by_acceptance(rows):
+    by_acceptance={}
+    for row in rows:
+        rid=row_acceptance_ref(row)
+        if rid:
+            by_acceptance.setdefault(rid,[]).append(row)
+    return by_acceptance
+
+def outcome_adversarial_claim_metadata(outcome_blocks):
+    return adversarial_acceptance_metadata(outcome_blocks or [])
+
+def frontend_claim_records(required_acceptance, acceptance_status, spec, neg, outcome_blocks):
+    status_meta=acceptance_status_metadata(acceptance_status)
+    adv_meta=outcome_adversarial_claim_metadata(outcome_blocks)
+    spec_by_acceptance=row_collection_by_acceptance(spec)
+    neg_by_acceptance=row_collection_by_acceptance(neg)
+    ids=set(required_acceptance) | set(status_meta) | set(adv_meta) | set(spec_by_acceptance) | set(neg_by_acceptance)
+    for item_id in sorted(ids):
+        spec_rows=spec_by_acceptance.get(item_id,[])
+        neg_rows=neg_by_acceptance.get(item_id,[])
+        severities=[
+            required_acceptance.get(item_id,{}).get('severity'),
+            status_meta.get(item_id,{}).get('severity'),
+            adv_meta.get(item_id,{}).get('severity'),
+        ] + [row_blocking_severity(row, required_acceptance) for row in spec_rows+neg_rows if isinstance(row,dict)]
+        if not any(severity in BLOCKING for severity in severities):
+            continue
+        yield item_id, text_blob(
+            required_acceptance.get(item_id,{}).get('text',''),
+            status_meta.get(item_id,{}).get('text',''),
+            adv_meta.get(item_id,{}).get('text',''),
+            spec_rows,
+            neg_rows,
+        )
+
+def frontend_sse_reconnect_claimed(text):
+    if not has_non_negated_scope_term(FRONTEND_SSE_SCOPE_TERMS, text):
+        return False
+    strong_contract=has_non_negated_scope_term(re.compile(r"\bSWR\b|\bstale[-_\s]?while[-_\s]?revalidate\b|\bfull[-_\s]?(?:GET|refresh)\b|\bGET\s+/api/v1/state\b", re.I), text)
+    heartbeat_reconnect=has_non_negated_scope_term(re.compile(r"\bheartbeat\b", re.I), text) and has_non_negated_scope_term(re.compile(r"\breconnect(?:s|ed|ing)?\b", re.I), text)
+    eventsource_reconnect=has_non_negated_scope_term(re.compile(r"\bEventSource\b", re.I), text) and has_non_negated_scope_term(re.compile(r"\breconnect(?:s|ed|ing)?\b", re.I), text)
+    return strong_contract or heartbeat_reconnect or eventsource_reconnect
+
+def validate_frontend_sse_reconnect_lifecycle_evidence(bs, required_acceptance, acceptance_status, spec, neg, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not frontend_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    evidence_text=frontend_evidence_text(bs, grade_text)
+    facets=(
+        ('old_source_close_or_dispose', FRONTEND_SSE_OLD_SOURCE_CLOSE),
+        ('new_source_creation', FRONTEND_SSE_NEW_SOURCE_CREATION),
+        ('stale_old_source_events_rejected', FRONTEND_SSE_STALE_OLD_EVENTS_REJECTED),
+        ('full_get_state_refresh_after_new_connection', FRONTEND_SSE_FULL_GET_REFRESH),
+        ('snapshot_retained_and_writes_disabled_while_disconnected', FRONTEND_SSE_SNAPSHOT_WRITES_DISABLED),
+    )
+    for item_id, claim_text in frontend_claim_records(required_acceptance, acceptance_status, spec, neg, outcome_blocks):
+        if not frontend_sse_reconnect_claimed(claim_text):
+            continue
+        missing=[name for name,pattern in facets if not has_non_negated_scope_term(pattern, evidence_text)]
+        if missing:
+            errors.append(f"frontend_sse_reconnect_lifecycle[{item_id}] missing facets: {','.join(missing)}")
+
+def frontend_identity_mismatch_claimed(text):
+    return (
+        has_non_negated_scope_term(FRONTEND_IDENTITY_SCOPE_TERMS, text)
+        and has_non_negated_scope_term(FRONTEND_IDENTITY_MISMATCH_TERMS, text)
+    )
+
+def validate_frontend_identity_mismatch_recovery_evidence(bs, required_acceptance, acceptance_status, spec, neg, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not frontend_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    evidence_text=frontend_evidence_text(bs, grade_text)
+    facets=(
+        ('mismatched_response_rejected', FRONTEND_IDENTITY_RESPONSE_REJECTED),
+        ('callback_only_side_effect_insufficient', FRONTEND_IDENTITY_CALLBACK_ONLY_INSUFFICIENT),
+        ('no_connected_or_write_reenable_until_fresh_matching_identity', FRONTEND_IDENTITY_MATCH_BEFORE_CONNECTED),
+        ('sse_connected_mismatched_identity_not_success', FRONTEND_IDENTITY_SSE_CONNECTED_MISMATCH_REJECTED),
+    )
+    for item_id, claim_text in frontend_claim_records(required_acceptance, acceptance_status, spec, neg, outcome_blocks):
+        if not frontend_identity_mismatch_claimed(claim_text):
+            continue
+        missing=[name for name,pattern in facets if not has_non_negated_scope_term(pattern, evidence_text)]
+        if missing:
+            errors.append(f"frontend_identity_mismatch_recovery[{item_id}] missing facets: {','.join(missing)}")
+
+def load_yaml_path(path):
+    if yaml is not None:
+        try:
+            return yaml.safe_load(path.read_text(encoding='utf-8'))
+        except yaml.YAMLError as exc:
+            pass
+    return parse_yaml_fence(path.read_text(encoding='utf-8').splitlines())
+
+def frontend_output_package_dirs(outcome_blocks, repo_root):
+    dirs=[]
+    capsule=outcome_capsule_front_matter(outcome_blocks)
+    output_contract=capsule.get('output_contract') if isinstance(capsule,dict) else None
+    artifacts=output_contract.get('artifacts') if isinstance(output_contract,dict) else None
+    if not isinstance(artifacts,list):
+        return dirs
+    for artifact in artifacts:
+        paths=strs(artifact.get('paths')) if isinstance(artifact,dict) else []
+        for raw in paths:
+            rel=Path(raw)
+            if rel.name in {'package.json','pnpm-lock.yaml'}:
+                path=(repo_root/rel).resolve()
+                if path.name=='package.json':
+                    dirs.append(path.parent)
+                else:
+                    dirs.append(path.parent)
+    unique=[]
+    for item in dirs:
+        if item not in unique:
+            unique.append(item)
+    return unique
+
+def frontend_dependency_rows_reference_stack(dep):
+    return any(
+        isinstance(row,dict)
+        and re.search(r"tech-stack\.yaml", text_blob(row), re.I)
+        and re.search(r"frontend_locked", text_blob(row), re.I)
+        for row in dep
+    )
+
+def parse_frontend_locked_versions(text):
+    lines=(text or '').splitlines()
+    start=None
+    for i,line in enumerate(lines):
+        if re.match(r"^\s*frontend_locked\s*:\s*(?:#.*)?$", line):
+            start=i
+            break
+    if start is None:
+        return {}
+    base_indent=indent_of(lines[start])
+    versions={}
+    current_name=None
+    for line in lines[start+1:]:
+        stripped=line.strip()
+        if not stripped or stripped.startswith('#'):
+            continue
+        cur_indent=indent_of(line)
+        if cur_indent<=base_indent and not stripped.startswith('- '):
+            break
+        if stripped.startswith('- '):
+            current_name=None
+            item=stripped[2:].strip()
+            if item.startswith('name:'):
+                current_name=str(parse_scalar(item.split(':',1)[1].strip()))
+            continue
+        if current_name and stripped.startswith('version:'):
+            versions[current_name]=str(parse_scalar(stripped.split(':',1)[1].strip()))
+    return versions
+
+def canonical_frontend_versions(repo_root):
+    path=repo_root/'docs'/'architecture'/'tech-stack.yaml'
+    if not path.exists():
+        raise LintError(f'frontend dependency guard missing canonical stack file: {path}')
+    parsed=parse_frontend_locked_versions(path.read_text(encoding='utf-8'))
+    if parsed:
+        return parsed
+    data=load_yaml_path(path) or {}
+    locked=data.get('frontend_locked') if isinstance(data,dict) else None
+    if not isinstance(locked,list):
+        raise LintError(f'frontend dependency guard missing frontend_locked list in {path}')
+    out={}
+    for row in locked:
+        if isinstance(row,dict) and isinstance(row.get('name'),str) and 'version' in row:
+            out[row['name']]=str(row.get('version'))
+    return out
+
+def package_dependency_specs(package_json):
+    specs={}
+    for section in ('dependencies','devDependencies','optionalDependencies','peerDependencies'):
+        values=package_json.get(section)
+        if isinstance(values,dict):
+            for name,value in values.items():
+                if isinstance(name,str) and isinstance(value,str):
+                    specs[name]=value
+    return specs
+
+def pnpm_importer_deps(lock_data):
+    importers=lock_data.get('importers') if isinstance(lock_data,dict) else None
+    if not isinstance(importers,dict):
+        return {}
+    importer=importers.get('.')
+    if not isinstance(importer,dict):
+        importer=next((value for value in importers.values() if isinstance(value,dict)), {})
+    out={}
+    for section in ('dependencies','devDependencies','optionalDependencies'):
+        values=importer.get(section)
+        if isinstance(values,dict):
+            for name,detail in values.items():
+                if isinstance(detail,dict):
+                    out[name]={'specifier':detail.get('specifier'), 'version':detail.get('version')}
+    return out
+
+def normalize_pnpm_version(value):
+    if not isinstance(value,str):
+        return ''
+    return value.split('(',1)[0].strip()
+
+def exact_version(value):
+    return isinstance(value,str) and bool(EXACT_VERSION_RE.fullmatch(value.strip()))
+
+def dependency_row_allows_mismatch(row):
+    if not isinstance(row,dict):
+        return False
+    if row.get('status') in {'fail','unverified'}:
+        return True
+    if any(isinstance(row.get(k),str) and row.get(k).strip() for k in ('tracked_waiver_ref','maintainer_waiver_ref','user_waiver_ref','update_protocol_ref','update-protocol_ref')):
+        return True
+    return bool(re.search(r"\b(?:tracked\s+waiver|waiver|update[-_\s]?protocol)\b", text_blob(row), re.I))
+
+def dependency_review_rows_for_package(dep, package_name):
+    package_pattern=re.compile(r"(?<![A-Za-z0-9_@./-])"+re.escape(package_name)+r"(?![A-Za-z0-9_@./-])", re.I)
+    matches=[row for row in dep if isinstance(row,dict) and package_pattern.search(text_blob(row))]
+    if matches:
+        return matches
+    if package_name=='pnpm':
+        matches=[row for row in dep if isinstance(row,dict) and re.search(r"\bpackageManager\b|\bpnpm\b", text_blob(row), re.I)]
+        if matches:
+            return matches
+    return [row for row in dep if isinstance(row,dict) and re.search(r"tech-stack\.yaml", text_blob(row), re.I)]
+
+def dependency_mismatch_is_reported_as_blocking(dep, package_name):
+    rows=dependency_review_rows_for_package(dep, package_name)
+    return bool(rows) and any(dependency_row_allows_mismatch(row) for row in rows)
+
+def append_dependency_guard_error(errors, dep, package_name, message):
+    if dependency_mismatch_is_reported_as_blocking(dep, package_name):
+        return
+    errors.append(
+        f"frontend_dependency_lock_guard[{package_name}] {message}; "
+        "dependency_spec_review row must be fail/unverified or cite tracked waiver/update-protocol ref"
+    )
+
+def validate_frontend_dependency_lock_guard(dep, errors, *, grade_text='', outcome_text='', outcome_blocks=None, repo_root=None):
+    if repo_root is None:
+        return
+    if not frontend_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    if not isinstance(dep,list) or not frontend_dependency_rows_reference_stack(dep):
+        return
+    repo_root=Path(repo_root).resolve()
+    canonical=canonical_frontend_versions(repo_root)
+    package_dirs=frontend_output_package_dirs(outcome_blocks, repo_root)
+    for package_dir in package_dirs:
+        package_path=package_dir/'package.json'
+        lock_path=package_dir/'pnpm-lock.yaml'
+        if not package_path.exists() or not lock_path.exists():
+            continue
+        try:
+            package_json=json.loads(package_path.read_text(encoding='utf-8'))
+        except json.JSONDecodeError as exc:
+            raise LintError(f'invalid package.json {package_path}: {exc}') from exc
+        lock_deps=pnpm_importer_deps(load_yaml_path(lock_path) or {})
+        manifest_specs=package_dependency_specs(package_json)
+        if 'pnpm' in canonical and not isinstance(package_json.get('packageManager'),str):
+            append_dependency_guard_error(
+                errors,
+                dep,
+                'pnpm',
+                f"{package_path.relative_to(repo_root)} omits packageManager while canonical frontend_locked pins pnpm {canonical['pnpm']}",
+            )
+        for name,specifier in sorted(manifest_specs.items()):
+            canonical_version=canonical.get(name)
+            if not canonical_version:
+                continue
+            lock_version=normalize_pnpm_version(lock_deps.get(name,{}).get('version'))
+            if exact_version(canonical_version):
+                if lock_version and exact_version(lock_version) and lock_version != canonical_version:
+                    append_dependency_guard_error(
+                        errors,
+                        dep,
+                        name,
+                        f"canonical {canonical_version} but {package_path.relative_to(repo_root)} specifier {specifier} resolves {lock_version} in {lock_path.relative_to(repo_root)}",
+                    )
+                elif specifier.startswith(('^','~')) and lock_version and lock_version != canonical_version:
+                    append_dependency_guard_error(
+                        errors,
+                        dep,
+                        name,
+                        f"canonical {canonical_version} but range {specifier} resolved away to {lock_version} in {lock_path.relative_to(repo_root)}",
+                    )
+            elif name in lock_deps or name in manifest_specs:
+                continue
+
 def shape_forbidden_read_row_sufficient(row):
     row_text=text_blob(row)
     return (
@@ -1301,7 +1629,7 @@ def validate_evolve_lightweight_commit_idempotence(bs, errors, *, grade_text='',
     if missing:
         errors.append('evolve_lightweight_commit_idempotence: missing evidence facets: '+','.join(missing))
 
-def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_status, outcome_blocks=None, grade_claims=None, grade_text='', outcome_text=''):
+def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_status, outcome_blocks=None, grade_claims=None, grade_text='', outcome_text='', repo_root=None):
     """All code tasks need replayable spec/security/negative-test evidence."""
     required_acceptance = required_acceptance or acceptance_status_metadata(acceptance_status)
     required_ids=set(required_acceptance)
@@ -1364,6 +1692,8 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
     validate_evolve_critic_prefilter_substance(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_evolve_write_with_git_and_log_counts(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_evolve_lightweight_commit_idempotence(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_frontend_sse_reconnect_lifecycle_evidence(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_frontend_identity_mismatch_recovery_evidence(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, spec+neg, errors, grade_claims)
     validate_rpc_cleanup_acceptance_obligations(required_acceptance, acceptance_status, spec+neg, errors)
     validate_event_source_obligations(required_acceptance, spec+neg, errors)
@@ -1405,6 +1735,7 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
             calc[sv]+=1; errors.append(f"dependency_spec_review[{i}] is blocking: {st}/{sv}")
     if dep_required and not dep_has_applicable:
         errors.append('dependency_spec_review must include at least one applicable row because outcome acceptance references dependencies/versions/packages')
+    validate_frontend_dependency_lock_guard(dep, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks, repo_root=repo_root)
 
     if isinstance(summary,dict):
         if nni(summary.get('p0_count')) and summary.get('p0_count')<calc['P0']: errors.append('grade_summary.p0_count undercounts blocking code-baseline P0 findings')
@@ -1469,23 +1800,24 @@ def validate_adv(summary,bs,errors,required_acceptance=None):
         if row.get('current_scope_implementable') is True and row.get('waiver') is True and sev(row) in BLOCKING and not any(isinstance(row.get(k),str) and row.get(k).strip() for k in ('tracked_waiver_ref','maintainer_waiver_ref','user_waiver_ref')): errors.append(f'deferred_claims[{i}] blocking current-scope waiver lacks tracked maintainer/user waiver ref')
         if blocking_ids and references_any_id(row, blocking_ids) and not has_tracked_waiver_or_scope_basis(row):
             errors.append(f'deferred_claims[{i}] defers current P0/P1 adversarial acceptance without tracked waiver or scope_basis_ref')
-def lint(task_type,risk_level,grade_file,outcome_file):
+def lint(task_type,risk_level,grade_file,outcome_file,repo_root=None):
     errors=[]; gbs=blocks(grade_file); summary=first(gbs,'grade_summary'); acceptance=first(gbs,'acceptance_status')
     validate_required(summary,acceptance,errors); gated=is_gate(task_type,risk_level); code_gate=(task_type=='code')
     obs=blocks(outcome_file, include_front_matter=True) if code_gate or gated else []
     grade_text=grade_file.read_text(encoding='utf-8') if grade_file.exists() else ''
     outcome_text=outcome_file.read_text(encoding='utf-8') if outcome_file.exists() and (code_gate or gated) else ''
     if code_gate:
-        validate_code_baseline(summary,gbs,errors,outcome_acceptance_metadata_from_file(obs,outcome_file),acceptance,obs,markdown_bullet_acceptance_metadata(grade_file),grade_text,outcome_text)
+        validate_code_baseline(summary,gbs,errors,outcome_acceptance_metadata_from_file(obs,outcome_file),acceptance,obs,markdown_bullet_acceptance_metadata(grade_file),grade_text,outcome_text,repo_root=repo_root)
     if gated:
         validate_outcome(obs,errors)
         required=adversarial_acceptance_metadata(obs)
         validate_adv(summary,gbs,errors,required) if isinstance(summary,dict) else errors.append('cannot validate adversarial grade without grade_summary')
     return {'grade_lint':{'status':'fail' if errors else 'pass','task_type':task_type,'risk_level':risk_level,'code_baseline_gate':code_gate,'medium_high_code_gate':gated,'grade_file':str(grade_file),'outcome_file':str(outcome_file),'errors':errors}}
 def main(argv=None):
-    ap=argparse.ArgumentParser(); ap.add_argument('--task-type',required=True,choices=['code','docs','infra','refactor','spec']); ap.add_argument('--risk-level',required=True,choices=['low','medium','high']); ap.add_argument('--grade-file',required=True); ap.add_argument('--outcome-file',required=True); ap.add_argument('--evidence-file')
+    ap=argparse.ArgumentParser(); ap.add_argument('--task-type',required=True,choices=['code','docs','infra','refactor','spec']); ap.add_argument('--risk-level',required=True,choices=['low','medium','high']); ap.add_argument('--grade-file',required=True); ap.add_argument('--outcome-file',required=True); ap.add_argument('--evidence-file'); ap.add_argument('--repo-root')
     a=ap.parse_args(argv)
-    try: result=lint(a.task_type,a.risk_level,Path(a.grade_file).resolve(),Path(a.outcome_file).resolve())
+    repo_root=Path(a.repo_root).resolve() if a.repo_root else None
+    try: result=lint(a.task_type,a.risk_level,Path(a.grade_file).resolve(),Path(a.outcome_file).resolve(),repo_root=repo_root)
     except LintError as e: result={'grade_lint':{'status':'fail','task_type':a.task_type,'risk_level':a.risk_level,'grade_file':str(Path(a.grade_file).resolve()),'outcome_file':str(Path(a.outcome_file).resolve()),'errors':[str(e)]}}
     payload=json.dumps(result,ensure_ascii=False,indent=2,sort_keys=True)+'\n'
     if a.evidence_file:

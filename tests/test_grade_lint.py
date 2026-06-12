@@ -1521,12 +1521,204 @@ dependency_spec_review:
     rationale: "fixture focuses on Evolve evidence completeness, not dependency changes"
 ```
 '''
+CYCLE022_FRONTEND_ESCAPE_OUTCOME='''---
+schema_version: "1.2"
+title: "UI-M0 Contract substrate — Tauri/React scaffold + SSE/SWR + If-Match client"
+goal: "Create the UI-M0 contract substrate at apps/symphony-ui: a Tauri 2 + React 19 + TypeScript 6 + Vite 8 + Zustand scaffold whose TypeScript client substrate implements an SSE invalidation subscriber over an injectable native-EventSource factory with a 30s heartbeat watchdog and the DA-30 SWR-on-reconnect contract."
+output_contract:
+  artifacts:
+    - type: file_set
+      paths:
+        - "apps/symphony-ui/package.json"
+        - "apps/symphony-ui/vite.config.ts"
+        - "apps/symphony-ui/src/App.tsx"
+        - "apps/symphony-ui/src/lib/sse/connection.ts"
+  target: pr
+acceptance:
+  - id: a8
+    text: "SSE subscriber + SWR-on-reconnect ('sse-reconnect' + 'swr-snapshot' describe blocks, fake timers): heartbeat gap > 30s transitions the connection store to reconnecting WITHOUT clearing the snapshot store; writesDisabled becomes true; reconnect triggers exactly one full GET /api/v1/state refresh that REPLACES (never blanks) the snapshot; failure persisting past 60s transitions to degraded; X-Symphony-Instance-Id / connected-event instance mismatch is treated as a disconnect trigger."
+    type: command
+    command: "cd apps/symphony-ui && pnpm run test -- -t 'sse-reconnect|swr-snapshot'"
+risk_surface:
+  surfaces:
+    identity_sentinel:
+      present: true
+      note: "X-Symphony-Instance-Id mismatch (HTTP header or SSE connected event) signals a stale daemon; the substrate must treat it as a disconnect trigger, retain the snapshot, and never silently keep writing against the stale identity."
+adversarial_acceptance:
+  - id: adv6
+    text: "Stale-identity sentinel: a changed X-Symphony-Instance-Id on an HTTP response header or a different instance id in a subsequent SSE connected event forces the connection store into reconnecting (stale-daemon path), retains the snapshot, and blocks further writes until a fresh identity is observed; the mismatch is never silently accepted."
+    severity: P1
+    surface: identity_sentinel
+    type: command
+    command: "cd apps/symphony-ui && pnpm run test -- -t instance-mismatch"
+    evidence_kind: schema_validation_test
+    verification_hint: "vitest 'instance-mismatch' tests deliver a mismatched instance id via mocked response headers and via a second connected event; assert reconnecting transition + writesDisabled + snapshot retained."
+---
+'''
+CYCLE022_FRONTEND_ESCAPE_GRADE='''# Grade round 3 — cycle-022 / B-022 (UI-M0 Contract substrate) — PASS
+
+```yaml
+grade_summary:
+  p0_count: 0
+  p1_count: 0
+  p2_count: 0
+  adversarial_p0_count: 0
+  adversarial_p1_count: 0
+```
+```yaml
+acceptance_status:
+  - id: a8
+    status: pass
+    severity: null
+    evidence: "evidence/grade/r2_a8_sse_swr.log + r3_vitest.log — 31s heartbeat gap → reconnecting + writesDisabled with snapshot retained; 61s → degraded; reconnect triggers exactly one GET /api/v1/state refresh that replaces (never blanks) the snapshot; instance mismatch treated as disconnect"
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: a8
+    spec_refs: ["docs/architecture/api-contract.md §3.4/§3.4.3 (DA-30/DA-31)"]
+    evidence_ref: "evidence/grade/r2_a8_sse_swr.log + r3_vitest.log"
+    status: pass
+    severity_if_fail: P1
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: a8
+    scenario: "heartbeat gap >30s → reconnecting + writesDisabled with snapshot retained; 60s+ → degraded; reconnect replaces (never blanks) snapshot; malformed SSE keeps subscriber alive; instance mismatch → disconnect"
+    evidence_ref: "evidence/grade/r2_a8_sse_swr.log + r2_adv6_mismatch.log + r3_vitest.log"
+    status: pass
+    severity_if_fail: P1
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: "frontend escape fixture does not exercise auth-token surfaces"
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: "fixture focuses on frontend evidence completeness, not dependency changes"
+```
+```yaml
+adversarial_checks:
+  - id: adv6
+    acceptance_id: adv6
+    statement: "Stale-identity sentinel: instance-id mismatch forces reconnecting, retains snapshot, blocks writes"
+    surface: identity_sentinel
+    evidence_kind: schema_validation_test
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: "evidence/grade/r2_adv6_mismatch.log + r3_vitest.log + Rust instance-header mismatch typed error (a2 log)"
+```
+```yaml
+trust_surface_inventory:
+  unverified_items: []
+```
+```yaml
+deferred_claims: []
+```
+'''
+CYCLE022_RUST_ONLY_REQUEST_TARGET_OUTCOME='''---
+title: "crates/symphony-client request-target validation"
+goal: "Add a Rust-only generic loopback request API with request-target delimiter and control-character validation in crates/symphony-client."
+output_contract:
+  artifacts:
+    - type: file_set
+      paths:
+        - "crates/symphony-client/src/lib.rs"
+acceptance:
+  - id: CLIENT-REQUEST-TARGET
+    severity: P1
+    statement: >
+      The client builds a raw HTTP/1.1 request target from a user-controlled path segment.
+      It must percent-encode or reject request-target delimiters and control characters.
+---
+'''
+FRONTEND_DEP_OUTCOME='''---
+schema_version: "1.2"
+title: "UI-M0 React/Vite dependency substrate"
+goal: "Ship the apps/symphony-ui package manifest aligned to docs/architecture/tech-stack.yaml frontend_locked."
+output_contract:
+  artifacts:
+    - type: file_set
+      paths:
+        - "apps/symphony-ui/package.json"
+        - "apps/symphony-ui/pnpm-lock.yaml"
+        - "apps/symphony-ui/vite.config.ts"
+        - "apps/symphony-ui/src/App.tsx"
+acceptance:
+  - id: deps
+    severity: P1
+    text: "Frontend package versions follow docs/architecture/tech-stack.yaml frontend_locked."
+---
+'''
+FRONTEND_DEP_GRADE='''# Grade — UI-M0 dependency fixture
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: deps, status: pass, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: deps
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/architecture/tech-stack.yaml frontend_locked
+    evidence_ref: apps/symphony-ui/package.json + apps/symphony-ui/pnpm-lock.yaml
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: deps
+    status: pass
+    severity_if_fail: P1
+    scenario: manifest and lockfile are checked against frontend_locked
+    evidence_ref: apps/symphony-ui/pnpm-lock.yaml
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: dependency fixture does not touch secrets
+```
+```yaml
+dependency_spec_review:
+  - dependency: "react ^19.2.6 / typescript ~6.0.3 / vite ^8.0.14 / @tauri-apps/cli ^2.11.2 / pnpm packageManager pin"
+    declared: "(as listed)"
+    spec_ref: "docs/architecture/tech-stack.yaml frontend_locked"
+    evidence_ref: "apps/symphony-ui/package.json + apps/symphony-ui/pnpm-lock.yaml"
+    status: pass
+    severity_if_fail: P1
+```
+'''
+FRONTEND_NEGATED_RECONNECT_OUTCOME='''---
+schema_version: "1.2"
+title: "UI-M0 React package-only scaffold"
+goal: "Create apps/symphony-ui/package.json for React/Vite only."
+output_contract:
+  artifacts:
+    - type: file_set
+      paths:
+        - "apps/symphony-ui/package.json"
+acceptance:
+  - id: no-sse
+    severity: P1
+    text: "SSE/EventSource reconnect is not applicable: no reconnect required for this package-only change."
+---
+'''
+FRONTEND_NEGATED_RECONNECT_GRADE=FRONTEND_DEP_GRADE.replace('id: deps','id: no-sse').replace('acceptance_id: deps','acceptance_id: no-sse').replace(
+    'manifest and lockfile are checked against frontend_locked',
+    'no reconnect required (not applicable: no old-source close, no second EventSource, no full GET refresh)'
+)
 class GradeLintTests(unittest.TestCase):
-    def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME):
+    def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME,repo_root=None):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td); gf=root/'grade.md'; of=root/'outcome.md'; ef=root/'evidence'/'grade_lint_round_0.json'
             gf.write_text(textwrap.dedent(grade)); of.write_text(textwrap.dedent(outcome))
-            proc=subprocess.run([sys.executable,str(LINTER),'--task-type',task_type,'--risk-level',risk_level,'--grade-file',str(gf),'--outcome-file',str(of),'--evidence-file',str(ef)],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            cmd=[sys.executable,str(LINTER),'--task-type',task_type,'--risk-level',risk_level,'--grade-file',str(gf),'--outcome-file',str(of),'--evidence-file',str(ef)]
+            if repo_root is not None:
+                cmd.extend(['--repo-root',str(repo_root)])
+            proc=subprocess.run(cmd,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
             self.assertTrue(proc.stdout, proc.stderr)
             self.assertTrue(ef.exists())
             return proc,json.loads(proc.stdout)
@@ -1723,6 +1915,133 @@ class GradeLintTests(unittest.TestCase):
         self.assertNotIn('shape_forbidden_read_isolation_audit', errors)
         self.assertNotIn('outcome_capsule_v12_structural_schema', errors)
         self.assertNotIn('shape_protocol_evidence', errors)
+
+    def test_frontend_scope_cycle022_true_and_non_frontend_false(self):
+        cycle022=textwrap.dedent(CYCLE022_FRONTEND_ESCAPE_OUTCOME)
+        self.assertTrue(GRADE_LINT.frontend_primary_deliverable_in_scope(
+            textwrap.dedent(CYCLE022_FRONTEND_ESCAPE_GRADE),
+            cycle022,
+            self.outcome_blocks_from_text(cycle022),
+        ))
+        cycle018=textwrap.dedent(CYCLE018_ADAPTER_NON_SHAPE_OUTCOME)
+        self.assertFalse(GRADE_LINT.frontend_primary_deliverable_in_scope(
+            textwrap.dedent(CYCLE018_ADAPTER_NON_SHAPE_GRADE),
+            cycle018,
+            self.outcome_blocks_from_text(cycle018),
+        ))
+        rust_only=textwrap.dedent(CYCLE022_RUST_ONLY_REQUEST_TARGET_OUTCOME)
+        self.assertFalse(GRADE_LINT.frontend_primary_deliverable_in_scope(
+            textwrap.dedent(REQUEST_TARGET_SUFFICIENT_GRADE),
+            rust_only,
+            self.outcome_blocks_from_text(rust_only),
+        ))
+
+    def test_cycle022_frontend_sse_reconnect_and_identity_mismatch_must_fire(self):
+        proc,p=self.run_lint('code','medium',CYCLE022_FRONTEND_ESCAPE_GRADE,CYCLE022_FRONTEND_ESCAPE_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertIn('frontend_sse_reconnect_lifecycle[a8] missing facets:', errors)
+        self.assertIn('old_source_close_or_dispose,new_source_creation,stale_old_source_events_rejected', errors)
+        self.assertIn('frontend_identity_mismatch_recovery[adv6] missing facets:', errors)
+        self.assertIn('callback_only_side_effect_insufficient', errors)
+        self.assertIn('sse_connected_mismatched_identity_not_success', errors)
+
+    def test_non_frontend_cycle018_and_rust_only_cycle022_do_not_fire_frontend_facets(self):
+        for grade,outcome in (
+            (CYCLE018_ADAPTER_NON_SHAPE_GRADE, CYCLE018_ADAPTER_NON_SHAPE_OUTCOME),
+            (REQUEST_TARGET_SUFFICIENT_GRADE, CYCLE022_RUST_ONLY_REQUEST_TARGET_OUTCOME),
+        ):
+            with self.subTest(outcome=outcome[:40]):
+                proc,p=self.run_lint('code','low',grade,outcome)
+                self.assertEqual(proc.returncode,0,p)
+                self.assertNotIn('frontend_', '\n'.join(p['grade_lint']['errors']))
+
+    def test_frontend_reconnect_negated_not_applicable_text_does_not_satisfy_or_trigger(self):
+        proc,p=self.run_lint('code','low',FRONTEND_NEGATED_RECONNECT_GRADE,FRONTEND_NEGATED_RECONNECT_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+        self.assertNotIn('frontend_sse_reconnect_lifecycle', '\n'.join(p['grade_lint']['errors']))
+
+    def write_frontend_dependency_repo(self, root, *, drift):
+        (root/'docs'/'architecture').mkdir(parents=True)
+        (root/'apps'/'symphony-ui').mkdir(parents=True)
+        (root/'docs'/'architecture'/'tech-stack.yaml').write_text(textwrap.dedent('''
+        frontend_locked:
+          - name: react
+            version: "19.2.6"
+          - name: typescript
+            version: "6.0.3"
+          - name: vite
+            version: "8.0.14"
+          - name: "@tauri-apps/cli"
+            version: "2.11.2"
+          - name: zustand
+            version: "5.0+"
+          - name: pnpm
+            version: "10.33+"
+        '''), encoding='utf-8')
+        package={
+            "name":"symphony-ui",
+            "version":"0.1.0",
+            "private":True,
+            "type":"module",
+            "dependencies":{"react":"^19.2.6","zustand":"^5.0.0"},
+            "devDependencies":{"typescript":"~6.0.3","vite":"^8.0.14","@tauri-apps/cli":"^2.11.2"},
+        }
+        if not drift:
+            package["packageManager"]="pnpm@10.33.0"
+        (root/'apps'/'symphony-ui'/'package.json').write_text(json.dumps(package,indent=2), encoding='utf-8')
+        react_version='19.2.7' if drift else '19.2.6'
+        vite_version='8.0.16' if drift else '8.0.14'
+        (root/'apps'/'symphony-ui'/'pnpm-lock.yaml').write_text(textwrap.dedent(f'''
+        lockfileVersion: '9.0'
+        importers:
+          .:
+            dependencies:
+              react:
+                specifier: ^19.2.6
+                version: {react_version}
+              zustand:
+                specifier: ^5.0.0
+                version: 5.0.14(react@{react_version})
+            devDependencies:
+              '@tauri-apps/cli':
+                specifier: ^2.11.2
+                version: 2.11.2
+              typescript:
+                specifier: ~6.0.3
+                version: 6.0.3
+              vite:
+                specifier: ^8.0.14
+                version: {vite_version}
+        '''), encoding='utf-8')
+
+    def test_frontend_dependency_lock_guard_detects_real_cycle022_drift(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            self.write_frontend_dependency_repo(root, drift=True)
+            proc,p=self.run_lint('code','low',FRONTEND_DEP_GRADE,FRONTEND_DEP_OUTCOME,repo_root=root)
+            self.assertEqual(proc.returncode,1)
+            errors='\n'.join(p['grade_lint']['errors'])
+            self.assertIn('frontend_dependency_lock_guard[react]', errors)
+            self.assertIn('canonical 19.2.6', errors)
+            self.assertIn('resolves 19.2.7', errors)
+            self.assertIn('frontend_dependency_lock_guard[vite]', errors)
+            self.assertIn('canonical 8.0.14', errors)
+            self.assertIn('resolves 8.0.16', errors)
+            self.assertIn('frontend_dependency_lock_guard[pnpm]', errors)
+            self.assertIn('omits packageManager', errors)
+
+    def test_frontend_dependency_lock_guard_exact_match_passes_and_skips_without_repo_root(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            self.write_frontend_dependency_repo(root, drift=False)
+            proc,p=self.run_lint('code','low',FRONTEND_DEP_GRADE,FRONTEND_DEP_OUTCOME,repo_root=root)
+            self.assertEqual(proc.returncode,0,p)
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td)
+            self.write_frontend_dependency_repo(root, drift=True)
+            proc,p=self.run_lint('code','low',FRONTEND_DEP_GRADE,FRONTEND_DEP_OUTCOME)
+            self.assertEqual(proc.returncode,0,p)
 
     def assert_cycle020_grade_error(self, expected):
         proc,p=self.run_lint('code','low',CYCLE020_GRADE_AGENT_ESCAPE_GRADE,CYCLE020_GRADE_AGENT_ESCAPE_OUTCOME)
