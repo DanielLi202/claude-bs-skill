@@ -1,0 +1,14 @@
+{
+  "grade_lint": {
+    "code_baseline_gate": true,
+    "errors": [
+      "secret_leakage_audit.cleartext_secret_probe missing required token shapes for in-scope auth/secret/log/evidence surfaces: bare_token_or_key,json_or_quoted_token,authorization_bearer"
+    ],
+    "grade_file": "/Users/lidongyuan/workspace/utils/OpenSymphony-V3/.prompts/dogfood/cycle-016/grade_round_0.md",
+    "medium_high_code_gate": true,
+    "outcome_file": "/Users/lidongyuan/workspace/utils/OpenSymphony-V3/.prompts/dogfood/cycle-016/outcome.md",
+    "risk_level": "medium",
+    "status": "fail",
+    "task_type": "code"
+  }
+}
