@@ -1,7 +1,7 @@
 cycle: cycle-022
 r1: done
 r2: done
-skill_release: v1.4.17
+skill_release: v1.4.18
 remediation: null
 escalated_to_human:
 - 'bs-skill prompts/shape/role.md + prompts/grade/role.md + prompts/grade/critic.md:
@@ -13,4 +13,4 @@ escalated_to_human:
   judgment cannot be proven from grade text alone. [origin: cycle-022 r2; expected_catch
   F1,F2]'
 closed: false
-updated_at: '2026-06-12T07:18:20Z'
+updated_at: '2026-06-12T07:49:00Z'
