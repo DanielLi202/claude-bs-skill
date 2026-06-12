@@ -1,0 +1,91 @@
+baseline_ref: v1.4.19
+target_cycle: cycle-024
+cycles:
+- cycle: cycle-009
+  risk: medium
+  grade: grade_round_1.md
+  baseline_error_count: 16
+  new_error_count: 16
+  delta_errors: []
+- cycle: cycle-013
+  risk: medium
+  grade: grade_round_0.md
+  baseline_error_count: 10
+  new_error_count: 10
+  delta_errors: []
+- cycle: cycle-015
+  risk: low
+  grade: grade_round_0.md
+  baseline_error_count: 7
+  new_error_count: 7
+  delta_errors: []
+- cycle: cycle-016
+  risk: medium
+  grade: grade_round_0.md
+  baseline_error_count: 1
+  new_error_count: 1
+  delta_errors: []
+- cycle: cycle-017
+  risk: low
+  grade: grade_round_0.md
+  baseline_error_count: 2
+  new_error_count: 2
+  delta_errors: []
+- cycle: cycle-018
+  risk: medium
+  grade: grade_round_1.md
+  baseline_error_count: 15
+  new_error_count: 15
+  delta_errors: []
+- cycle: cycle-019
+  risk: medium
+  grade: grade_round_0.md
+  baseline_error_count: 4
+  new_error_count: 4
+  delta_errors: []
+- cycle: cycle-020
+  risk: medium
+  grade: grade_round_1.md
+  baseline_error_count: 7
+  new_error_count: 7
+  delta_errors: []
+- cycle: cycle-021
+  risk: medium
+  grade: grade_round_2.md
+  baseline_error_count: 9
+  new_error_count: 9
+  delta_errors: []
+- cycle: cycle-022
+  risk: medium
+  grade: grade_round_3.md
+  baseline_error_count: 5
+  new_error_count: 5
+  delta_errors: []
+- cycle: cycle-023
+  risk: low
+  grade: grade_round_2.md
+  baseline_error_count: 11
+  new_error_count: 11
+  delta_errors: []
+- cycle: cycle-024
+  risk: low
+  grade: grade_round_2.md
+  baseline_error_count: 0
+  new_error_count: 4
+  delta_errors:
+  - 'frontend_production_wiring_or_unavailable_honesty[a4] fixture/mock-backed production
+    capability PASS lacks acceptable evidence: cite production provider/default wiring,
+    client-to-handler request path, request-body consumption by handler, or outcome-write/merge
+    path; or scope unavailable/fixture-only with missing_upstream B-NNN'
+  - 'frontend_production_wiring_or_unavailable_honesty[a7] fixture/mock-backed production
+    capability PASS lacks acceptable evidence: cite production provider/default wiring,
+    client-to-handler request path, request-body consumption by handler, or outcome-write/merge
+    path; or scope unavailable/fixture-only with missing_upstream B-NNN'
+  - 'frontend_production_wiring_or_unavailable_honesty[a8] fixture/mock-backed production
+    capability PASS lacks acceptable evidence: cite production provider/default wiring,
+    client-to-handler request path, request-body consumption by handler, or outcome-write/merge
+    path; or scope unavailable/fixture-only with missing_upstream B-NNN'
+  - 'frontend_pessimistic_pending_dismissal_guard[a4] missing pending dismissal paths:
+    Escape,overlay/backdrop click,route/surface change'
+must_fire: true
+misfire_candidates: []
