@@ -2,7 +2,7 @@ cycle: cycle-021
 r1: done
 r2: done
 skill_release: v1.4.16
-remediation: null
+remediation: 9d20686
 escalated_to_human: []
-closed: false
-updated_at: '2026-06-12T02:25:42Z'
+closed: true
+updated_at: '2026-06-12T03:10:47Z'
