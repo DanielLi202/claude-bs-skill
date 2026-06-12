@@ -72,6 +72,32 @@ Unresolved defect: `crates/symphony-evolve/src/git_write.rs` invokes `git` (in `
 ''')
 
 
+REAL_CYCLE_022_FRONTEND_GRADE = textwrap.dedent('''
+# Grade Round 1 — B-022 Symphony UI — FAIL
+
+The P1 frontend build defect remains unresolved. The production root cause is
+not in a helper test: `apps/symphony-ui/package.json` still pins three registry
+versions that cannot resolve together, `pnpm-lock.yaml` still records the stale
+resolution set, and `src-tauri/icons/icon.png` is still missing as the
+compile-time Tauri icon asset. A fix round that only edits `src/foo.test.ts`
+does not touch the localized production loci.
+
+```yaml
+grade_summary:
+  p0_count: 0
+  p1_count: 1
+  p2_count: 0
+```
+
+```yaml
+acceptance_status:
+  - id: ui-build
+    status: fail
+    severity: P1
+```
+''')
+
+
 def grade(p0=0, p1=1, p2=0, ids=('a2',), body='RAW GRADE PROSE MUST NOT BE INLINED'):
     rows = '\n'.join(f'  - id: {i}\n    status: fail\n    severity: P1' for i in ids)
     return (
@@ -121,6 +147,38 @@ class ReshapeFixRoundTests(unittest.TestCase):
         self.assertTrue(all('/tests/' not in path for path in loci))
         self.assertTrue(all(not Path(path).name.startswith('test_') for path in loci))
         self.assertTrue(all(not Path(path).stem.endswith('_test') for path in loci))
+
+    def test_extract_frontend_manifest_lockfile_and_asset_loci_from_blocking_grade(self):
+        loci = extract_production_loci(REAL_CYCLE_022_FRONTEND_GRADE)
+        self.assertEqual(
+            loci,
+            [
+                'apps/symphony-ui/package.json',
+                'pnpm-lock.yaml',
+                'src-tauri/icons/icon.png',
+            ],
+        )
+
+        aligned, reason = fix_round_alignment(['src/foo.test.ts'], loci)
+        self.assertFalse(aligned)
+        self.assertIn('apps/symphony-ui/package.json', reason)
+        self.assertIn('src/foo.test.ts', reason)
+
+        aligned, _reason = fix_round_alignment(['apps/symphony-ui/package.json'], loci)
+        self.assertTrue(aligned)
+
+    def test_production_loci_override_line_is_honored_and_excludes_tests(self):
+        text = textwrap.dedent('''
+        Production loci: a/b.json, c/d.png, tests/e2e/foo.json, src/foo.test.ts
+        P1 blocker remains open in unrelated prose.
+        ''')
+
+        self.assertEqual(extract_production_loci(text), ['a/b.json', 'c/d.png'])
+
+    def test_bare_package_json_prose_is_not_extracted(self):
+        text = grade(body='P1 root cause says a package.json in general can hide registry drift.')
+
+        self.assertEqual(extract_production_loci(text), [])
 
     def test_fix_round_alignment_decision_matrix(self):
         loci = extract_production_loci(REAL_CYCLE_021_GRADE)

@@ -37,12 +37,32 @@ SOURCE_PATH_RE = re.compile(
     r")"
     r"(?::\d+)?"
 )
+PROJECT_SCOPED_RE = re.compile(r"^(?:crates|apps|packages|services|components|tools)/[^/]+/")
+REPO_PATH_WITH_DIR_RE = re.compile(
+    r"(?<![\w./-])"
+    r"(?P<path>"
+    r"(?:\./)?"
+    r"(?:[A-Za-z0-9._+@-]+/)+"
+    r"[A-Za-z0-9._+@-]+(?:\.[A-Za-z0-9][A-Za-z0-9._-]*)"
+    r")"
+    r"(?::\d+)?"
+    r"(?![\w./-])"
+)
+ROOT_LOCKFILE_RE = re.compile(
+    r"(?<![\w./-])(?P<path>pnpm-lock\.yaml|Cargo\.lock|package-lock\.json|yarn\.lock)(?![\w./-])"
+)
+PRODUCTION_LOCI_LINE_RE = re.compile(r"^\s*Production loci:\s*(?P<paths>.+)$", re.IGNORECASE | re.MULTILINE)
 BLOCKING_CONTEXT_RE = re.compile(
     r"\b(?:P0|P1|block(?:ing|er)?|fail(?:ed|ing|s)?|unverified|regress(?:ed|ion)?|"
     r"defect|root cause|unresolved|remediation|fix:|recommended)\b",
     re.IGNORECASE,
 )
 STRONG_REPO_PATH_RE = re.compile(r"^(?:crates|apps|packages|services|components|tools)/[^/]+/src/")
+PACKAGE_MANIFESTS = {"package.json", "Cargo.toml", "pyproject.toml"}
+LOCKFILES = {"pnpm-lock.yaml", "Cargo.lock", "package-lock.json", "yarn.lock"}
+ROOT_OVERRIDE_FILES = PACKAGE_MANIFESTS | LOCKFILES
+ASSET_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "gif", "svg", "ico", "icns", "avif"}
+CONFIG_SCRIPT_EXTENSIONS = {"ts", "js", "mts", "mjs", "cts", "cjs"}
 
 
 class ReshapeError(ValueError):
@@ -143,38 +163,134 @@ def _blocking_text_snippets(grade_text: str) -> list[str]:
 
     prose = re.sub(r"```(?:yaml|yml)\s*\n.*?```", "", grade_text, flags=re.DOTALL)
     for paragraph in re.split(r"\n\s*\n", prose):
-        if SOURCE_PATH_RE.search(paragraph) and BLOCKING_CONTEXT_RE.search(paragraph):
+        if _has_production_locus_candidate(paragraph) and BLOCKING_CONTEXT_RE.search(paragraph):
             snippets.append(paragraph)
     return snippets
 
 
+def _clean_repo_path(raw: str) -> str:
+    path = str(raw).strip().strip("`'\"()[]{}<>")
+    while path.startswith("./"):
+        path = path[2:]
+    return path.replace("\\", "/").strip()
+
+
+def _is_repo_relative_path(path: str) -> bool:
+    if not path or path.startswith(("/", "~", "-")) or "://" in path:
+        return False
+    parts = path.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        return False
+    return True
+
+
 def _is_test_path(path: str) -> bool:
-    normalized = path.replace("\\", "/").lstrip("./")
-    if "/tests/" in f"/{normalized}/":
+    normalized = _clean_repo_path(path)
+    parts = normalized.split("/")
+    if any(part in {"tests", "__tests__"} for part in parts):
         return True
     basename = normalized.rsplit("/", 1)[-1]
     if basename.startswith("test_"):
         return True
     stem = basename.rsplit(".", 1)[0]
-    return stem.endswith("_test")
+    return stem.endswith(("_test", ".test", ".spec", "-test", "-spec"))
+
+
+def _is_source_locus(path: str) -> bool:
+    return bool(SOURCE_PATH_RE.fullmatch(path))
+
+
+def _is_config_locus(path: str) -> bool:
+    basename = path.rsplit("/", 1)[-1]
+    lower = basename.lower()
+    if lower == "tauri.conf.json":
+        return True
+    if re.fullmatch(r"vite\.config\.[A-Za-z0-9]+", basename):
+        return True
+    if "." in basename:
+        prefix, ext = basename.rsplit(".", 1)
+        if prefix.endswith(".config") and ext in CONFIG_SCRIPT_EXTENSIONS:
+            return True
+    if lower.endswith((".yaml", ".yml", ".toml")) and PROJECT_SCOPED_RE.match(path):
+        return True
+    return False
+
+
+def _is_asset_locus(path: str) -> bool:
+    basename = path.rsplit("/", 1)[-1]
+    if "." not in basename:
+        return False
+    ext = basename.rsplit(".", 1)[-1].lower()
+    return ext in ASSET_EXTENSIONS
+
+
+def _is_production_locus_path(path: str) -> bool:
+    normalized = _clean_repo_path(path)
+    if not _is_repo_relative_path(normalized) or _is_test_path(normalized):
+        return False
+    if "/" not in normalized:
+        return normalized in LOCKFILES
+    basename = normalized.rsplit("/", 1)[-1]
+    if _is_source_locus(normalized):
+        return True
+    if basename in PACKAGE_MANIFESTS or basename in LOCKFILES:
+        return True
+    return _is_config_locus(normalized) or _is_asset_locus(normalized)
+
+
+def _repo_path_tokens(text: str):
+    for match in REPO_PATH_WITH_DIR_RE.finditer(text):
+        yield _clean_repo_path(match.group("path"))
+
+
+def _extract_override_loci(text: str) -> set[str]:
+    paths: set[str] = set()
+    for match in PRODUCTION_LOCI_LINE_RE.finditer(text):
+        for raw in match.group("paths").split(","):
+            path = _clean_repo_path(raw)
+            if not _is_repo_relative_path(path) or _is_test_path(path):
+                continue
+            if "/" in path or path in ROOT_OVERRIDE_FILES:
+                paths.add(path)
+    return paths
+
+
+def _extract_production_paths(text: str) -> set[str]:
+    paths: set[str] = set()
+    for path in _repo_path_tokens(text):
+        if _is_production_locus_path(path):
+            paths.add(path)
+    for match in ROOT_LOCKFILE_RE.finditer(text):
+        path = _clean_repo_path(match.group("path"))
+        if _is_production_locus_path(path):
+            paths.add(path)
+    return paths
+
+
+def _has_production_locus_candidate(text: str) -> bool:
+    return bool(_extract_production_paths(text))
 
 
 def _extract_source_paths(text: str) -> set[str]:
     paths: set[str] = set()
     for match in SOURCE_PATH_RE.finditer(text):
-        path = match.group("path").replace("\\", "/").lstrip("./")
+        path = _clean_repo_path(match.group("path"))
         if not _is_test_path(path):
             paths.add(path)
     return paths
 
 
 def extract_production_loci(grade_text: str) -> list[str]:
-    """Extract repo-relative production source paths from blocking grade findings."""
+    """Extract repo-relative production loci from blocking grade findings."""
     candidates: set[str] = set()
+    candidates.update(_extract_override_loci(grade_text))
     for snippet in _blocking_text_snippets(grade_text):
         candidates.update(_extract_source_paths(snippet))
+        candidates.update(_extract_production_paths(snippet))
     strong = {path for path in candidates if STRONG_REPO_PATH_RE.match(path)}
-    return sorted(strong or candidates)
+    if strong:
+        candidates = {path for path in candidates if not path.startswith("src/")}
+    return sorted(candidates)
 
 
 def _normalize_repo_path(path: str) -> str:
