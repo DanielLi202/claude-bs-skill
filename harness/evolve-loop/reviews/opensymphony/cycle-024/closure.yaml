@@ -2,7 +2,7 @@ cycle: cycle-024
 r1: done
 r2: done
 skill_release: v1.4.20
-remediation: null
+remediation: 1d15d60
 escalated_to_human:
 - 'bs-skill prompts/shape/role.md + critic.md: when Shape identifies an UNBUILT upstream,
   split buildable seam/unavailable-state acceptance from future production behavior
@@ -14,5 +14,5 @@ escalated_to_human:
   evidence is present; fail PESSIMISTIC pending-disable claims without pending dismissal-path
   coverage. (Aligns prompts with the v1.4.20 deterministic facets; extends standing
   escalations.) [needs_human; cycle-024 r2; F1-F4]'
-closed: false
-updated_at: '2026-06-12T16:33:55Z'
+closed: true
+updated_at: '2026-06-12T16:58:31Z'
