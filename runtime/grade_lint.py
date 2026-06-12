@@ -159,6 +159,28 @@ FRONTEND_IDENTITY_RESPONSE_REJECTED=re.compile(r"\b(?:mismatch(?:ed)?|stale[-_\s
 FRONTEND_IDENTITY_CALLBACK_ONLY_INSUFFICIENT=re.compile(r"\bcallback[-_\s]?only\b[^.;\n]{0,120}\b(?:insufficient|not\s+enough|does\s+not\s+prove|cannot\s+prove|not\s+accepted)\b|\b(?:side[-_\s]?effect|callback)\b[^.;\n]{0,80}\b(?:only|alone)\b[^.;\n]{0,120}\b(?:insufficient|not\s+enough|does\s+not\s+prove|cannot\s+prove|not\s+accepted)\b", re.I)
 FRONTEND_IDENTITY_MATCH_BEFORE_CONNECTED=re.compile(r"\b(?:connected\(\)|connected|write(?:s)?\s+re[-_\s]?enable|re[-_\s]?enable(?:s|d)?\s+writes|writesDisabled\s*[:=]\s*false)\b[^.;\n]{0,160}\b(?:until|after|only\s+after)\b[^.;\n]{0,120}\b(?:fresh|new)\b[^.;\n]{0,80}\b(?:matching|same|matched)\b[^.;\n]{0,80}\b(?:identity|instance[-_\s]?id)\b|\b(?:no|not)\b[^.;\n]{0,80}\b(?:connected\(\)|connected|write(?:s)?\s+re[-_\s]?enable|re[-_\s]?enable(?:s|d)?\s+writes)\b[^.;\n]{0,160}\b(?:fresh|new)\b[^.;\n]{0,80}\b(?:matching|matched)\b[^.;\n]{0,80}\b(?:identity|instance[-_\s]?id)\b", re.I)
 FRONTEND_IDENTITY_SSE_CONNECTED_MISMATCH_REJECTED=re.compile(r"\bSSE\b[^.;\n]{0,80}\bconnected\b[^.;\n]{0,120}\b(?:mismatch(?:ed)?|different|wrong)\b[^.;\n]{0,80}\b(?:identity|instance[-_\s]?id)\b[^.;\n]{0,140}\b(?:not\s+accepted|rejected|ignored|not\s+success|cannot\s+succeed|does\s+not\s+succeed)\b|\bconnected\b[^.;\n]{0,80}\b(?:event)?\b[^.;\n]{0,120}\b(?:mismatch(?:ed)?|different|wrong)\b[^.;\n]{0,80}\b(?:identity|instance[-_\s]?id)\b[^.;\n]{0,140}\b(?:not\s+accepted|rejected|ignored|not\s+success|cannot\s+succeed|does\s+not\s+succeed)\b", re.I)
+FRONTEND_RUN_STATE_CLASSIFICATION_SCOPE=re.compile(r"\bterminal[-_\s]?(?:done|state|states|run|runs|bucket|mapping|classification)?\b|\bnon[-_\s]?terminal\b|\bactive\s+(?:runs?|count)\b|\brunning\b[^.;\n]{0,100}\b(?:sort|order|bucket)\b|\b(?:sort|order|bucket)\b[^.;\n]{0,100}\brunning\b|\bdone\s+(?:bucket|runs?|card)\b|\bdone\b[^.;\n]{0,100}\b(?:sort|order|bucket|last)\b", re.I)
+FRONTEND_TERMINAL_COVERAGE_CONTEXT=re.compile(r"\bterminal[-_\s]?(?:done|state|states|run|runs|bucket|mapping|classification|set|enum)?\b|\brun[-_\s]?state(?:s)?\b|\bstate\s+enum\b|\bterminal\s+set\b|\bcomplete\s+terminal\s+set\b|\bnon[-_\s]?terminal\b|\bactive\s+(?:runs?|count)\b|\brunning\s+(?:sort|order|bucket)\b|\bdone\s+(?:bucket|runs?|card)\b", re.I)
+FRONTEND_TERMINAL_STATES=(
+    ('done', re.compile(r"\bdone\b", re.I)),
+    ('failed', re.compile(r"\bfailed\b", re.I)),
+    ('superseded', re.compile(r"\bsuperseded\b", re.I)),
+    ('canceled/cancelled', re.compile(r"\bcancell?ed\b", re.I)),
+    ('parked', re.compile(r"\bparked\b", re.I)),
+    ('needs_human', re.compile(r"\bneeds[_\s-]?human\b", re.I)),
+)
+FRONTEND_DA30_RETRY_SNAPSHOT_SCOPE=re.compile(r"\bDA[-_\s]?30\b|\bSWR\b|\bstale[-_\s]?while[-_\s]?revalidate\b|\bdegraded\b|\bretry(?:able|ing| now)?\b|\bsnapshot\b", re.I)
+FRONTEND_SHELL_DISPLAY_SCOPE=re.compile(r"\b(?:AppShell|app[-_\s]?shell|shell[-_\s]?layout|core[-_\s]?states?|Ledger|Outcome\s+Ledger|Inspector|Attention\s+Shelf|Rail|initial\s+(?:load|GET|fetch)|loading\s+(?:skeletons?|state|panel)|error\s+(?:state|panel))\b", re.I)
+FRONTEND_SNAPSHOT_RETAINED_IN_REGIONS_DURING_RETRY=re.compile(r"\b(?:existing|previous|prior|last[-_\s]?known)\s+snapshot\b[^.;\n]{0,180}\b(?:remain(?:s|ed)?|stays?|keeps?|kept|render(?:s|ed)?|visible|not\s+replaced|not\s+blanked)\b[^.;\n]{0,180}\b(?:Ledger|Outcome\s+Ledger|Inspector|Rail|state\s+regions?|regions?)\b[^.;\n]{0,180}\b(?:retry|degraded|loading|error|revalidat)|\b(?:retry|degraded|loading|error|revalidat)[^.;\n]{0,180}\b(?:existing|previous|prior|last[-_\s]?known)\s+snapshot\b[^.;\n]{0,180}\b(?:remain(?:s|ed)?|stays?|keeps?|kept|render(?:s|ed)?|visible|not\s+replaced|not\s+blanked)\b[^.;\n]{0,180}\b(?:Ledger|Outcome\s+Ledger|Inspector|Rail|state\s+regions?|regions?)\b", re.I)
+FRONTEND_INITIAL_PANELS_NO_PRIOR_SNAPSHOT=re.compile(r"\b(?:loading|error)\s+(?:panels?|states?|skeletons?)\b[^.;\n]{0,180}\b(?:initial\s+(?:load|GET|fetch)|no\s+(?:prior|existing|previous)\s+snapshot|without\s+(?:a\s+)?(?:prior|existing|previous)\s+snapshot)\b[^.;\n]{0,180}\b(?:not\s+(?:replace|replacements?)|never\s+replace|not\s+replacing|do\s+not\s+replace|no\s+replacement)\b|\b(?:initial\s+(?:load|GET|fetch)|no\s+(?:prior|existing|previous)\s+snapshot|without\s+(?:a\s+)?(?:prior|existing|previous)\s+snapshot)\b[^.;\n]{0,180}\b(?:loading|error)\s+(?:panels?|states?|skeletons?)\b[^.;\n]{0,180}\b(?:not\s+(?:replace|replacements?)|never\s+replace|not\s+replacing|do\s+not\s+replace|no\s+replacement)\b", re.I)
+FRONTEND_INSPECTOR_SOURCE=re.compile(r"§\s*4\.5\b|\bUX[-_\s]?53\b|\bdesign[-_\s]?brief\b[^.;\n]{0,80}\b4\.5\b|\bInspector\b[^.;\n]{0,120}\b(?:auto[-_\s]?select|selection|selected|iteration|workspace\s+path|header|run\s+card|state\s+region)\b", re.I)
+FRONTEND_ATTENTION_SHELF_SOURCE=re.compile(r"§\s*4\.6\b|\bAttention\s+Shelf\b", re.I)
+FRONTEND_PHASE_PELLET_SOURCE=re.compile(r"\bphase\s+pellets?\b|\bpellets?\b|\bUX[-_\s]?11\b|\bprototype\s+atoms?\b", re.I)
+FRONTEND_INSPECTOR_NEEDS_YOU_CALLOUT=re.compile(r"\bInspector\b[^.;\n]{0,180}\b(?:NEEDS\s+YOU|Needs\s+you)\b[^.;\n]{0,120}\b(?:callout|state\s+region|region|panel|tile|module|section)\b|\b(?:NEEDS\s+YOU|Needs\s+you)\b[^.;\n]{0,120}\b(?:callout|state\s+region|region|panel|tile|module|section)\b[^.;\n]{0,180}\bInspector\b", re.I)
+FRONTEND_INSPECTOR_RUN_IN_FLIGHT_TILE=re.compile(r"\bInspector\b[^.;\n]{0,180}\b(?:RUN\s+IN\s+FLIGHT|Run\s+in\s+flight)\b[^.;\n]{0,120}\b(?:tile|state\s+region|region|panel|module|section)\b|\b(?:RUN\s+IN\s+FLIGHT|Run\s+in\s+flight)\b[^.;\n]{0,120}\b(?:tile|state\s+region|region|panel|module|section)\b[^.;\n]{0,180}\bInspector\b", re.I)
+FRONTEND_ATTENTION_JUMP_TO_FIRST_ACTION=re.compile(r"\bAttention\s+Shelf\b[^.;\n]{0,180}\b(?:jump\s+to\s+first|jump[-_\s]?to[-_\s]?first)\b[^.;\n]{0,120}\b(?:action|button|affordance|control|link)\b|\b(?:jump\s+to\s+first|jump[-_\s]?to[-_\s]?first)\b[^.;\n]{0,120}\b(?:action|button|affordance|control|link)\b[^.;\n]{0,180}\bAttention\s+Shelf\b", re.I)
+FRONTEND_ATTENTION_SHOW_ALL_ACTION=re.compile(r"\bAttention\s+Shelf\b[^.;\n]{0,180}\bshow\s+all\b[^.;\n]{0,120}\b(?:action|button|affordance|control|link)\b|\bshow\s+all\b[^.;\n]{0,120}\b(?:action|button|affordance|control|link)\b[^.;\n]{0,180}\bAttention\s+Shelf\b", re.I)
+FRONTEND_PHASE_LABELS_SHAPE_CONDUCT_GRADE=re.compile(r"\b(?:phase\s+pellets?|pellets?|verbose|Inspector)\b[^.;\n]{0,180}\b(?:visible\s+)?labels?\b[^.;\n]{0,120}\bShape\b[^.;\n]{0,80}\bConduct\b[^.;\n]{0,80}\bGrade\b|\bShape\s*/\s*Conduct\s*/\s*Grade\s+labels?\b|\blabels?\b[^.;\n]{0,80}\bShape\b[^.;\n]{0,80}\bConduct\b[^.;\n]{0,80}\bGrade\b[^.;\n]{0,120}\b(?:phase\s+pellets?|pellets?|verbose|Inspector)\b", re.I)
 EXACT_VERSION_RE=re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 class LintError(ValueError): pass
 
@@ -1108,6 +1130,82 @@ def validate_frontend_identity_mismatch_recovery_evidence(bs, required_acceptanc
         if missing:
             errors.append(f"frontend_identity_mismatch_recovery[{item_id}] missing facets: {','.join(missing)}")
 
+def frontend_terminal_state_covered(pattern, evidence_text):
+    for match in pattern.finditer(evidence_text or ''):
+        context=evidence_text[max(0,match.start()-140):match.end()+140]
+        if has_non_negated_scope_term(FRONTEND_TERMINAL_COVERAGE_CONTEXT, context):
+            return True
+    return False
+
+def validate_frontend_terminal_state_enum_coverage(bs, required_acceptance, acceptance_status, spec, neg, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not frontend_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    evidence_text=frontend_evidence_text(bs, grade_text)
+    for item_id, claim_text in frontend_claim_records(required_acceptance, acceptance_status, spec, neg, outcome_blocks):
+        if not has_non_negated_scope_term(FRONTEND_RUN_STATE_CLASSIFICATION_SCOPE, claim_text):
+            continue
+        missing=[name for name,pattern in FRONTEND_TERMINAL_STATES if not frontend_terminal_state_covered(pattern, evidence_text)]
+        if missing:
+            errors.append(f"frontend_terminal_state_enum_coverage[{item_id}] missing terminal states: {','.join(missing)}")
+
+def frontend_da30_retry_snapshot_display_claimed(text):
+    return (
+        has_non_negated_scope_term(FRONTEND_DA30_RETRY_SNAPSHOT_SCOPE, text)
+        and has_non_negated_scope_term(FRONTEND_SHELL_DISPLAY_SCOPE, text)
+    )
+
+def validate_frontend_da30_retry_snapshot_retention(bs, required_acceptance, acceptance_status, spec, neg, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not frontend_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    evidence_text=frontend_evidence_text(bs, grade_text)
+    facets=(
+        ('existing_snapshot_retained_in_regions_during_retry_or_degraded', FRONTEND_SNAPSHOT_RETAINED_IN_REGIONS_DURING_RETRY),
+        ('initial_load_panels_scoped_to_no_prior_snapshot_not_replacements', FRONTEND_INITIAL_PANELS_NO_PRIOR_SNAPSHOT),
+    )
+    for item_id, claim_text in frontend_claim_records(required_acceptance, acceptance_status, spec, neg, outcome_blocks):
+        if not frontend_da30_retry_snapshot_display_claimed(claim_text):
+            continue
+        missing=[name for name,pattern in facets if not has_non_negated_scope_term(pattern, evidence_text)]
+        if missing:
+            errors.append(f"frontend_da30_retry_snapshot_retention[{item_id}] missing display facets: {','.join(missing)}")
+
+def validate_frontend_ui_source_affordance_evidence(bs, required_acceptance, acceptance_status, spec, neg, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not frontend_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    evidence_text=frontend_evidence_text(bs, grade_text)
+    sources=(
+        (
+            'Inspector/§4.5/UX-53',
+            FRONTEND_INSPECTOR_SOURCE,
+            (
+                ('needs_you_callout', FRONTEND_INSPECTOR_NEEDS_YOU_CALLOUT),
+                ('run_in_flight_tile', FRONTEND_INSPECTOR_RUN_IN_FLIGHT_TILE),
+            ),
+        ),
+        (
+            'Attention Shelf/§4.6',
+            FRONTEND_ATTENTION_SHELF_SOURCE,
+            (
+                ('jump_to_first_action', FRONTEND_ATTENTION_JUMP_TO_FIRST_ACTION),
+                ('show_all_action', FRONTEND_ATTENTION_SHOW_ALL_ACTION),
+            ),
+        ),
+        (
+            'Phase pellets/UX-11/prototype atoms',
+            FRONTEND_PHASE_PELLET_SOURCE,
+            (
+                ('shape_conduct_grade_visible_labels', FRONTEND_PHASE_LABELS_SHAPE_CONDUCT_GRADE),
+            ),
+        ),
+    )
+    for item_id, claim_text in frontend_claim_records(required_acceptance, acceptance_status, spec, neg, outcome_blocks):
+        for source_label, source_pattern, facets in sources:
+            if not has_non_negated_scope_term(source_pattern, claim_text):
+                continue
+            missing=[name for name,pattern in facets if not has_non_negated_scope_term(pattern, evidence_text)]
+            if missing:
+                errors.append(f"frontend_ui_source_affordance_evidence[{item_id}] cited {source_label} missing affordances: {','.join(missing)}")
+
 def load_yaml_path(path):
     if yaml is not None:
         try:
@@ -1694,6 +1792,9 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
     validate_evolve_lightweight_commit_idempotence(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_frontend_sse_reconnect_lifecycle_evidence(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_frontend_identity_mismatch_recovery_evidence(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_frontend_terminal_state_enum_coverage(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_frontend_da30_retry_snapshot_retention(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_frontend_ui_source_affordance_evidence(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, spec+neg, errors, grade_claims)
     validate_rpc_cleanup_acceptance_obligations(required_acceptance, acceptance_status, spec+neg, errors)
     validate_event_source_obligations(required_acceptance, spec+neg, errors)

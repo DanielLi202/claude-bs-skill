@@ -1710,6 +1710,193 @@ FRONTEND_NEGATED_RECONNECT_GRADE=FRONTEND_DEP_GRADE.replace('id: deps','id: no-s
     'manifest and lockfile are checked against frontend_locked',
     'no reconnect required (not applicable: no old-source close, no second EventSource, no full GET refresh)'
 )
+CYCLE023_UI_M1_OUTCOME_EXCERPT='''---
+schema_version: "1.2"
+title: "UI-M1 App shell — project rail + run list + inspector + core states"
+goal: "Build the UI-M1 app shell inside the existing apps/symphony-ui scaffold: the design-brief §4 four-region layout (conditional Attention Shelf + left Rail + center Outcome Ledger + right Inspector), themed with the native warm-dark token set, driven by a new Zustand shell store, and rendering the three core states (empty / loading / error) from the B-022 contract substrate."
+risk_level: low
+non_goals:
+  - "No SSE behavior changes, no reconnect/If-Match logic changes — the B-022 substrate is consumed as-is and substrate unchanged."
+acceptance:
+  - id: a2
+    text: "Four-region shell: AppShell renders Rail (aria-label 'Rail'), Outcome Ledger (aria-label 'Outcome Ledger'), Inspector (aria-label 'Inspector') always; the Attention Shelf (aria-label 'Attention Shelf', copy '<N> tasks need you') renders when the snapshot has >=1 run with blocking_on_user true and is completely absent at 0 blocking runs. RTL tests assert both shelf branches ('shell-layout' describe block)."
+    type: command
+  - id: a3
+    text: "Contract-true state types: shell rendering reads only api-contract §3.1 fields; derive.ts maps pellet/blocking/heartbeat derivation including a terminal-done run rendering ✶✓ ⌬✓ ⚖✓."
+    type: command
+  - id: a4
+    text: "Three core states render without runtime errors: loading = initial GET /api/v1/state still in flight with no snapshot yet rendering skeleton placeholders in Ledger + Inspector; empty = resolved snapshot with zero workspaces/runs; error = rejected initial fetch rendering 'GET /api/v1/state failed: <reason>' with a Retry button."
+    type: command
+  - id: a6
+    text: "Ledger run list: each run renders three phase pellets (✶/⌬/⚖ with ✓/▸/○), title, micro-stage subtitle, blocking chip, and heartbeat dot; within a project section cards sort blocking → running (by heartbeat_age_sec ascending) → done."
+    type: command
+  - id: a7
+    text: "Inspector + selection: on first snapshot the Inspector auto-selects blocking > running-by-heartbeat > most-recent run and shows header plus workspace path; clicking another run card updates the shell store and the Inspector."
+    type: command
+---
+'''
+CYCLE023_UI_M1_GRADE_EXCERPT='''# Grade round 2 — B-023 UI-M1 App shell (cycle-023, after fix round 2) — PASS
+
+Round-2 battery: vitest exit 0: 31/31 pass (3 files); typecheck exit 0; build exit 0.
+
+```yaml
+grade_summary:
+  p0_count: 0
+  p1_count: 0
+  p2_count: 0
+```
+
+```yaml
+acceptance_status:
+  - id: a2
+    status: pass
+    severity: null
+  - id: a3
+    status: pass
+    severity: null
+  - id: a4
+    status: pass
+    severity: null
+  - id: a6
+    status: pass
+    severity: null
+  - id: a7
+    status: pass
+    severity: null
+```
+
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: a2
+    spec_refs: ["docs/ux/design-brief.md §4.1 + §4.6"]
+    evidence_ref: "evidence/grade/r2_vitest_verbose.log ('shell-layout' pass: Rail/Outcome Ledger/Inspector landmarks always rendered; Attention Shelf '1 tasks need you' with one blocking run and ABSENT at zero blocking)"
+    status: pass
+    severity_if_fail: P1
+  - acceptance_id: a3
+    spec_refs: ["docs/architecture/api-contract.md §3.1"]
+    evidence_ref: "src/lib/api/client.ts diff vs 0a600b9 (type-only widening to §3.1 workspaces/runs fields, no runtime statements, no invented fields) + 'derive' test pass (✶✓⌬✓⚖✓ terminal mapping, blocking>running-by-heartbeat>done ordering, 'conduct.vendor_working · 8m' label)"
+    status: pass
+    severity_if_fail: P1
+  - acceptance_id: a4
+    spec_refs: ["docs/ops/roadmap.md §3.7 exit condition", "docs/ux/design-brief.md §6.1"]
+    evidence_ref: "evidence/grade/r2_vitest_verbose.log ('core-states' PASS: loading skeletons, §6.1 empty state with 'No workspaces yet.' + 'Add workspace…' CTA + skeleton preview, AA-6 error copy 'GET /api/v1/state failed: port unavailable' + Retry re-invocation + recovery, console.error spy clean)"
+    status: pass
+    severity_if_fail: P1
+  - acceptance_id: a6
+    spec_refs: ["docs/ux/design-brief.md §4.4", "docs/architecture/api-contract.md §3.1"]
+    evidence_ref: "evidence/grade/r2_vitest_verbose.log ('ledger' pass: workspace grouping header name+path, blocking→running→done card order, pellets, 'Needs you' chip, heartbeat dots)"
+    status: pass
+    severity_if_fail: P1
+  - acceptance_id: a7
+    spec_refs: ["docs/ux/design-brief.md §4.5 + §6.4 (UX-48)"]
+    evidence_ref: "evidence/grade/r2_vitest_verbose.log ('inspector' 2 tests pass: auto-select blocking run header/iteration/stage; manual selection updates inspector + .selected class; skeleton preview names+metadata only with permanent disclosure line and negative content assertion)"
+    status: pass
+    severity_if_fail: P1
+```
+
+```yaml
+negative_regression_tests:
+  - acceptance_id: a2
+    scenario: "Attention Shelf asserted ABSENT at 0 blocking runs (queryByLabelText negative branch after rerender)"
+    evidence_ref: "evidence/grade/r2_vitest_verbose.log ('shell-layout' pass)"
+    status: pass
+    severity_if_fail: P1
+  - acceptance_id: a3
+    scenario: "terminal-done run maps to all-✓ pellets; done run with newest last_event_ts still sorts last (exact order array equality)"
+    evidence_ref: "evidence/grade/r2_vitest_verbose.log ('derive' pass)"
+    status: pass
+    severity_if_fail: P1
+  - acceptance_id: a4
+    scenario: "REJECTED initial fetch renders AA-6 copy naming the failed call, Retry re-invokes fetch (mock call-count 1→2), recovery to empty state, console.error spy clean throughout"
+    evidence_ref: "evidence/grade/r2_vitest_verbose.log ('core-states' pass)"
+    status: pass
+    severity_if_fail: P1
+  - acceptance_id: a6
+    scenario: "blocking card sorts first despite fresher events on running runs; mis-sort fails exact textContent equality"
+    evidence_ref: "evidence/grade/r2_vitest_verbose.log ('ledger' pass)"
+    status: pass
+    severity_if_fail: P1
+  - acceptance_id: a7
+    scenario: "UX-48 negative: skeleton preview markup asserted to NOT contain file body text; all-pending placeholders are italic angle-bracket names"
+    evidence_ref: "evidence/grade/r2_vitest_verbose.log ('inspector' zero-task test pass)"
+    status: pass
+    severity_if_fail: P1
+```
+
+```yaml
+secret_leakage_audit:
+  status: pass
+  checked_surfaces:
+    - "shell error copy"
+    - "shell rendered output"
+  evidence_ref: "evidence/grade/r0_secret_grep.log + evidence/grade/r2_vitest_verbose.log"
+  cleartext_secret_probe: not_applicable
+```
+
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: "fixture focuses on cycle-023 frontend evidence facets, not dependency changes"
+```
+'''
+CYCLE023_UI_M1_SATISFIED_GRADE=CYCLE023_UI_M1_GRADE_EXCERPT + '''
+
+Additional deterministic evidence facets:
+- Terminal state enum coverage: run terminal states done, failed, superseded, canceled, parked, needs_human are all tested for bucket classification.
+- During DA-30 retry/degraded loading, the existing snapshot remains rendered in Ledger and Inspector state regions as last-known state.
+- Inspector state region renders NEEDS YOU callout panel for blocking runs.
+- Inspector state region renders RUN IN FLIGHT tile panel for running runs.
+- Attention Shelf action buttons expose jump to first action and show all action.
+- Phase pellets include visible labels Shape, Conduct, Grade in the verbose Inspector context.
+- Loading/error panels are scoped to initial load with no prior snapshot and are not replacements for last-known Ledger/Inspector state.
+'''
+FRONTEND_NEGATED_CYCLE023_FACET_OUTCOME='''---
+schema_version: "1.2"
+title: "UI-M1 App shell negated facet fixture"
+goal: "Frontend AppShell package row only."
+acceptance:
+  - id: n1
+    severity: P1
+    text: "No terminal classification required; no DA-30 retry snapshot display required; no Inspector §4.5 or Attention Shelf §4.6 or phase pellet evidence required."
+---
+'''
+FRONTEND_NEGATED_CYCLE023_FACET_GRADE='''# Grade — UI-M1 negated cycle-023 facet fixture
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: n1, status: pass, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: n1
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/ux/design-brief.md
+    evidence_ref: "No terminal classification required; no DA-30 retry snapshot display required; no Inspector §4.5 or Attention Shelf §4.6 or phase pellet evidence required."
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: n1
+    status: pass
+    severity_if_fail: P1
+    scenario: "no terminal classification required; no retry snapshot display required; no source affordance facet required"
+    evidence_ref: "negated phrasing fixture"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: "negated frontend facet fixture does not touch secrets"
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: "no dependency changes in this fixture"
+```
+'''
 class GradeLintTests(unittest.TestCase):
     def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME,repo_root=None):
         with tempfile.TemporaryDirectory() as td:
@@ -1960,6 +2147,48 @@ class GradeLintTests(unittest.TestCase):
         proc,p=self.run_lint('code','low',FRONTEND_NEGATED_RECONNECT_GRADE,FRONTEND_NEGATED_RECONNECT_OUTCOME)
         self.assertEqual(proc.returncode,0,p)
         self.assertNotIn('frontend_sse_reconnect_lifecycle', '\n'.join(p['grade_lint']['errors']))
+
+    def test_cycle023_ui_m1_real_excerpts_fire_terminal_da30_and_source_affordances(self):
+        proc,p=self.run_lint('code','low',CYCLE023_UI_M1_GRADE_EXCERPT,CYCLE023_UI_M1_OUTCOME_EXCERPT)
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertIn('frontend_terminal_state_enum_coverage[a3] missing terminal states:', errors)
+        self.assertIn('failed,superseded,canceled/cancelled,parked,needs_human', errors)
+        self.assertIn('frontend_da30_retry_snapshot_retention[a4] missing display facets:', errors)
+        self.assertIn('existing_snapshot_retained_in_regions_during_retry_or_degraded', errors)
+        self.assertIn('initial_load_panels_scoped_to_no_prior_snapshot_not_replacements', errors)
+        self.assertIn('frontend_ui_source_affordance_evidence[a2] cited Attention Shelf/§4.6 missing affordances: jump_to_first_action,show_all_action', errors)
+        self.assertIn('frontend_ui_source_affordance_evidence[a7] cited Inspector/§4.5/UX-53 missing affordances: needs_you_callout,run_in_flight_tile', errors)
+        self.assertIn('frontend_ui_source_affordance_evidence[a6] cited Phase pellets/UX-11/prototype atoms missing affordances: shape_conduct_grade_visible_labels', errors)
+
+    def test_cycle023_satisfied_evidence_fixture_passes_new_frontend_facets(self):
+        proc,p=self.run_lint('code','low',CYCLE023_UI_M1_SATISFIED_GRADE,CYCLE023_UI_M1_OUTCOME_EXCERPT)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_cycle018_and_cycle022_excerpts_do_not_fire_cycle023_frontend_facets(self):
+        new_prefixes=(
+            'frontend_terminal_state_enum_coverage',
+            'frontend_da30_retry_snapshot_retention',
+            'frontend_ui_source_affordance_evidence',
+        )
+        fixtures=(
+            (CYCLE018_ADAPTER_NON_SHAPE_GRADE, CYCLE018_ADAPTER_NON_SHAPE_OUTCOME + '\nno reconnect required\n'),
+            (CYCLE022_FRONTEND_ESCAPE_GRADE + '\nsubstrate unchanged; no shell UI-region claim; no reconnect required\n', CYCLE022_FRONTEND_ESCAPE_OUTCOME),
+        )
+        for grade,outcome in fixtures:
+            with self.subTest(outcome=outcome[:40]):
+                _proc,p=self.run_lint('code','low',grade,outcome)
+                errors='\n'.join(p['grade_lint']['errors'])
+                for prefix in new_prefixes:
+                    self.assertNotIn(prefix, errors)
+
+    def test_frontend_negated_cycle023_phrasing_does_not_trigger_new_facets(self):
+        proc,p=self.run_lint('code','low',FRONTEND_NEGATED_CYCLE023_FACET_GRADE,FRONTEND_NEGATED_CYCLE023_FACET_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertNotIn('frontend_terminal_state_enum_coverage', errors)
+        self.assertNotIn('frontend_da30_retry_snapshot_retention', errors)
+        self.assertNotIn('frontend_ui_source_affordance_evidence', errors)
 
     def write_frontend_dependency_repo(self, root, *, drift):
         (root/'docs'/'architecture').mkdir(parents=True)
