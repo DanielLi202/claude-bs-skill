@@ -52,7 +52,13 @@ for line in sys.stdin:
                 f.write(json.dumps(req.get('params', {}).get('input')))
         emit({'jsonrpc':'2.0','id':req['id'],'result':{'turn':{'id':'turn-1'}}})
         time.sleep(0.05)
-        open('workspace-write.txt', 'w').write('done')
+        paths = [p for p in os.environ.get('FAKE_WRITE_PATHS', 'workspace-write.txt').split(os.pathsep) if p]
+        for path in paths:
+            parent = os.path.dirname(path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(path, 'w') as f:
+                f.write('done')
         emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':marker_from(text) + ' Done'}}})
         emit({'jsonrpc':'2.0','method':'turn/completed','params':{'turn':{'status':'completed'}}})
     else:
@@ -71,6 +77,25 @@ grade_summary:
 ```yaml
 acceptance_status:
   - id: B011-FORCED-RESHAPE-CONTROL
+    status: fail
+    severity: P1
+```
+''')
+
+GRADE_WITH_PRODUCTION_LOCUS = textwrap.dedent('''
+# Grade
+Blocking P1 root cause is localized to production code `crates/symphony-evolve/src/git_write.rs`;
+the prior fix edited a helper-only test setup instead.
+
+```yaml
+grade_summary:
+  p0_count: 0
+  p1_count: 1
+  p2_count: 0
+```
+```yaml
+acceptance_status:
+  - id: B021-GIT-WRITE
     status: fail
     severity: P1
 ```
@@ -95,13 +120,25 @@ class ConductFixRoundTests(unittest.TestCase):
         (cycle / 'grade_round_0.md').write_text(GRADE, encoding='utf-8')
         return root, cycle, outcome, fake_dir
 
-    def run_conduct(self, root: Path, cycle: Path, outcome: Path, fake_dir: Path, fix_round='1'):
+    def run_conduct(self, root: Path, cycle: Path, outcome: Path, fake_dir: Path, fix_round='1', extra_env=None):
         record = root / 'record.json'
         env = os.environ.copy()
         env.update({'PATH': f'{fake_dir}{os.pathsep}' + env.get('PATH', ''), 'FAKE_CODEX_RECORD': str(record)})
+        if extra_env:
+            env.update(extra_env)
         cmd = [str(CONDUCT), '--cycle-dir', str(cycle), '--outcome-file', str(outcome), '--evidence-dir', str(cycle / 'evidence'), '--fix-round', fix_round]
         proc = subprocess.run(cmd, cwd=root, env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
         return proc, record
+
+    def reshape_with_production_locus(self, cycle: Path, outcome: Path):
+        (cycle / 'grade_round_0.md').write_text(GRADE_WITH_PRODUCTION_LOCUS, encoding='utf-8')
+        prep = subprocess.run(
+            [sys.executable, str(HELPER), '--cycle-dir', str(cycle), '--outcome-file', str(outcome), '--grade-file', 'grade_round_0.md', '--round', '1'],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        self.assertEqual(prep.returncode, 0, prep.stderr)
 
     def test_fix_round_refuses_without_reshape(self):
         root, cycle, outcome, fake_dir = self.setup_repo()
@@ -166,6 +203,37 @@ class ConductFixRoundTests(unittest.TestCase):
         self.assertIn('BS_OUTCOME_READ', recorded[0]['text'])
         self.assertIn('outcome.md', recorded[0]['text'])
         self.assertTrue((cycle / 'evidence' / 'conduct_round_1' / 'rpc_requests.jsonl').exists())
+
+    def test_fix_round_misaligned_helper_only_diff_is_rejected(self):
+        root, cycle, outcome, fake_dir = self.setup_repo()
+        self.reshape_with_production_locus(cycle, outcome)
+        proc, _record = self.run_conduct(
+            root,
+            cycle,
+            outcome,
+            fake_dir,
+            extra_env={'FAKE_WRITE_PATHS': 'crates/symphony-evolve/src/lib.rs'},
+        )
+        self.assertEqual(proc.returncode, 9, proc.stdout + proc.stderr)
+        result = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(result['conduct_result'], 'fix_round_misaligned')
+        self.assertEqual(result['required_production_loci'], ['crates/symphony-evolve/src/git_write.rs'])
+        self.assertIn('crates/symphony-evolve/src/lib.rs', result['changed_files'])
+
+    def test_fix_round_aligned_production_locus_diff_stays_green(self):
+        root, cycle, outcome, fake_dir = self.setup_repo()
+        self.reshape_with_production_locus(cycle, outcome)
+        proc, _record = self.run_conduct(
+            root,
+            cycle,
+            outcome,
+            fake_dir,
+            extra_env={'FAKE_WRITE_PATHS': 'crates/symphony-evolve/src/git_write.rs'},
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        result = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(result['conduct_result'], 'completed')
+        self.assertEqual(result['fix_round_alignment'], 'aligned')
 
 
 if __name__ == '__main__':

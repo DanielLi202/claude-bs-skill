@@ -24,6 +24,25 @@ CORRECTIONS_LIMIT = 1500
 MARKER_RE = re.compile(
     r"<!--\s*bs-fix-round:\s*(?P<round>\d+);\s*archive=(?P<archive>[^;]+);\s*grade=(?P<grade>[^;]+);\s*failed=(?P<failed>\[[^\]]*\])\s*-->"
 )
+SOURCE_PATH_RE = re.compile(
+    r"(?<![\w./-])"
+    r"(?P<path>"
+    r"(?:"
+    r"(?:crates|apps|packages|services|components|tools)/[A-Za-z0-9._+-]+/src/"
+    r"|"
+    r"src/"
+    r")"
+    r"[A-Za-z0-9._+@/-]+"
+    r"\.(?:rs|py|js|jsx|ts|tsx|go|java|kt|kts|swift|c|cc|cpp|cxx|h|hpp|m|mm|rb|php|ex|exs|erl|hrl|scala|sh|bash|zsh|fish|sql|lua|r|dart|vue|svelte)"
+    r")"
+    r"(?::\d+)?"
+)
+BLOCKING_CONTEXT_RE = re.compile(
+    r"\b(?:P0|P1|block(?:ing|er)?|fail(?:ed|ing|s)?|unverified|regress(?:ed|ion)?|"
+    r"defect|root cause|unresolved|remediation|fix:|recommended)\b",
+    re.IGNORECASE,
+)
+STRONG_REPO_PATH_RE = re.compile(r"^(?:crates|apps|packages|services|components|tools)/[^/]+/src/")
 
 
 class ReshapeError(ValueError):
@@ -67,6 +86,135 @@ def _yaml_blocks(text: str) -> list[dict]:
     return blocks
 
 
+def _iter_yaml_rows(value):
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _iter_yaml_rows(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _iter_yaml_rows(child)
+
+
+def _row_text(value) -> str:
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return str(value)
+
+
+def _failed_blocking_ids(blocks: list[dict]) -> set[str]:
+    failed: set[str] = set()
+    for block in blocks:
+        rows = block.get("acceptance_status")
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            if row.get("status") in {"fail", "unverified"} and row.get("severity") in {"P0", "P1"}:
+                item_id = row.get("id")
+                if isinstance(item_id, str) and item_id:
+                    failed.add(item_id)
+    return failed
+
+
+def _is_blocking_yaml_row(row: dict, failed_ids: set[str]) -> bool:
+    row_id = row.get("id") or row.get("acceptance_id") or row.get("acceptance_ref")
+    status = row.get("status")
+    severity = row.get("severity") or row.get("severity_if_fail")
+    if status in {"fail", "unverified"} and severity in {"P0", "P1"}:
+        return True
+    if isinstance(row_id, str) and row_id in failed_ids:
+        return True
+    return False
+
+
+def _blocking_text_snippets(grade_text: str) -> list[str]:
+    snippets: list[str] = []
+    try:
+        blocks = _yaml_blocks(grade_text)
+    except ReshapeError:
+        blocks = []
+    failed_ids = _failed_blocking_ids(blocks)
+    for block in blocks:
+        for row in _iter_yaml_rows(block):
+            if _is_blocking_yaml_row(row, failed_ids):
+                snippets.append(_row_text(row))
+
+    prose = re.sub(r"```(?:yaml|yml)\s*\n.*?```", "", grade_text, flags=re.DOTALL)
+    for paragraph in re.split(r"\n\s*\n", prose):
+        if SOURCE_PATH_RE.search(paragraph) and BLOCKING_CONTEXT_RE.search(paragraph):
+            snippets.append(paragraph)
+    return snippets
+
+
+def _is_test_path(path: str) -> bool:
+    normalized = path.replace("\\", "/").lstrip("./")
+    if "/tests/" in f"/{normalized}/":
+        return True
+    basename = normalized.rsplit("/", 1)[-1]
+    if basename.startswith("test_"):
+        return True
+    stem = basename.rsplit(".", 1)[0]
+    return stem.endswith("_test")
+
+
+def _extract_source_paths(text: str) -> set[str]:
+    paths: set[str] = set()
+    for match in SOURCE_PATH_RE.finditer(text):
+        path = match.group("path").replace("\\", "/").lstrip("./")
+        if not _is_test_path(path):
+            paths.add(path)
+    return paths
+
+
+def extract_production_loci(grade_text: str) -> list[str]:
+    """Extract repo-relative production source paths from blocking grade findings."""
+    candidates: set[str] = set()
+    for snippet in _blocking_text_snippets(grade_text):
+        candidates.update(_extract_source_paths(snippet))
+    strong = {path for path in candidates if STRONG_REPO_PATH_RE.match(path)}
+    return sorted(strong or candidates)
+
+
+def _normalize_repo_path(path: str) -> str:
+    return str(path).replace("\\", "/").lstrip("./")
+
+
+def _path_matches_locus(changed_file: str, locus: str) -> bool:
+    changed = _normalize_repo_path(changed_file)
+    required = _normalize_repo_path(locus)
+    return changed == required or changed.endswith(f"/{required}")
+
+
+def fix_round_alignment(
+    changed_files: list[str],
+    production_loci: list[str],
+    *,
+    alt_justification: bool = False,
+) -> tuple[bool, str]:
+    """Return whether a fix-round diff touched the Grade-localized production loci."""
+    loci = sorted({_normalize_repo_path(path) for path in production_loci if str(path).strip()})
+    changed = sorted({_normalize_repo_path(path) for path in changed_files if str(path).strip()})
+    if not loci:
+        return True, "no production loci extracted (fail-open)"
+    if alt_justification:
+        return True, "explicit alternate-fix justification"
+    for changed_file in changed:
+        if any(_path_matches_locus(changed_file, locus) for locus in loci):
+            return True, f"changed file touches required production locus: {changed_file}"
+    if not changed:
+        return False, "fix round produced no file changes"
+    return (
+        False,
+        "required production loci not touched: "
+        + ", ".join(loci)
+        + "; changed files: "
+        + ", ".join(changed)
+        + " (helper/test-only or alternate locus requires justification)",
+    )
+
+
 def parse_grade(path: Path) -> tuple[dict, list[dict]]:
     if not path.exists():
         raise ReshapeError(f"grade file missing: {path}")
@@ -107,6 +255,55 @@ def parse_grade(path: Path) -> tuple[dict, list[dict]]:
 
 def blocking_count(summary: dict) -> int:
     return int(summary["p0_count"]) + int(summary["p1_count"])
+
+
+def write_alignment_sidecar(
+    cycle_dir: Path,
+    round_number: int,
+    failed_ids: list[str],
+    prior_blocking_count: int,
+    required_production_loci: list[str],
+) -> Path:
+    if yaml is None:
+        raise ReshapeError("PyYAML is required")
+    path = cycle_dir / f"fix_round_{round_number}_alignment.yaml"
+    prior = {}
+    if path.exists():
+        try:
+            loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                prior = loaded
+        except Exception:
+            prior = {}
+    data = {
+        "round": round_number,
+        "failed_ids": failed_ids,
+        "prior_blocking_count": prior_blocking_count,
+        "required_production_loci": required_production_loci,
+        "alt_justification": bool(prior.get("alt_justification", False)),
+    }
+    if prior.get("alt_locus_reason") not in (None, ""):
+        data["alt_locus_reason"] = prior.get("alt_locus_reason")
+    path.write_text(yaml.safe_dump(data, sort_keys=False, allow_unicode=True), encoding="utf-8")
+    return path
+
+
+def load_alignment_sidecar(path: Path) -> tuple[list[str], bool]:
+    if yaml is None:
+        raise ReshapeError("PyYAML is required")
+    if not path.exists():
+        raise ReshapeError(f"alignment sidecar missing: {path}")
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ReshapeError("alignment sidecar must be a mapping")
+    raw_loci = data.get("required_production_loci", [])
+    if raw_loci is None:
+        raw_loci = []
+    if not isinstance(raw_loci, list) or not all(isinstance(item, str) for item in raw_loci):
+        raise ReshapeError("alignment sidecar required_production_loci must be a string list")
+    alt_reason = data.get("alt_locus_reason")
+    alt = bool(data.get("alt_justification", False)) or (isinstance(alt_reason, str) and bool(alt_reason.strip()))
+    return raw_loci, alt
 
 
 def markers(text: str) -> list[re.Match[str]]:
@@ -162,8 +359,14 @@ def reshape(cycle_dir: Path, outcome_file: Path, grade_file: Path, round_number:
     if round_number > MAX_FIX_ROUNDS:
         raise ReshapeError(f"round {round_number} exceeds max_fix_rounds={MAX_FIX_ROUNDS}")
 
+    grade_text = grade_file.read_text(encoding="utf-8")
     summary, acceptance = parse_grade(grade_file)
     enforce_bounds(cycle_dir, grade_file, round_number, summary)
+    failed_ids = [row["id"] for row in acceptance if row["status"] == "fail"]
+    if not failed_ids:
+        raise ReshapeError("acceptance_status contains no failed IDs to reshape")
+    production_loci = extract_production_loci(grade_text)
+    prior_blocking_count = blocking_count(summary)
 
     archive_name = f"outcome.v{g}.md"
     archive = cycle_dir / archive_name
@@ -176,6 +379,7 @@ def reshape(cycle_dir: Path, outcome_file: Path, grade_file: Path, round_number:
 
     if archive.exists() and existing_marker:
         if existing_marker.group("archive") == archive_name and existing_marker.group("grade") == grade_name:
+            write_alignment_sidecar(cycle_dir, round_number, failed_ids, prior_blocking_count, production_loci)
             return "no-op: fix round already reshaped"
         raise ReshapeError("inconsistent fix-round state: archive exists but marker references a different round/grade")
     if archive.exists() and not existing_marker:
@@ -183,9 +387,6 @@ def reshape(cycle_dir: Path, outcome_file: Path, grade_file: Path, round_number:
     if existing_marker and not archive.exists():
         raise ReshapeError("inconsistent fix-round state: current-round marker exists without archive")
 
-    failed_ids = [row["id"] for row in acceptance if row["status"] == "fail"]
-    if not failed_ids:
-        raise ReshapeError("acceptance_status contains no failed IDs to reshape")
     corrections = read_corrections(corrections_file)
 
     shutil.copy2(outcome_file, archive)
@@ -204,10 +405,62 @@ def reshape(cycle_dir: Path, outcome_file: Path, grade_file: Path, round_number:
     section_lines.append(f"<!-- bs-fix-round: {round_number}; archive={archive_name}; grade={grade_name}; failed={failed_json} -->")
     section = "\n".join(section_lines) + "\n"
     outcome_file.write_text(text.rstrip() + section, encoding="utf-8")
+    write_alignment_sidecar(cycle_dir, round_number, failed_ids, prior_blocking_count, production_loci)
     return f"reshaped round {round_number}: {archive_name} <- {grade_name} failed={failed_json}"
 
 
+def _read_changed_files(path: Path | None, inline: list[str]) -> list[str]:
+    files = list(inline)
+    if path is not None:
+        files.extend(path.read_text(encoding="utf-8").splitlines())
+    return [item.strip() for item in files if item.strip()]
+
+
+def _alignment_command(argv: list[str]) -> int:
+    ap = argparse.ArgumentParser(prog="reshape_fix_round.py alignment")
+    ap.add_argument("--sidecar", required=True)
+    ap.add_argument("--changed-files-file", default=None)
+    ap.add_argument("--changed-file", action="append", default=[])
+    args = ap.parse_args(argv)
+    sidecar = Path(args.sidecar)
+    try:
+        loci, alt = load_alignment_sidecar(sidecar)
+        changed_files = _read_changed_files(Path(args.changed_files_file) if args.changed_files_file else None, args.changed_file)
+        aligned, reason = fix_round_alignment(changed_files, loci, alt_justification=alt)
+        print(
+            json.dumps(
+                {
+                    "aligned": aligned,
+                    "reason": reason,
+                    "required_production_loci": loci,
+                    "changed_files": changed_files,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+        return 0 if aligned else 10
+    except (OSError, ReshapeError) as exc:
+        print(
+            json.dumps(
+                {
+                    "aligned": True,
+                    "reason": f"alignment unavailable (fail-open): {exc}",
+                    "required_production_loci": [],
+                    "changed_files": [],
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+        return 0
+
+
 def main(argv: list[str] | None = None) -> int:
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv and argv[0] == "alignment":
+        return _alignment_command(argv[1:])
     ap = argparse.ArgumentParser()
     ap.add_argument("--cycle-dir", required=True)
     ap.add_argument("--outcome-file", required=True)

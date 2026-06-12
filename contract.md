@@ -94,7 +94,7 @@ If the agent encounters a situation it considers concerning but not covered by t
 5. Run Step 1 self-containment gate: required fields, status precondition, closed enums, dependency closure, `spec_refs` length, and file/dir existence for `spec_refs` after stripping informational anchors.
 6. On main with clean working tree, change the task to `in_progress`, commit `bs: start <ID> <title>`, push `origin main`, and verify remote main equals local HEAD.
 7. Create the cycle directory and worktree branch from that pushed commit; write `cycle.yaml`, binding snapshot, the captured startup gate output as `preflight_initial.yaml`, and strict `step_events.jsonl` started/terminal attempt pairs using the runtime event helpers so append-time `recorded_at` is machine-emitted.
-8. Run the 11-step cycle: ingest, identify, shape, conduct, per-round machine verify, grade, fix loop, PR, auto-merge, escalation handling, reflection, ledger close.
+8. Run the 11-step cycle: ingest, identify, shape, conduct, per-round machine verify, grade, fix loop, PR, auto-merge, escalation handling, reflection, ledger close. During the fix loop, the root-cause-alignment gate (see §6 fix-round artifacts) rejects a successful fix round before the next Grade when its diff touches none of the Grade-localized production loci and carries no alternate-fix justification.
 9. Step 10 closes with one atomic commit on main containing both ledger append and backlog writeback.
 
 ## 5. Step events and resume
@@ -151,7 +151,7 @@ For the same medium/high code tasks, every `grade_round_<N>.md` MUST also contai
 
 Backlog authors SHOULD include `risk_surfaces`, happy-path `acceptance_hints`, adversarial `acceptance_hints`, and `non_goals_hints` for medium/high code tasks. Shape remains responsible for deriving missing risk surfaces from `spec_refs`; repository-specific details stay in backlog/cycle artifacts, not in this contract.
 
-Fix-round artifacts are conditional on fix rounds: `outcome.v<g>.md` archives for every re-shape, a `bs-fix-round: R` marker in live `outcome.md`, and per-round evidence under `evidence/conduct_round_<N>/` including round 0. Medium/high risk grade raw output goes under `evidence/grade/`.
+Fix-round artifacts are conditional on fix rounds: `outcome.v<g>.md` archives for every re-shape, a `bs-fix-round: R` marker in live `outcome.md`, `fix_round_<R>_alignment.yaml` with extracted production loci, and per-round evidence under `evidence/conduct_round_<N>/` including round 0. Medium/high risk grade raw output goes under `evidence/grade/`.
 
 ## 7. Step 10 atomic close
 

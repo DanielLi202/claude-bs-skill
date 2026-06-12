@@ -100,6 +100,10 @@ codex login status >/dev/null 2>&1 || { echo '{"conduct_result":"launch_fatal","
 RUNTIME_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 DRIVER="$RUNTIME_DIR/codex_driver.py"
 [[ -z "$FIX_ROUND" ]] || DRIVER="$RUNTIME_DIR/codex_fix_driver.py"
+PRE_HEAD=""
+if [[ -n "$FIX_ROUND" ]]; then
+  PRE_HEAD="$(git -C "$DRIVER_CWD" rev-parse HEAD 2>/dev/null || true)"
+fi
 REAL_CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
 TEMP_HOMES=()
 cleanup_temp_homes() {
@@ -219,6 +223,68 @@ run_driver_once() {
   return "$rc"
 }
 
+collect_changed_files() {
+  local wt="$1"
+  local pre_head="$2"
+  local out="$3"
+  : > "$out"
+  if [[ -n "$pre_head" ]]; then
+    git -C "$wt" diff --name-only "$pre_head" >> "$out" 2>/dev/null || true
+  fi
+  git -C "$wt" diff --name-only >> "$out" 2>/dev/null || true
+  git -C "$wt" diff --cached --name-only >> "$out" 2>/dev/null || true
+  git -C "$wt" ls-files --others --exclude-standard >> "$out" 2>/dev/null || true
+  sort -u "$out" -o "$out"
+}
+
+run_fix_round_alignment_gate() {
+  local sidecar="$CYCLE_DIR/fix_round_${FIX_ROUND}_alignment.yaml"
+  local changed_file alignment_file align_rc aligned
+  if [[ -z "$FIX_ROUND" || ! -f "$sidecar" ]]; then
+    return 0
+  fi
+  changed_file="$(mktemp "${TMPDIR:-/tmp}/bs-fix-round-changed.XXXXXX")"
+  alignment_file="$(mktemp "${TMPDIR:-/tmp}/bs-fix-round-alignment.XXXXXX")"
+  collect_changed_files "$DRIVER_CWD" "$PRE_HEAD" "$changed_file"
+  set +e
+  python3 "$RUNTIME_DIR/reshape_fix_round.py" alignment --sidecar "$sidecar" --changed-files-file "$changed_file" > "$alignment_file"
+  align_rc=$?
+  set -e
+  aligned="$(python3 - "$alignment_file" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    obj = json.load(open(sys.argv[1], encoding="utf-8"))
+except Exception:
+    sys.exit(1)
+print("true" if obj.get("aligned") else "false")
+PY
+)"
+  if [[ "$aligned" == "false" ]]; then
+    python3 - "$alignment_file" "$changed_file" <<'PY'
+import json, sys
+alignment_path, changed_path = sys.argv[1:3]
+alignment = json.load(open(alignment_path, encoding="utf-8"))
+with open(changed_path, encoding="utf-8") as f:
+    changed = [line.rstrip("\n") for line in f if line.rstrip("\n")]
+payload = {
+    "conduct_result": "fix_round_misaligned",
+    "exit": 9,
+    "alignment_reason": alignment.get("reason", ""),
+    "required_production_loci": alignment.get("required_production_loci", []),
+    "changed_files": changed,
+}
+print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+PY
+    rm -f "$changed_file" "$alignment_file"
+    exit 9
+  fi
+  rm -f "$changed_file" "$alignment_file"
+  [[ "$align_rc" == "0" ]] && FIX_ROUND_ALIGNMENT_STATUS="aligned"
+  return 0
+}
+
+FIX_ROUND_ALIGNMENT_STATUS=""
+
 set +e
 run_driver_once "$MCP_POLICY"
 rc=$?
@@ -243,5 +309,12 @@ case "$rc" in
   8) result="interrupted_with_delta" ;;
   *) result="failed" ;;
 esac
-printf '{"conduct_result":"%s","exit":%s,"round":%s,"mcp_policy":"%s"}\n' "$result" "$rc" "$ROUND" "$MCP_POLICY"
+if [[ "$rc" == "0" && -n "$FIX_ROUND" ]]; then
+  run_fix_round_alignment_gate
+fi
+if [[ -n "$FIX_ROUND_ALIGNMENT_STATUS" ]]; then
+  printf '{"conduct_result":"%s","exit":%s,"round":%s,"mcp_policy":"%s","fix_round_alignment":"%s"}\n' "$result" "$rc" "$ROUND" "$MCP_POLICY" "$FIX_ROUND_ALIGNMENT_STATUS"
+else
+  printf '{"conduct_result":"%s","exit":%s,"round":%s,"mcp_policy":"%s"}\n' "$result" "$rc" "$ROUND" "$MCP_POLICY"
+fi
 exit "$rc"
