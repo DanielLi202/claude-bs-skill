@@ -83,6 +83,22 @@ There is NO wall-clock kill: a genuinely productive 6-hour run keeps running.
 - **Lease refresh:** after EVERY completed stage, `touch "$BS_LOOP_STATE_DIR/RUNNING.lock"`.
   The 2h stale threshold then means "no stage progress for 2h", which (with all budgets
   < 2h) cleanly separates a dead iteration from a healthy long one.
+- **Check-in arming protocol (anti idle-sleep — observed 2026-06-12: a 2700s sleep was
+  armed for a stage that had ALREADY finished):**
+  1. A completion notification that arrives DURING your turn is CONSUMED — it will not
+     re-invoke you later. If you have been told (notification, system-reminder, or a log
+     you just read) that the in-flight stage finished, you MUST process it in THIS turn;
+     arming a long sleep after a consumed completion is forbidden.
+  2. IMMEDIATELY before arming any check-in, do one cheap staleness check on the stage
+     you just launched: wrapper stages → does `$BS_LOOP_STATE_DIR/inflight/<stage>.json`
+     still exist (the wrapper deletes it on exit) and/or does the log tail carry the
+     DONE/rc line? If already finished → do NOT sleep; verify the result and launch the
+     next stage now (its own arm will end the turn).
+  3. Check-in delay is STAGE-CLASS-AWARE: long stages (a /bs cycle, conduct,
+     implementation, remediation) → 2700s; short stages (r1-verify / fresh-context
+     verify / backtest / grade-canary, typically <15min) → 900s.
+  Residual race (completion landing between the pre-arm check and the arm) is accepted:
+  it is bounded by the check-in delay and usually beaten by the notification itself.
 
 ---
 
@@ -134,7 +150,7 @@ There is NO wall-clock kill: a genuinely productive 6-hour run keeps running.
 ## Stage 1 — Dev cycle via `/bs` (BACKGROUND subagent)
 ORDER MATTERS (ScheduleWakeup is terminal — Step 0.3): **FIRST spawn** ONE
 `general-purpose` subagent with `run_in_background: true`; **THEN, as the very last
-action, arm** `ScheduleWakeup(2700s, check-in)` — which ends the turn. (An awaited
+action (after the pre-arm staleness check above), arm** `ScheduleWakeup(2700s, check-in)` — which ends the turn. (An awaited
 subagent would hold the turn for the whole multi-hour cycle and freeze every wakeup —
 same trap as foreground codex.) Subagent task: run `/bs` to completion in
 `$BS_LOOP_TARGET_REPO` (it self-commits,
