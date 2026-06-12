@@ -1,0 +1,63 @@
+baseline_ref: v1.4.15
+target_cycle: cycle-021
+cycles:
+- cycle: cycle-009
+  risk: medium
+  grade: grade_round_1.md
+  baseline_error_count: 16
+  new_error_count: 16
+  delta_errors: []
+- cycle: cycle-013
+  risk: medium
+  grade: grade_round_0.md
+  baseline_error_count: 10
+  new_error_count: 10
+  delta_errors: []
+- cycle: cycle-015
+  risk: low
+  grade: grade_round_0.md
+  baseline_error_count: 7
+  new_error_count: 7
+  delta_errors: []
+- cycle: cycle-016
+  risk: medium
+  grade: grade_round_0.md
+  baseline_error_count: 1
+  new_error_count: 1
+  delta_errors: []
+- cycle: cycle-017
+  risk: low
+  grade: grade_round_0.md
+  baseline_error_count: 2
+  new_error_count: 2
+  delta_errors: []
+- cycle: cycle-018
+  risk: medium
+  grade: grade_round_1.md
+  baseline_error_count: 15
+  new_error_count: 15
+  delta_errors: []
+- cycle: cycle-019
+  risk: medium
+  grade: grade_round_0.md
+  baseline_error_count: 4
+  new_error_count: 4
+  delta_errors: []
+- cycle: cycle-020
+  risk: medium
+  grade: grade_round_1.md
+  baseline_error_count: 7
+  new_error_count: 7
+  delta_errors: []
+- cycle: cycle-021
+  risk: medium
+  grade: grade_round_2.md
+  baseline_error_count: 5
+  new_error_count: 9
+  delta_errors:
+  - 'evolve_metadata_persisted_post_commit: missing evidence facets: post_commit_commit_hash_readback,revert_hint_real_commit'
+  - 'evolve_critic_prefilter_substance: missing evidence facets: grade_completed_traceability,validation_anchor_blacklist,grade_consistency,per_candidate_structured_verdict'
+  - 'evolve_write_with_git_and_log_counts: missing evidence facets: memory_artifacts_git_commit,evolve_log_real_counts'
+  - 'evolve_lightweight_commit_idempotence: missing evidence facets: same_digest_idempotence'
+must_fire: true
+misfire_candidates: []
