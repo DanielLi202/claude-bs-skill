@@ -1,7 +1,7 @@
 name: bs
-version: "1.4.17"
+version: "1.4.18"
 description: "Bootstrap development workflow — automated cycle execution from backlog"
-contract_version: "1.4.17"
+contract_version: "1.4.18"
 commands:
   - name: bs
     description: "Run next pending task from backlog"
