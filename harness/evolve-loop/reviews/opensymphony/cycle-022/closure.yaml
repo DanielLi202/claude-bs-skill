@@ -1,9 +1,16 @@
 cycle: cycle-022
 r1: done
 r2: done
-skill_release: null
+skill_release: v1.4.17
 remediation: null
 escalated_to_human:
-- "bs-skill prompts/shape/role.md + prompts/grade/role.md + prompts/grade/critic.md: add the semantic rule — Shape must not weaken a referenced canonical API/UI contract into a narrower assumption without an explicit fail/unverified row or tracked waiver; Grade must inspect mocked frontend tests AND production control flow for claimed reconnect/identity behavior (callback-only assertions / success emitted on the same stale mock source are not behavioral proof). Deliberately needs_human: mock-vs-behavior judgment cannot be proven from grade text alone. [origin: cycle-022 r2; expected_catch F1,F2]"
+- 'bs-skill prompts/shape/role.md + prompts/grade/role.md + prompts/grade/critic.md:
+  add the semantic rule — Shape must not weaken a referenced canonical API/UI contract
+  into a narrower assumption without an explicit fail/unverified row or tracked waiver;
+  Grade must inspect mocked frontend tests AND production control flow for claimed
+  reconnect/identity behavior (callback-only assertions / success emitted on the same
+  stale mock source are not behavioral proof). Deliberately needs_human: mock-vs-behavior
+  judgment cannot be proven from grade text alone. [origin: cycle-022 r2; expected_catch
+  F1,F2]'
 closed: false
-updated_at: '2026-06-12T06:39:40Z'
+updated_at: '2026-06-12T07:18:20Z'
