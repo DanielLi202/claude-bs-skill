@@ -132,9 +132,12 @@ There is NO wall-clock kill: a genuinely productive 6-hour run keeps running.
 6. `loop-state.py begin-iteration`.
 
 ## Stage 1 — Dev cycle via `/bs` (BACKGROUND subagent)
-Spawn ONE `general-purpose` subagent **with `run_in_background: true`, then END YOUR TURN**
-(an awaited subagent would hold the turn for the whole multi-hour cycle and freeze every
-wakeup — same trap as foreground codex). As the FINAL action of this turn, arm `ScheduleWakeup(2700s, check-in)`. Subagent task: run `/bs` to completion in `$BS_LOOP_TARGET_REPO` (it self-commits,
+ORDER MATTERS (ScheduleWakeup is terminal — Step 0.3): **FIRST spawn** ONE
+`general-purpose` subagent with `run_in_background: true`; **THEN, as the very last
+action, arm** `ScheduleWakeup(2700s, check-in)` — which ends the turn. (An awaited
+subagent would hold the turn for the whole multi-hour cycle and freeze every wakeup —
+same trap as foreground codex.) Subagent task: run `/bs` to completion in
+`$BS_LOOP_TARGET_REPO` (it self-commits,
 merges its PR, closes ledger+backlog atomically), return ONLY the JSON: `{selected_task,
 title, cycle_id, cycle_dir, start_commit, merge_commit, pr, merged, grade_pass,
 backlog_exhausted, hard_stop, hard_stop_options, escalated, notes}`.
