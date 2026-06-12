@@ -98,6 +98,15 @@ There is NO wall-clock kill: a genuinely productive 6-hour run keeps running.
    dies mid-iteration (session kill — observed twice in cycle-018), this probe resumes the
    loop from the closure ledger; after a NORMAL iteration it wakes into a held lock or a
    stop condition and exits harmlessly.
+   ⚠️ **DO NOT END THE TURN HERE.** After this call the harness prints "Nothing more to do
+   this turn — the harness re-invokes you when the wakeup fires". That hint is WRONG for
+   this specific arm — it describes the normal work-then-schedule pattern, but this
+   heartbeat is a pre-work SAFETY NET. IGNORE the hint and continue to Step 0.4 in the
+   SAME turn. (A model that obeys the hint produces an idle do-nothing loop that re-arms
+   a heartbeat every hour forever — observed with the Step-0.3 arm on 2026-06-12.) In
+   this loop, a turn legitimately ends after ScheduleWakeup in exactly THREE places:
+   Stage-7 chain re-arm, the check-in arm right after backgrounding a stage, and the
+   Step-0.4 exit-11 retry arm. Nowhere else.
 4. `loop-guard.sh acquire` → exit 11 (locked: an iteration is in flight — possibly this
    session's own backgrounded stage) ⇒ run the **lock-held triage**:
    a. read `$BS_LOOP_STATE_DIR/inflight/*.json`. NO inflight files + lock stale-aged ⇒
