@@ -181,6 +181,16 @@ FRONTEND_INSPECTOR_RUN_IN_FLIGHT_TILE=re.compile(r"\bInspector\b[^.;\n]{0,180}\b
 FRONTEND_ATTENTION_JUMP_TO_FIRST_ACTION=re.compile(r"\bAttention\s+Shelf\b[^.;\n]{0,180}\b(?:jump\s+to\s+first|jump[-_\s]?to[-_\s]?first)\b[^.;\n]{0,120}\b(?:action|button|affordance|control|link)\b|\b(?:jump\s+to\s+first|jump[-_\s]?to[-_\s]?first)\b[^.;\n]{0,120}\b(?:action|button|affordance|control|link)\b[^.;\n]{0,180}\bAttention\s+Shelf\b", re.I)
 FRONTEND_ATTENTION_SHOW_ALL_ACTION=re.compile(r"\bAttention\s+Shelf\b[^.;\n]{0,180}\bshow\s+all\b[^.;\n]{0,120}\b(?:action|button|affordance|control|link)\b|\bshow\s+all\b[^.;\n]{0,120}\b(?:action|button|affordance|control|link)\b[^.;\n]{0,180}\bAttention\s+Shelf\b", re.I)
 FRONTEND_PHASE_LABELS_SHAPE_CONDUCT_GRADE=re.compile(r"\b(?:phase\s+pellets?|pellets?|verbose|Inspector)\b[^.;\n]{0,180}\b(?:visible\s+)?labels?\b[^.;\n]{0,120}\bShape\b[^.;\n]{0,80}\bConduct\b[^.;\n]{0,80}\bGrade\b|\bShape\s*/\s*Conduct\s*/\s*Grade\s+labels?\b|\blabels?\b[^.;\n]{0,80}\bShape\b[^.;\n]{0,80}\bConduct\b[^.;\n]{0,80}\bGrade\b[^.;\n]{0,120}\b(?:phase\s+pellets?|pellets?|verbose|Inspector)\b", re.I)
+FRONTEND_FIXTURE_OR_SEAM_TERMS=re.compile(r"\b(?:mock(?:ed|s|ing)?|stub(?:bed|s|bing)?|fake(?:d|s)?|fixture[-_\s]?only|fixture[-_\s]?providers?|provider[-_\s]?fixtures?|provider[-_\s]?injection|injectable|seam|ShapeQaProvider|null\s+default\s+provider|mocked\s+transports?)\b", re.I)
+FRONTEND_PRODUCTION_CAPABILITY_TERMS=re.compile(r"\b(?:Question\s+N\s+of\s+M|Q&A\s+panel|QA\s+panel|awaiting[-_\s]?QA|question\s+bodies|render(?:s|ed|ing)?\s+(?:the\s+)?(?:Q&A|QA|questions?|typeform)|answer[-_\s]?qa|answerQa|answers?\s+Shape\s+questions|answers?\s+merged|After\s+answers\s+merged|outcome_capsule|outcome\.md|outcome\s+draft\s+(?:updates?|renders?|module|changed)|merged\s+outcome|vendor/model/reasoning[_\s]?effort/persona|persona/model/effort|vendor/model/effort/persona|selections\s+update\s+UI\s+state|runtime\s+effect|POST\s+/api/v1/(?:tasks/commands/create|runs/[^\\s`'\"]+/commands/answer-qa)|commands/(?:create|answer-qa)|request[-_\s]?body|daemon\s+(?:handling|handler|writer|merge|backend)|backend\s+(?:handling|handler|route)|route\s+handler)\b", re.I)
+FRONTEND_PRODUCTION_WIRING_EVIDENCE=re.compile(r"\b(?:production[-_\s]?(?:provider|default|wiring)|default\s+(?:runtime\s+)?provider\s+(?:wired|wiring|uses|reads|loads|fetches|calls|points)|client[-_\s]to[-_\s]handler|client\b[^.;\n]{0,120}\b(?:handler|daemon|backend|route)|request\s+path\b[^.;\n]{0,120}\b(?:handler|daemon|backend|route)|handler\b[^.;\n]{0,120}\b(?:consume|consumes|parse|parses|read|reads|use|uses)\b[^.;\n]{0,80}\b(?:request\s+body|body|answers)|(?:request\s+body|body|answers)\b[^.;\n]{0,120}\b(?:consumed|parsed|read|used)\b[^.;\n]{0,80}\b(?:handler|route|daemon|backend)|outcome[-_\s]?write|outcome[-_\s]?merge|outcome(?:\.md|_capsule)?\b[^.;\n]{0,120}\b(?:write|writes|written|persist|persists|merge|merges|merged)\b[^.;\n]{0,80}\b(?:handler|daemon|backend|path)|daemon\b[^.;\n]{0,120}\bmerge(?:s|d)?\b[^.;\n]{0,80}\boutcome\.md)\b", re.I)
+FRONTEND_UNAVAILABLE_HONESTY_WITH_BACKLOG=re.compile(r"\b(?:missing[_\s-]?upstream\s*[:=]\s*B-\d{3}|(?:fixture[-_\s]?only|unavailable|real\s+provider\s+pending|provider\s+pending|upstream\s+(?:unbuilt|missing|pending)|missing\s+upstream|unbuilt\s+upstream)[^.;\n]{0,120}\bB-\d{3}\b|\bB-\d{3}\b[^.;\n]{0,120}(?:fixture[-_\s]?only|unavailable|real\s+provider\s+pending|provider\s+pending|upstream\s+(?:unbuilt|missing|pending)|missing\s+upstream|unbuilt\s+upstream))\b", re.I)
+FRONTEND_PESSIMISTIC_TERMS=re.compile(r"\bPESSIMISTIC\b|\bDA[-_\s]?28\b[^.;\n]{0,140}\b(?:pessimistic|scoped[-_\s]?disable|command[-_\s]?classification|create|Start\s+Shape)\b|\b(?:pessimistic|scoped[-_\s]?disable|command[-_\s]?classification|create|Start\s+Shape)\b[^.;\n]{0,140}\bDA[-_\s]?28\b", re.I)
+FRONTEND_PENDING_DISABLE_TERMS=re.compile(r"\b(?:pending|in[-_\s]?flight|while\s+in\s+flight|scoped[-_\s]?(?:pending|disable)|composer[-_\s]?scoped\s+disable|disabled\s+(?:controls|state|copy)|controls\s+are\s+disabled|Start(?:ing)?\s+Shape(?:…|\\.\\.\\.)?)\b", re.I)
+FRONTEND_PENDING_DISMISSAL_NEGATIVE_TERMS=re.compile(r"\b(?:ignored?|blocked|guard(?:ed|s)?|does\s+not|do\s+not|cannot|can't|must\s+not|not\s+(?:close|dismiss|reset|clear|drop)|no\s+(?:close|dismiss|reset|clear|drop)|remains?|retains?|preserves?)\b", re.I)
+FRONTEND_PENDING_ESCAPE_PATH=re.compile(r"\b(?:Escape|Esc)\b", re.I)
+FRONTEND_PENDING_OVERLAY_PATH=re.compile(r"\b(?:(?:overlay|backdrop|scrim)[-_\s]?(?:click|tap)|outside\s+click|click(?:ing)?\s+outside|backdrop\s+click|overlay\s+click)\b", re.I)
+FRONTEND_PENDING_ROUTE_SURFACE_PATH=re.compile(r"\b(?:route|routing|navigate|navigation|surface\s+change|view\s+switch|switch(?:ing)?\s+(?:view|surface|project|workspace|route)|Rail\s+view|project\s+switch|workspace\s+switch)\b", re.I)
 EXACT_VERSION_RE=re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 class LintError(ValueError): pass
 
@@ -1081,6 +1091,102 @@ def frontend_claim_records(required_acceptance, acceptance_status, spec, neg, ou
             neg_rows,
         )
 
+def frontend_blocking_pass_claim_records(required_acceptance, acceptance_status, spec, neg, outcome_blocks):
+    status_meta=acceptance_status_metadata(acceptance_status)
+    adv_meta=outcome_adversarial_claim_metadata(outcome_blocks)
+    spec_by_acceptance=row_collection_by_acceptance(spec)
+    neg_by_acceptance=row_collection_by_acceptance(neg)
+    ids=set(required_acceptance) | set(status_meta) | set(adv_meta) | set(spec_by_acceptance) | set(neg_by_acceptance)
+    for item_id in sorted(ids):
+        spec_rows=spec_by_acceptance.get(item_id,[])
+        neg_rows=neg_by_acceptance.get(item_id,[])
+        pass_rows=[row for row in spec_rows+neg_rows if isinstance(row,dict) and row.get('status')=='pass']
+        status_row=status_meta.get(item_id,{}).get('row')
+        status_pass=isinstance(status_row,dict) and status_row.get('status')=='pass'
+        severities=[row_blocking_severity(row, required_acceptance) for row in pass_rows]
+        if status_pass:
+            severities.append(status_row.get('severity') or required_acceptance.get(item_id,{}).get('severity') or adv_meta.get(item_id,{}).get('severity'))
+        if not any(severity in BLOCKING for severity in severities):
+            continue
+        yield item_id, text_blob(
+            required_acceptance.get(item_id,{}).get('text',''),
+            status_meta.get(item_id,{}).get('text','') if status_pass else '',
+            adv_meta.get(item_id,{}).get('text',''),
+            pass_rows,
+        )
+
+def frontend_fixture_backed_production_claim(text):
+    return (
+        has_non_negated_scope_term(FRONTEND_FIXTURE_OR_SEAM_TERMS, text)
+        and has_non_negated_scope_term(FRONTEND_PRODUCTION_CAPABILITY_TERMS, text)
+    )
+
+def frontend_has_production_wiring_or_honesty(text):
+    return (
+        has_non_negated_scope_term(FRONTEND_PRODUCTION_WIRING_EVIDENCE, text)
+        or has_non_negated_scope_term(FRONTEND_UNAVAILABLE_HONESTY_WITH_BACKLOG, text)
+    )
+
+def validate_frontend_production_wiring_or_unavailable_honesty(bs, required_acceptance, acceptance_status, spec, neg, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not frontend_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    for item_id, claim_text in frontend_blocking_pass_claim_records(required_acceptance, acceptance_status, spec, neg, outcome_blocks):
+        if not frontend_fixture_backed_production_claim(claim_text):
+            continue
+        if frontend_has_production_wiring_or_honesty(claim_text):
+            continue
+        errors.append(
+            f"frontend_production_wiring_or_unavailable_honesty[{item_id}] "
+            "fixture/mock-backed production capability PASS lacks acceptable evidence: "
+            "cite production provider/default wiring, client-to-handler request path, "
+            "request-body consumption by handler, or outcome-write/merge path; "
+            "or scope unavailable/fixture-only with missing_upstream B-NNN"
+        )
+
+def frontend_pessimistic_pending_claimed(text):
+    return (
+        has_non_negated_scope_term(FRONTEND_PESSIMISTIC_TERMS, text)
+        and has_non_negated_scope_term(FRONTEND_PENDING_DISABLE_TERMS, text)
+    )
+
+def frontend_pending_dismissal_not_applicable(text):
+    return (
+        has_non_negated_scope_term(re.compile(r"\bnot_applicable\b", re.I), text)
+        and has_non_negated_scope_term(re.compile(r"\bscope_basis_ref\b", re.I), text)
+    )
+
+def frontend_pending_dismissal_path_covered(path_pattern, text):
+    for match in path_pattern.finditer(text or ''):
+        context=text[max(0,match.start()-180):match.end()+180]
+        if (
+            has_non_negated_scope_term(FRONTEND_PENDING_DISABLE_TERMS, context)
+            and has_non_negated_scope_term(FRONTEND_PENDING_DISMISSAL_NEGATIVE_TERMS, context)
+        ):
+            return True
+        if (
+            has_non_negated_scope_term(FRONTEND_PENDING_DISABLE_TERMS, text)
+            and has_non_negated_scope_term(FRONTEND_PENDING_DISMISSAL_NEGATIVE_TERMS, context)
+        ):
+            return True
+    return False
+
+def validate_frontend_pessimistic_pending_dismissal_guard(bs, required_acceptance, acceptance_status, spec, neg, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not frontend_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    facets=(
+        ('Escape', FRONTEND_PENDING_ESCAPE_PATH),
+        ('overlay/backdrop click', FRONTEND_PENDING_OVERLAY_PATH),
+        ('route/surface change', FRONTEND_PENDING_ROUTE_SURFACE_PATH),
+    )
+    for item_id, claim_text in frontend_blocking_pass_claim_records(required_acceptance, acceptance_status, spec, neg, outcome_blocks):
+        if not frontend_pessimistic_pending_claimed(claim_text):
+            continue
+        if frontend_pending_dismissal_not_applicable(claim_text):
+            continue
+        missing=[name for name,pattern in facets if not frontend_pending_dismissal_path_covered(pattern, claim_text)]
+        if missing:
+            errors.append(f"frontend_pessimistic_pending_dismissal_guard[{item_id}] missing pending dismissal paths: {','.join(missing)}")
+
 def frontend_sse_reconnect_claimed(text):
     if not has_non_negated_scope_term(FRONTEND_SSE_SCOPE_TERMS, text):
         return False
@@ -1790,6 +1896,8 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
     validate_evolve_critic_prefilter_substance(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_evolve_write_with_git_and_log_counts(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_evolve_lightweight_commit_idempotence(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_frontend_production_wiring_or_unavailable_honesty(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_frontend_pessimistic_pending_dismissal_guard(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_frontend_sse_reconnect_lifecycle_evidence(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_frontend_identity_mismatch_recovery_evidence(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_frontend_terminal_state_enum_coverage(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)

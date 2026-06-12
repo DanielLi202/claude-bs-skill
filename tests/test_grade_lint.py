@@ -1897,6 +1897,174 @@ dependency_spec_review:
     rationale: "no dependency changes in this fixture"
 ```
 '''
+CYCLE024_UI_M2_OUTCOME_EXCERPT='''---
+schema_version: "1.2"
+title: "UI-M2 Task create + Shape Q&A — create modal + awaiting-QA panel + persona selector"
+goal: "Build the UI-M2 task-create and Shape Q&A surfaces inside the existing apps/symphony-ui app shell: create-task surfaces wired to POST /api/v1/tasks/commands/create with the api-contract §4.0 PESSIMISTIC pattern; Advanced vendor row expanding to vendor / model / reasoning_effort / persona; Shape awaiting-QA Inspector panel; submission via POST /runs/{id}/commands/answer-qa; after a 202 the run-detail refetch renders the merged outcome draft so 'user answers Shape questions from the UI and the outcome draft updates' is proven end-to-end with mocked transports; client.run(runId) plus an injectable ShapeQaProvider seam for question bodies; the default provider returns null and tests drive the panel through fixture providers."
+risk_level: low
+acceptance:
+  - id: a3
+    text: "Advanced vendor row (UX-45 fields; storage-layout §2.6): the Vendor row renders collapsed by default with honest inherit copy (no concrete vendor name is fabricated); clicking 'Advanced' expands exactly four labeled controls — Vendor (inherit | codex | claude-code), Model (inherit | free text), Reasoning effort (inherit | low | medium | high), and Persona labeled as Shape-only offering EXACTLY the V1 personas 'default' and 'socratic-skeptic' with 'default' preselected (manifest persona_default) plus cascade hint copy noting user-set values resolve via the 4-layer cascade; persona/model/effort choices update UI state and the composer summary ('advanced-row' describe block)."
+  - id: a4
+    text: "Create submission is contract-true PESSIMISTIC (§4.0/§4.1): Start Shape issues POST /api/v1/tasks/commands/create whose JSON body contains user_one_liner + workspace, contains vendor ONLY when a non-inherit vendor was explicitly chosen, and NEVER contains model/reasoning_effort/persona keys or any key outside §4.1 (negative assertion on the captured request); the request carries no If-Match header; while in flight the composer's own controls are disabled with in-flight copy but the rest of the shell stays interactive (a Rail view button still responds); on 202 {run_id, revision} the shell refetches state, the new run's card renders in the Ledger and is selected in the Inspector; on failure the composer retains its text and shows inline error copy naming the call ('POST /api/v1/tasks/commands/create failed: <reason>') with a resubmit affordance that re-issues the command (asserted via mock call count); no global blocking overlay is ever rendered ('create-flow' describe block)."
+  - id: a5
+    text: "Awaiting-QA typeform panel (design-brief §7.1.2; ui_contract qa_style): when the selected run has macro_stage=shape + micro_stage=awaiting_qa the Inspector renders the Q&A panel with a progress header 'Question N of M'; already-answered questions render as collapsed rows; the current question renders expanded with its single-select choice list, [Skip this question], and [Next]; not-yet-asked questions render as placeholder rows."
+  - id: a7
+    text: "Answer submission is contract-true OPTIMISTIC-SAFE and the outcome draft updates (§4.0/§4.2; roadmap §3.8 exit): completing the final question issues POST /api/v1/runs/{run_id}/commands/answer-qa whose body is exactly {answers: [...], skipped: [...]} where each answers row is {question_id, answer_type, value}; on 202 the run detail is refetched and the Inspector's outcome draft module renders content from the merged outcome_capsule returned by the (mocked) §3.2 response — asserting the draft text visibly changed from the pre-answer capsule ('qa-submit' describe block)."
+  - id: a8
+    text: "Contract-true client seams: client.run(runId) GETs /api/v1/runs/{encoded id}; question bodies enter the panel ONLY via the injectable ShapeQaProvider seam — the default provider returns null and the panel then renders the §3.2 counts plus an honest unavailable line naming shape_session.md; a negative test asserts production source contains no hardcoded question fixture text ('run-detail' describe block)."
+---
+'''
+CYCLE024_UI_M2_GRADE_EXCERPT='''# Grade Round 2 — B-024 UI-M2 Task create + Shape Q&A (cycle-024)
+
+All 11 shaped acceptance rows now pass, including both milestone exits: a4 (contract-true PESSIMISTIC create with §4.1-only body, scoped disable, refetch + select, inline AA-6 failure + resubmit, no global overlay) and a7 (§4.2 exact-body optimistic submit, rollback on failure preserving answers, merged outcome draft rendered after refetch — roadmap §3.8 'user answers Shape questions from the UI and the outcome draft updates').
+
+```yaml
+grade_summary:
+  p0_count: 0
+  p1_count: 0
+  p2_count: 0
+```
+```yaml
+acceptance_status:
+  - id: a3
+    status: pass
+  - id: a4
+    status: pass
+  - id: a5
+    status: pass
+  - id: a7
+    status: pass
+  - id: a8
+    status: pass
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: a3
+    spec_refs: ["docs/agents/shape/AGENT.md §3 runtime.prompts.available_personas + persona_default", "docs/architecture/storage-layout.md §2.6 4-layer cascade"]
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: "evidence/grade/pnpm_vitest_full_round_2.log advanced-row PASS: collapsed honest-inherit summary; Advanced expands exactly Vendor/Model/Reasoning effort/Persona; persona labeled 'Persona · Shape-only' with options exactly [default, socratic-skeptic], default preselected; 4-layer cascade hint copy; selections update UI state + summary"
+  - acceptance_id: a4
+    spec_refs: ["docs/architecture/api-contract.md §4.0 create=PESSIMISTIC no If-Match", "docs/architecture/api-contract.md §4.1"]
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: "evidence/grade/pnpm_vitest_full_round_2.log create-flow both tests PASS: POST /api/v1/tasks/commands/create with exactly {user_one_liner, workspace, vendor(only when non-inherit)}; stringified body contains no model/reasoning/persona; no If-Match; composer-scoped disable with 'Starting Shape…' while Rail stays interactive; 202 → state refetch → 'Created task' card selected; failure retains text + 'POST /api/v1/tasks/commands/create failed: transport down' + resubmit re-issues (3 calls); no .global-blocking-overlay"
+  - acceptance_id: a5
+    spec_refs: ["docs/ux/design-brief.md §7.1.2", "docs/agents/shape/AGENT.md §6 ui_contract qa_style"]
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: "evidence/grade/pnpm_vitest_full_round_2.log qa-panel PASS: 'Question N of M' heading advances on answer and on skip; answered rows collapse with summary + Edit; placeholder rows for unasked; Skip + Next affordances; critic footer hint present"
+  - acceptance_id: a7
+    spec_refs: ["docs/architecture/api-contract.md §4.0 answer-qa=OPTIMISTIC-SAFE", "docs/architecture/api-contract.md §4.2", "docs/ops/roadmap.md §3.8 exit condition"]
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: "evidence/grade/pnpm_vitest_full_round_2.log qa-submit PASS: §4.2 body exactly {answers:[{question_id, answer_type, value} x5], skipped:[]} with each id once; optimistic 'Submitting answers…' disabled state before settle; rejection rolls back to editable 'Submit answers' preserving answers with alert copy naming the failed call (inline + toast); resubmit 202 → run-detail refetch → 'After answers merged' outcome draft rendered — milestone exit proven"
+  - acceptance_id: a8
+    spec_refs: ["docs/architecture/api-contract.md §3.2", "docs/architecture/schemas/events.md shape_qa_emitted counts-only"]
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: "evidence/grade/pnpm_vitest_full_round_2.log run-detail PASS: GET /api/v1/runs/run%2Fid (encoded); RunDetail additive §3.2 typing; null default provider renders 'Shape question detail unavailable: shape_session.md is not yet served by the daemon.' + '0 answered · 5 total · shape_session.md'; production source scan contains no question fixture text; commandPolicy rows reused byte-identical"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: a3
+    scenario: "Persona options exactly [default, socratic-skeptic] — no free-text custom id; collapsed row fabricates no concrete vendor name"
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: "evidence/grade/pnpm_vitest_full_round_2.log advanced-row PASS"
+  - acceptance_id: a4
+    scenario: "Negative body assertion: stringified POST body matches no /model|reasoning|persona/; no If-Match header; rejection branch retains composer text + AA-6 copy naming the call + resubmit re-issues (asserted via 3 mock calls); document contains no .global-blocking-overlay"
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: "evidence/grade/pnpm_vitest_full_round_2.log create-flow PASS"
+  - acceptance_id: a5
+    scenario: "Unasked questions render placeholders only ('Question pending', no fabricated answers); skip records without an answer; Edit re-opens an answered row"
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: "evidence/grade/pnpm_vitest_full_round_2.log qa-panel PASS"
+  - acceptance_id: a7
+    scenario: "Transport rejection rolls back the optimistic submit, preserves all answers, raises alert copy naming the failed call on BOTH required surfaces (inline error + toast)"
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: "evidence/grade/pnpm_vitest_full_round_2.log qa-submit PASS"
+  - acceptance_id: a8
+    scenario: "Null default provider renders honest unavailable copy naming shape_session.md + contract-true counts; production source scan proves no hardcoded question fixture text"
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: "evidence/grade/pnpm_vitest_full_round_2.log run-detail PASS"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: "cycle-024 fixture focuses on frontend wiring honesty and pending dismissal facets"
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: "no dependency changes in this fixture"
+```
+'''
+CYCLE024_SATISFIED_GRADE=CYCLE024_UI_M2_GRADE_EXCERPT.replace(
+    "evidence_ref: \"evidence/grade/pnpm_vitest_full_round_2.log create-flow both tests PASS: POST /api/v1/tasks/commands/create with exactly {user_one_liner, workspace, vendor(only when non-inherit)}; stringified body contains no model/reasoning/persona; no If-Match; composer-scoped disable with 'Starting Shape…' while Rail stays interactive; 202 → state refetch → 'Created task' card selected; failure retains text + 'POST /api/v1/tasks/commands/create failed: transport down' + resubmit re-issues (3 calls); no .global-blocking-overlay\"",
+    "evidence_ref: \"evidence/grade/pnpm_vitest_full_round_2.log create-flow both tests PASS: POST /api/v1/tasks/commands/create with exactly {user_one_liner, workspace, vendor(only when non-inherit)}; client-to-handler request path client.createTask -> daemon handler /api/v1/tasks/commands/create; stringified body contains no model/reasoning/persona; no If-Match; composer-scoped disable with 'Starting Shape…' while Rail stays interactive; 202 → state refetch → 'Created task' card selected; failure retains text + 'POST /api/v1/tasks/commands/create failed: transport down' + resubmit re-issues (3 calls); while create is pending/in-flight, Escape is ignored and does not close or reset, overlay/backdrop click is ignored and does not dismiss, and route/surface change via Rail view switch is blocked and does not close or reset the composer\"",
+).replace(
+    "evidence_ref: \"evidence/grade/pnpm_vitest_full_round_2.log qa-panel PASS: 'Question N of M' heading advances on answer and on skip; answered rows collapse with summary + Edit; placeholder rows for unasked; Skip + Next affordances; critic footer hint present\"",
+    "evidence_ref: \"evidence/grade/pnpm_vitest_full_round_2.log qa-panel PASS: 'Question N of M' heading advances on answer and on skip; answered rows collapse with summary + Edit; placeholder rows for unasked; Skip + Next affordances; critic footer hint present; Inspector state region renders NEEDS YOU callout panel and Inspector state region renders RUN IN FLIGHT tile panel\"",
+).replace(
+    "evidence_ref: \"evidence/grade/pnpm_vitest_full_round_2.log qa-submit PASS: §4.2 body exactly {answers:[{question_id, answer_type, value} x5], skipped:[]} with each id once; optimistic 'Submitting answers…' disabled state before settle; rejection rolls back to editable 'Submit answers' preserving answers with alert copy naming the failed call (inline + toast); resubmit 202 → run-detail refetch → 'After answers merged' outcome draft rendered — milestone exit proven\"",
+    "evidence_ref: \"evidence/grade/pnpm_vitest_full_round_2.log qa-submit PASS: fixture-only until missing_upstream: B-019; §4.2 body exactly {answers:[{question_id, answer_type, value} x5], skipped:[]} with each id once; client-to-handler request path client.answerQa -> daemon handler /api/v1/runs/{id}/commands/answer-qa; handler consumes the request body answers[]; optimistic 'Submitting answers…' disabled state before settle; rejection rolls back to editable 'Submit answers' preserving answers with alert copy naming the failed call (inline + toast); resubmit 202 → daemon handler writes outcome.md and returns merged outcome_capsule via run-detail refetch → 'After answers merged' outcome draft rendered — milestone exit proven\"",
+).replace(
+    "evidence_ref: \"evidence/grade/pnpm_vitest_full_round_2.log run-detail PASS: GET /api/v1/runs/run%2Fid (encoded); RunDetail additive §3.2 typing; null default provider renders 'Shape question detail unavailable: shape_session.md is not yet served by the daemon.' + '0 answered · 5 total · shape_session.md'; production source scan contains no question fixture text; commandPolicy rows reused byte-identical\"",
+    "evidence_ref: \"evidence/grade/pnpm_vitest_full_round_2.log run-detail PASS: fixture-only; real provider pending B-019 (unavailable state shown); production provider/default wiring: default runtime provider is wired to the unavailable B-019 null provider until the daemon serves shape_session.md; GET /api/v1/runs/run%2Fid (encoded); RunDetail additive §3.2 typing; null default provider renders 'Shape question detail unavailable: shape_session.md is not yet served by the daemon.' + '0 answered · 5 total · shape_session.md'; production source scan contains no question fixture text; commandPolicy rows reused byte-identical\"",
+)
+FRONTEND_NEGATED_CYCLE024_FACET_OUTCOME='''---
+schema_version: "1.2"
+title: "UI-M2 negated fixture-honesty row"
+goal: "Frontend package-only cleanup in apps/symphony-ui."
+acceptance:
+  - id: n1
+    severity: P1
+    text: "No fixture-backed production Q&A capability is accepted; answer-qa merge and outcome draft update are not in scope; no PESSIMISTIC pending-disable claim is made."
+---
+'''
+FRONTEND_NEGATED_CYCLE024_FACET_GRADE='''# Grade — UI-M2 negated cycle-024 facet fixture
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: n1, status: pass, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: n1
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/ux/design-brief.md
+    evidence_ref: "No fixture-backed production Q&A capability accepted; no answer-qa merge claim; no PESSIMISTIC pending-disable claim."
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: n1
+    status: pass
+    severity_if_fail: P1
+    scenario: "negated wording only; no fixture-backed runtime claim and no pending dismissal claim"
+    evidence_ref: "negated cycle-024 phrasing fixture"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: "negated frontend facet fixture does not touch secrets"
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: "no dependency changes in this fixture"
+```
+'''
 class GradeLintTests(unittest.TestCase):
     def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME,repo_root=None):
         with tempfile.TemporaryDirectory() as td:
@@ -2189,6 +2357,47 @@ class GradeLintTests(unittest.TestCase):
         self.assertNotIn('frontend_terminal_state_enum_coverage', errors)
         self.assertNotIn('frontend_da30_retry_snapshot_retention', errors)
         self.assertNotIn('frontend_ui_source_affordance_evidence', errors)
+
+    def test_cycle024_ui_m2_real_excerpts_fire_production_wiring_and_pending_dismissal_facets(self):
+        proc,p=self.run_lint('code','low',CYCLE024_UI_M2_GRADE_EXCERPT,CYCLE024_UI_M2_OUTCOME_EXCERPT)
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertIn('frontend_production_wiring_or_unavailable_honesty[a4]', errors)
+        self.assertIn('frontend_production_wiring_or_unavailable_honesty[a7]', errors)
+        self.assertIn('frontend_production_wiring_or_unavailable_honesty[a8]', errors)
+        self.assertIn('frontend_pessimistic_pending_dismissal_guard[a4] missing pending dismissal paths:', errors)
+        self.assertIn('Escape,overlay/backdrop click,route/surface change', errors)
+
+    def test_cycle022_and_cycle023_excerpts_do_not_fire_cycle024_frontend_facets(self):
+        new_prefixes=(
+            'frontend_production_wiring_or_unavailable_honesty',
+            'frontend_pessimistic_pending_dismissal_guard',
+        )
+        fixtures=(
+            (CYCLE022_FRONTEND_ESCAPE_GRADE, CYCLE022_FRONTEND_ESCAPE_OUTCOME),
+            (CYCLE023_UI_M1_GRADE_EXCERPT, CYCLE023_UI_M1_OUTCOME_EXCERPT),
+        )
+        for grade,outcome in fixtures:
+            with self.subTest(outcome=outcome[:40]):
+                _proc,p=self.run_lint('code','low',grade,outcome)
+                errors='\n'.join(p['grade_lint']['errors'])
+                for prefix in new_prefixes:
+                    self.assertNotIn(prefix, errors)
+
+    def test_cycle024_satisfied_fixture_and_negated_phrasing_do_not_fire_new_facets(self):
+        new_prefixes=(
+            'frontend_production_wiring_or_unavailable_honesty',
+            'frontend_pessimistic_pending_dismissal_guard',
+        )
+        for grade,outcome in (
+            (CYCLE024_SATISFIED_GRADE, CYCLE024_UI_M2_OUTCOME_EXCERPT),
+            (FRONTEND_NEGATED_CYCLE024_FACET_GRADE, FRONTEND_NEGATED_CYCLE024_FACET_OUTCOME),
+        ):
+            with self.subTest(outcome=outcome[:40]):
+                _proc,p=self.run_lint('code','low',grade,outcome)
+                errors='\n'.join(p['grade_lint']['errors'])
+                for prefix in new_prefixes:
+                    self.assertNotIn(prefix, errors)
 
     def write_frontend_dependency_repo(self, root, *, drift):
         (root/'docs'/'architecture').mkdir(parents=True)
