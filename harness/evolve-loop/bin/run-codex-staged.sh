@@ -64,9 +64,9 @@ workdir_activity() {  # 1 if anything in CWD newer than the marker
   else echo 0; fi
 }
 ws_hash() { { git -C "$CWD" status --porcelain 2>/dev/null; git -C "$CWD" diff 2>/dev/null; } | shasum -a 256 | cut -c1-16; }
-write_inflight() {  # $1 = suspect json array
-  printf '{"stage":"%s","pgid":%d,"started_at":"%s","log":"%s","cwd":"%s","stall_sec":%s,"last_progress_at":"%s","suspect":%s}\n' \
-    "$STAGE" "$PGID" "$STARTED" "$LOG" "$CWD" "$STALL_SEC" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" > "$INFLIGHT"
+write_inflight() {  # $1 = suspect json array; $2 = REAL last-progress ts
+  printf '{"stage":"%s","pgid":%d,"started_at":"%s","log":"%s","cwd":"%s","stall_sec":%s,"last_progress_at":"%s","last_sample_at":"%s","suspect":%s}\n' \
+    "$STAGE" "$PGID" "$STARTED" "$LOG" "$CWD" "$STALL_SEC" "${2:-$STARTED}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" > "$INFLIGHT"
 }
 
 set -m   # job control: the codex job below leads its own process group
@@ -74,7 +74,9 @@ codex exec --skip-git-repo-check -C "$CWD" -c model_reasoning_effort="xhigh" \
   "${EXTRA[@]}" - < "$PROMPT" > "$LOG" 2>&1 &
 PID=$!; PGID=$PID
 STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-write_inflight '[]'
+LAST_PROGRESS_TS="$STARTED"
+CPU_ONLY_RUN=0
+write_inflight '[]' "$STARTED"
 
 LAST_SIZE=$(log_size); LAST_CPU=$(group_cpu "$PGID"); QUIET=0
 SUSPECT='[]'
@@ -88,13 +90,22 @@ while kill -0 "$PID" 2>/dev/null; do
   kill -0 "$PID" 2>/dev/null || break
 
   SIZE=$(log_size); CPU=$(group_cpu "$PGID"); FSACT=$(workdir_activity)
-  PROGRESS=0
-  [ "$SIZE" -gt "$LAST_SIZE" ] && PROGRESS=1
-  [ "${CPU:-0}" -gt "${LAST_CPU:-0}" ] && PROGRESS=1
-  [ "$FSACT" = "1" ] && PROGRESS=1
+  LOGP=0; CPUP=0; FSP=0
+  [ "$SIZE" -gt "$LAST_SIZE" ] && LOGP=1
+  [ "${CPU:-0}" -gt "${LAST_CPU:-0}" ] && CPUP=1
+  [ "$FSACT" = "1" ] && FSP=1
+  PROGRESS=0; [ "$LOGP$CPUP$FSP" != "000" ] && PROGRESS=1
+  # cpu_only_progress suspicion: CPU spinning with zero output and zero writes is the
+  # silent-retry fake-alive variant (cycle-021 itemB incident) — flag, never kill
+  if [ "$LOGP" = "0" ] && [ "$FSP" = "0" ] && [ "$CPUP" = "1" ]; then
+    CPU_ONLY_RUN=$(( CPU_ONLY_RUN + 1 ))
+  else
+    CPU_ONLY_RUN=0
+  fi
 
   if [ "$PROGRESS" = "1" ]; then
     QUIET=0
+    LAST_PROGRESS_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   else
     QUIET=$(( QUIET + SAMPLE_SEC ))
     if [ "$QUIET" -ge "$STALL_SEC" ]; then
@@ -135,7 +146,16 @@ while kill -0 "$PID" 2>/dev/null; do
     fi
     SUSPECT="[$(printf '%s,%s' "$S1" "$S2" | sed 's/^,//; s/,$//')]"
   fi
-  write_inflight "$SUSPECT"
+  CPU_ONLY_THRESH=$(( ${BS_CPU_ONLY_SUSPECT_SEC:-1800} / SAMPLE_SEC )); [ "$CPU_ONLY_THRESH" -lt 3 ] && CPU_ONLY_THRESH=3
+  inner="${SUSPECT#[}"; inner="${inner%]}"
+  if [ "$CPU_ONLY_RUN" -ge "$CPU_ONLY_THRESH" ]; then
+    case "$inner" in
+      *cpu_only_progress*) ;;
+      "") inner='"cpu_only_progress"' ;;
+      *) inner="$inner,\"cpu_only_progress\"" ;;
+    esac
+  fi
+  write_inflight "[$inner]" "$LAST_PROGRESS_TS"
   LAST_SIZE=$SIZE; LAST_CPU=$CPU
 done
 
