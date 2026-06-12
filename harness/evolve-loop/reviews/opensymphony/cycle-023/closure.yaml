@@ -2,7 +2,7 @@ cycle: cycle-023
 r1: done
 r2: done
 skill_release: v1.4.19
-remediation: null
+remediation: 6c014ca
 escalated_to_human:
 - 'bs-skill prompts/shape/role.md: scoped UI-contract rule — frontend deliverables
   citing design-brief sections / UX-N / prototype atoms must create acceptance rows
@@ -23,5 +23,5 @@ escalated_to_human:
   states/actions/labels, and reject DA-30 claims proving only initial loading/empty/error
   instead of retained snapshot during reconnect/degraded retry. [needs_human; cycle-023
   r2; F1-F5]'
-closed: false
-updated_at: '2026-06-12T10:46:40Z'
+closed: true
+updated_at: '2026-06-12T13:24:04Z'
