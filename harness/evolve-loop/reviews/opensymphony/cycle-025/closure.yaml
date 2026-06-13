@@ -1,8 +1,24 @@
 cycle: cycle-025
 r1: done
-r2: null
+r2: done
 skill_release: null
 remediation: null
-escalated_to_human: []
+escalated_to_human:
+- 'bs-skill prompts/grade/role.md: add semantic frontend checklist — schema parser guard matrix (capsule
+  narrowing vs outcome-capsule.md v1.2), prototype-visible elements incl. non-empty outcome.tags[] chips,
+  snapshot-vs-detail state-authority table for stage/micro_stage/revision, PESSIMISTIC command matrix
+  per DA-28/29, and conflict/refetch-failure branch review. [needs_human; origin cycle-025 r2; F7-F11]'
+- 'bs-skill prompts/grade/critic.md: fail Grade artifacts that omit the frontend checklist when the outcome
+  names capsule-schema rendering, locked prototype screens, run detail/snapshot authority, or PESSIMISTIC
+  commands; require counting omitted current-scope P1 checks instead of accepting crash-blocked broad
+  rows as complete discovery. [needs_human; cycle-025 r2; F7-F11]'
+- 'bs-skill prompts/shape/role.md: when Shape cites a locked prototype with explicit conditional UI requirements,
+  carry them into acceptance text (e.g. non-empty outcome.tags[] visible chips when schema v1.2 tags in
+  scope). [needs_human; cycle-025 r2; F8]'
+- 'bs-skill runtime/codex_driver.py: opt-in --goal-completion-nudge — after turn_completed_explicit with
+  semantic_validated=true but goal_status=active, send ONE follow-up asking the agent to set the goal
+  complete/blocked or continue; do NOT auto-complete or change the default success oracle without maintainer
+  approval. [needs_human; cycle-025 r2; GOAL — goal_active_after_turn now 8 occurrences across cycles
+  022-025]'
 closed: false
-updated_at: '2026-06-13T00:21:46Z'
+updated_at: '2026-06-13T00:32:28Z'
