@@ -18,9 +18,15 @@ if len(sys.argv) < 2 or sys.argv[1] != 'app-server':
     sys.exit(64)
 record = os.environ.get('FAKE_CODEX_RECORD')
 goal = None
+final_status = os.environ.get('FAKE_FINAL_GOAL_STATUS', 'complete')
 def emit(obj):
     print(json.dumps(obj), flush=True)
 def marker_from(text):
+    prefix_v2 = 'BS_OUTCOME_READ_V2 '
+    idx = text.find(prefix_v2)
+    if idx >= 0:
+        payload, _ = json.JSONDecoder().raw_decode(text[idx + len(prefix_v2):].lstrip())
+        return prefix_v2 + json.dumps(payload, sort_keys=True, separators=(',', ':'))
     prefix = 'BS_OUTCOME_READ '
     idx = text.find(prefix)
     if idx < 0:
@@ -38,7 +44,7 @@ for line in sys.stdin:
         if goal is None:
             emit({'jsonrpc':'2.0','id':req['id'],'result':{}})
         else:
-            status = 'complete' if req['id'] == 800001 else goal.get('status', 'active')
+            status = final_status if req['id'] == 800001 else goal.get('status', 'active')
             emit({'jsonrpc':'2.0','id':req['id'],'result':{'goal':{'objective':goal['objective'],'status':status}}})
     elif method == 'thread/goal/set':
         goal = {'objective':req.get('params', {}).get('objective'), 'status':req.get('params', {}).get('status')}
@@ -53,12 +59,13 @@ for line in sys.stdin:
         emit({'jsonrpc':'2.0','id':req['id'],'result':{'turn':{'id':'turn-1'}}})
         time.sleep(0.05)
         paths = [p for p in os.environ.get('FAKE_WRITE_PATHS', 'workspace-write.txt').split(os.pathsep) if p]
+        content = os.environ.get('FAKE_WRITE_CONTENT', 'done')
         for path in paths:
             parent = os.path.dirname(path)
             if parent:
                 os.makedirs(parent, exist_ok=True)
             with open(path, 'w') as f:
-                f.write('done')
+                f.write(content)
         emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':marker_from(text) + ' Done'}}})
         emit({'jsonrpc':'2.0','method':'turn/completed','params':{'turn':{'status':'completed'}}})
     else:
@@ -121,7 +128,7 @@ class ConductFixRoundTests(unittest.TestCase):
         return root, cycle, outcome, fake_dir
 
     def run_conduct(self, root: Path, cycle: Path, outcome: Path, fake_dir: Path, fix_round='1', extra_env=None):
-        record = root / 'record.json'
+        record = cycle / 'evidence' / 'fake_record.json'
         env = os.environ.copy()
         env.update({'PATH': f'{fake_dir}{os.pathsep}' + env.get('PATH', ''), 'FAKE_CODEX_RECORD': str(record)})
         if extra_env:
@@ -139,6 +146,30 @@ class ConductFixRoundTests(unittest.TestCase):
             stderr=subprocess.PIPE,
         )
         self.assertEqual(prep.returncode, 0, prep.stderr)
+
+    def write_fix_round_corrections(self, cycle: Path, outcome: Path):
+        (cycle / 'outcome.v0.md').write_text('# Archived\n', encoding='utf-8')
+        outcome.write_text(textwrap.dedent('''
+            # Outcome
+
+            ## Fix Round 1 (auto re-shape; bounded)
+            Unmet acceptance: a1, a2
+            Grade detail (reference, not inlined): grade_round_0.md
+            Corrections:
+            1. src/lib/store/outcomeStore.ts: add module-level `const EMPTY_RUN_STATE: OutcomeRunState = { execute: { status: "idle" }, assumptions: {} };`.
+            2. src/shell/AppShell.tsx: complete inside AppShell via useMemo(completeShellClient) filling optionals with throwing "unavailable in test client" stubs.
+            3. src/outcome/outcome.test.tsx: ADD missing outcome-secret-redaction describe and string "No fabricated stage\\nNo fixture text".
+            4. src/test/node-globals.d.ts: add readdirSync/statSync (node:fs) + join (node:path).
+            <!-- bs-fix-round: 1; archive=outcome.v0.md; grade=grade_round_0.md; failed=["a1","a2"] -->
+        ''').lstrip(), encoding='utf-8')
+
+    def commit_baseline(self, root: Path):
+        subprocess.run(['git', 'add', '.'], cwd=root, check=True)
+        subprocess.run(
+            ['git', '-c', 'user.email=test@example.com', '-c', 'user.name=Test User', 'commit', '-q', '-m', 'baseline'],
+            cwd=root,
+            check=True,
+        )
 
     def test_fix_round_refuses_without_reshape(self):
         root, cycle, outcome, fake_dir = self.setup_repo()
@@ -234,6 +265,65 @@ class ConductFixRoundTests(unittest.TestCase):
         result = json.loads(proc.stdout.strip().splitlines()[-1])
         self.assertEqual(result['conduct_result'], 'completed')
         self.assertEqual(result['fix_round_alignment'], 'aligned')
+
+    def test_fix_round_zero_uptake_gate_rejects_changed_files_without_correction_tokens(self):
+        root, cycle, outcome, fake_dir = self.setup_repo()
+        self.write_fix_round_corrections(cycle, outcome)
+        self.commit_baseline(root)
+        proc, _record = self.run_conduct(root, cycle, outcome, fake_dir)
+        self.assertEqual(proc.returncode, 10, proc.stdout + proc.stderr)
+        result = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(result['conduct_result'], 'fix_round_zero_uptake')
+        self.assertEqual(result['matched_markers'], [])
+        self.assertIn('EMPTY_RUN_STATE', result['required_markers'])
+        self.assertIn('completeShellClient', result['required_markers'])
+        self.assertIn('outcome-secret-redaction', result['required_markers'])
+        self.assertIn('node-globals.d.ts', result['required_markers'])
+        self.assertIn('workspace-write.txt', result['changed_files'])
+        self.assertGreaterEqual(result['corrections_start_line'], 1)
+
+    def test_fix_round_partial_uptake_passes_zero_uptake_gate(self):
+        root, cycle, outcome, fake_dir = self.setup_repo()
+        self.write_fix_round_corrections(cycle, outcome)
+        self.commit_baseline(root)
+        proc, _record = self.run_conduct(
+            root,
+            cycle,
+            outcome,
+            fake_dir,
+            extra_env={'FAKE_WRITE_CONTENT': 'const EMPTY_RUN_STATE = {}'},
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        result = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(result['conduct_result'], 'completed')
+
+    def test_fix_round_alignment_gate_runs_on_rc6_delta(self):
+        root, cycle, outcome, fake_dir = self.setup_repo()
+        self.write_fix_round_corrections(cycle, outcome)
+        (cycle / 'fix_round_1_alignment.yaml').write_text(textwrap.dedent('''
+            round: 1
+            failed_ids: [a1]
+            prior_blocking_count: 1
+            required_production_loci:
+              - crates/symphony-evolve/src/git_write.rs
+            alt_justification: false
+        '''), encoding='utf-8')
+        self.commit_baseline(root)
+        proc, _record = self.run_conduct(
+            root,
+            cycle,
+            outcome,
+            fake_dir,
+            extra_env={
+                'FAKE_FINAL_GOAL_STATUS': 'usageLimited',
+                'FAKE_WRITE_PATHS': 'crates/symphony-evolve/src/lib.rs',
+                'FAKE_WRITE_CONTENT': 'const EMPTY_RUN_STATE = {}',
+            },
+        )
+        self.assertEqual(proc.returncode, 9, proc.stdout + proc.stderr)
+        result = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual(result['conduct_result'], 'fix_round_misaligned')
+        self.assertIn('crates/symphony-evolve/src/lib.rs', result['changed_files'])
 
 
 if __name__ == '__main__':

@@ -239,13 +239,18 @@ collect_changed_files() {
 
 run_fix_round_alignment_gate() {
   local sidecar="$CYCLE_DIR/fix_round_${FIX_ROUND}_alignment.yaml"
-  local changed_file alignment_file align_rc aligned
+  local changed_file="${1:-}"
+  local own_changed_file="false"
+  local alignment_file align_rc aligned
   if [[ -z "$FIX_ROUND" || ! -f "$sidecar" ]]; then
     return 0
   fi
-  changed_file="$(mktemp "${TMPDIR:-/tmp}/bs-fix-round-changed.XXXXXX")"
+  if [[ -z "$changed_file" ]]; then
+    changed_file="$(mktemp "${TMPDIR:-/tmp}/bs-fix-round-changed.XXXXXX")"
+    own_changed_file="true"
+    collect_changed_files "$DRIVER_CWD" "$PRE_HEAD" "$changed_file"
+  fi
   alignment_file="$(mktemp "${TMPDIR:-/tmp}/bs-fix-round-alignment.XXXXXX")"
-  collect_changed_files "$DRIVER_CWD" "$PRE_HEAD" "$changed_file"
   set +e
   python3 "$RUNTIME_DIR/reshape_fix_round.py" alignment --sidecar "$sidecar" --changed-files-file "$changed_file" > "$alignment_file"
   align_rc=$?
@@ -275,12 +280,131 @@ payload = {
 }
 print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
 PY
-    rm -f "$changed_file" "$alignment_file"
+    [[ "$own_changed_file" == "false" ]] || rm -f "$changed_file"
+    rm -f "$alignment_file"
     exit 9
   fi
-  rm -f "$changed_file" "$alignment_file"
+  [[ "$own_changed_file" == "false" ]] || rm -f "$changed_file"
+  rm -f "$alignment_file"
   [[ "$align_rc" == "0" ]] && FIX_ROUND_ALIGNMENT_STATUS="aligned"
   return 0
+}
+
+run_fix_round_uptake_gate() {
+  local changed_file="$1"
+  if [[ -z "$FIX_ROUND" || ! -s "$changed_file" ]]; then
+    return 0
+  fi
+  set +e
+  python3 - "$OUTCOME_FILE" "$changed_file" "$DRIVER_CWD" "$EVIDENCE_DIR" <<'PY'
+import json, re, sys
+from pathlib import Path
+
+outcome = Path(sys.argv[1])
+changed_file = Path(sys.argv[2])
+cwd = Path(sys.argv[3])
+evidence_dir = Path(sys.argv[4]).resolve()
+text = outcome.read_text(encoding="utf-8")
+lines = text.splitlines(keepends=True)
+plain = [line.rstrip("\n").rstrip("\r") for line in lines]
+marker_re = re.compile(r"<!--\s*bs-fix-round:\s*(\d+);[^>]*-->")
+corrections_re = re.compile(r"^\s*Corrections:\s*(.*)$", re.I)
+list_item_re = re.compile(r"^\s*(?:\d+[.)]|[-*])\s+\S")
+marker_line = None
+for idx, line in enumerate(plain, start=1):
+    if marker_re.search(line):
+        marker_line = idx
+if marker_line is None:
+    sys.exit(0)
+start_line = None
+for idx in range(marker_line - 1, 0, -1):
+    match = corrections_re.match(plain[idx - 1])
+    if not match:
+        continue
+    if match.group(1).strip().lower() == "none":
+        sys.exit(0)
+    start_line = idx
+    break
+if start_line is None:
+    sys.exit(0)
+if not any(list_item_re.match(plain[idx - 1]) for idx in range(start_line + 1, marker_line)):
+    sys.exit(0)
+block = "".join(lines[start_line - 1:marker_line])
+skip = {
+    "const","type","true","false","null","undefined","return","import","from","with",
+    "inside","mirror","first","second","before","after","missing","add","line","rows",
+}
+probes = []
+seen = set()
+
+def add(raw):
+    raw = str(raw).strip().strip("`'\"()[]{}<>,;:")
+    if len(raw) < 4 or raw in skip:
+        return
+    if raw not in seen:
+        seen.add(raw)
+        probes.append(raw)
+
+for match in re.finditer(r"`([^`]+)`|\"((?:[^\"\\]|\\.)*)\"", block):
+    backtick, quoted = match.groups()
+    if backtick is not None:
+        add(backtick)
+        for token in re.findall(r"[A-Za-z0-9_.@/-]*[A-Za-z_][A-Za-z0-9_.@/-]*", backtick):
+            add(token)
+            if "/" in token:
+                add(token.rsplit("/", 1)[-1])
+    else:
+        add(quoted)
+        if "\\n" in quoted:
+            add(quoted.replace("\\n", "\n"))
+for token in re.findall(r"\b[A-Za-z_][A-Za-z0-9_]{3,}\b", block):
+    add(token)
+for token in re.findall(r"\b[A-Za-z][A-Za-z0-9_]*(?:-[A-Za-z0-9_]+)+\b", block):
+    add(token)
+for token in re.findall(r"\b[A-Za-z0-9_.-]+\.(?:d\.ts|tsx|ts|jsx|js|rs|py|md)\b", block):
+    add(token)
+if not probes:
+    sys.exit(0)
+changed = [line.strip() for line in changed_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+content_parts = []
+for rel in changed:
+    path = (cwd / rel).resolve()
+    try:
+        path.relative_to(cwd.resolve())
+    except ValueError:
+        continue
+    try:
+        path.relative_to(evidence_dir)
+        continue
+    except ValueError:
+        pass
+    if not path.is_file():
+        continue
+    try:
+        content_parts.append(path.read_text(encoding="utf-8", errors="ignore"))
+    except OSError:
+        pass
+content = "\n".join(content_parts)
+matched = [probe for probe in probes if probe in content]
+if not matched:
+    payload = {
+        "conduct_result": "fix_round_zero_uptake",
+        "exit": 10,
+        "required_markers": probes,
+        "matched_markers": [],
+        "corrections_start_line": start_line,
+        "changed_files": changed,
+    }
+    print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    sys.exit(10)
+sys.exit(0)
+PY
+  local uptake_rc=$?
+  set -e
+  if [[ "$uptake_rc" == "10" ]]; then
+    exit 10
+  fi
+  return "$uptake_rc"
 }
 
 FIX_ROUND_ALIGNMENT_STATUS=""
@@ -309,8 +433,14 @@ case "$rc" in
   8) result="interrupted_with_delta" ;;
   *) result="failed" ;;
 esac
-if [[ "$rc" == "0" && -n "$FIX_ROUND" ]]; then
-  run_fix_round_alignment_gate
+if [[ -n "$FIX_ROUND" && ( "$rc" == "0" || "$rc" == "6" || "$rc" == "8" ) ]]; then
+  FIX_ROUND_CHANGED_FILE="$(mktemp "${TMPDIR:-/tmp}/bs-fix-round-changed.XXXXXX")"
+  collect_changed_files "$DRIVER_CWD" "$PRE_HEAD" "$FIX_ROUND_CHANGED_FILE"
+  if [[ -s "$FIX_ROUND_CHANGED_FILE" ]]; then
+    run_fix_round_uptake_gate "$FIX_ROUND_CHANGED_FILE"
+    run_fix_round_alignment_gate "$FIX_ROUND_CHANGED_FILE"
+  fi
+  rm -f "$FIX_ROUND_CHANGED_FILE"
 fi
 if [[ -n "$FIX_ROUND_ALIGNMENT_STATUS" ]]; then
   printf '{"conduct_result":"%s","exit":%s,"round":%s,"mcp_policy":"%s","fix_round_alignment":"%s"}\n' "$result" "$rc" "$ROUND" "$MCP_POLICY" "$FIX_ROUND_ALIGNMENT_STATUS"

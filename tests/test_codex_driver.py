@@ -128,6 +128,65 @@ class CodexDriverUnitTests(unittest.TestCase):
         self.assertIsNotNone(codex_driver.parse_goal_header(objective))
         self.assertLessEqual(len(objective), 4000)
 
+    def test_fix_round_objective_surfaces_bounded_corrections(self):
+        with tempfile.TemporaryDirectory() as td:
+            outcome = Path(td) / 'outcome.md'
+            outcome.write_text(
+                '# Outcome\n\n'
+                '## Fix Round 1 (auto re-shape; bounded)\n'
+                'Unmet acceptance: a1\n'
+                'Grade detail (reference, not inlined): grade_round_0.md\n'
+                'Corrections:\n'
+                '1. Add `EMPTY_RUN_STATE` and `node-globals.d.ts`.\n'
+                '<!-- bs-fix-round: 1; archive=outcome.v0.md; grade=grade_round_0.md; failed=["a1"] -->\n',
+                encoding='utf-8',
+            )
+            info = codex_driver.detect_fix_round_info(outcome)
+            self.assertIsNotNone(info)
+            objective = codex_driver.build_goal_objective(outcome, codex_driver.sha256_file(outcome), 'cycle-025', info)
+            self.assertIn('Fix Round 1', objective)
+            self.assertIn('Corrections', objective)
+            self.assertIn('EMPTY_RUN_STATE', objective)
+            self.assertIn('node-globals.d.ts', objective)
+            self.assertIn(f'lines {info.heading_start_line}-{info.end_line}', objective)
+            self.assertIn(f'line {info.corrections_start_line}', objective)
+            self.assertLessEqual(len(objective), 4000)
+
+    def test_fix_round_v2_outcome_read_marker_validation(self):
+        with tempfile.TemporaryDirectory() as td:
+            outcome = Path(td) / 'outcome.md'
+            outcome.write_text(
+                '# Outcome\n\n'
+                '## Fix Round 1 (auto re-shape; bounded)\n'
+                'Corrections:\n'
+                '1. Add `EMPTY_RUN_STATE`.\n'
+                '<!-- bs-fix-round: 1; archive=outcome.v0.md; grade=grade_round_0.md; failed=["a1"] -->\n',
+                encoding='utf-8',
+            )
+            info = codex_driver.detect_fix_round_info(outcome)
+            sha = codex_driver.sha256_file(outcome)
+            payload = {
+                '_marker_version': 2,
+                'path': str(outcome),
+                'sha256': sha,
+                'line_count': info.line_count,
+                'fix_round': 1,
+                'corrections_start_line': info.corrections_start_line,
+                'corrections_sha256': info.corrections_sha256,
+            }
+            obs = codex_driver.TurnObservation(Path(td), Path(td) / 'evidence')
+            obs.outcome_read_markers = [payload]
+            self.assertTrue(codex_driver.validate_outcome_read_marker(obs, str(outcome), sha, io.StringIO(), info))
+            for field, value in (
+                ('_marker_version', 1),
+                ('line_count', info.line_count + 1),
+                ('corrections_sha256', '0' * 64),
+            ):
+                bad = dict(payload)
+                bad[field] = value
+                obs.outcome_read_markers = [bad]
+                self.assertFalse(codex_driver.validate_outcome_read_marker(obs, str(outcome), sha, io.StringIO(), info))
+
     def test_driver_spawns_app_server_in_own_process_group(self):
         source = DRIVER.read_text(encoding='utf-8')
         self.assertIn('start_new_session=(os.name == "posix")', source)
@@ -209,6 +268,19 @@ def emit(obj):
     print(json.dumps(obj), flush=True)
 
 def marker_from(text):
+    prefix_v2 = 'BS_OUTCOME_READ_V2 '
+    idx = text.find(prefix_v2)
+    if idx >= 0:
+        payload, _ = json.JSONDecoder().raw_decode(text[idx + len(prefix_v2):].lstrip())
+        variant = os.environ.get('FAKE_MARKER_VARIANT', 'auto')
+        if variant == 'v1_from_v2':
+            v1 = {'path': payload.get('path'), 'sha256': payload.get('sha256')}
+            return 'BS_OUTCOME_READ ' + json.dumps(v1, sort_keys=True, separators=(',', ':'))
+        if variant == 'wrong_line_count':
+            payload['line_count'] = int(payload.get('line_count', 0)) + 1
+        if variant == 'wrong_corrections_sha':
+            payload['corrections_sha256'] = '0' * 64
+        return prefix_v2 + json.dumps(payload, sort_keys=True, separators=(',', ':'))
     prefix = 'BS_OUTCOME_READ '
     idx = text.find(prefix)
     if idx < 0:
@@ -310,14 +382,14 @@ for line in sys.stdin:
 
 
 class CodexDriverIntegrationTests(unittest.TestCase):
-    def run_driver(self, mode: str, extra_args=None, timeout=10, extra_env=None):
+    def run_driver(self, mode: str, extra_args=None, timeout=10, extra_env=None, outcome_text='# Outcome\n'):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             fake = root / 'fake_codex.py'
             fake.write_text(FAKE_CODEX, encoding='utf-8')
             fake.chmod(0o755)
             outcome = root / 'outcome.md'
-            outcome.write_text('# Outcome\n', encoding='utf-8')
+            outcome.write_text(outcome_text, encoding='utf-8')
             evidence = root / 'evidence'
             record = root / 'record.json'
             env = os.environ.copy()
@@ -394,6 +466,49 @@ class CodexDriverIntegrationTests(unittest.TestCase):
         self.assertIn('outcome_read_marker_missing_or_mismatch', [e['event'] for e in events])
         self.assertIn('cleanup_goal_clear', [e['event'] for e in events])
         self.assertIn('cleanup_thread_archive', [e['event'] for e in events])
+
+    def test_fix_round_v2_marker_passes_and_objective_instructs_shape(self):
+        outcome_text = (
+            '# Outcome\n\n'
+            '## Fix Round 1 (auto re-shape; bounded)\n'
+            'Corrections:\n'
+            '1. Add `EMPTY_RUN_STATE` and `node-globals.d.ts`.\n'
+            '<!-- bs-fix-round: 1; archive=outcome.v0.md; grade=grade_round_0.md; failed=["a1"] -->\n'
+        )
+        rc, events, _requests, record, _stderr = self.run_driver('ok', outcome_text=outcome_text)
+        self.assertEqual(rc, 0, _stderr)
+        self.assertIn('BS_OUTCOME_READ_V2', record)
+        self.assertIn('Fix Round 1', _requests)
+        self.assertIn('Corrections', _requests)
+        self.assertIn('EMPTY_RUN_STATE', _requests)
+        self.assertIn('outcome_read_marker_v2', [e['event'] for e in events])
+
+    def test_fix_round_v1_only_marker_fails_with_outcome_read_reason(self):
+        outcome_text = (
+            '# Outcome\n\n'
+            '## Fix Round 1 (auto re-shape; bounded)\n'
+            'Corrections:\n'
+            '1. Add `EMPTY_RUN_STATE`.\n'
+            '<!-- bs-fix-round: 1; archive=outcome.v0.md; grade=grade_round_0.md; failed=["a1"] -->\n'
+        )
+        rc, events, _requests, _record, _stderr = self.run_driver('ok', outcome_text=outcome_text, extra_env={'FAKE_MARKER_VARIANT': 'v1_from_v2'})
+        self.assertEqual(rc, 6)
+        self.assertIn('outcome_read_marker_v1_rejected_for_fix_round', [e['event'] for e in events])
+        self.assertEqual([e for e in events if e['event'] == 'turn_semantic_failed'][-1]['reason_code'], 'outcome_read_evidence_missing')
+
+    def test_fix_round_wrong_v2_fields_fail_with_outcome_read_reason(self):
+        outcome_text = (
+            '# Outcome\n\n'
+            '## Fix Round 1 (auto re-shape; bounded)\n'
+            'Corrections:\n'
+            '1. Add `EMPTY_RUN_STATE`.\n'
+            '<!-- bs-fix-round: 1; archive=outcome.v0.md; grade=grade_round_0.md; failed=["a1"] -->\n'
+        )
+        for variant in ('wrong_line_count', 'wrong_corrections_sha'):
+            with self.subTest(variant=variant):
+                rc, events, _requests, _record, _stderr = self.run_driver('ok', outcome_text=outcome_text, extra_env={'FAKE_MARKER_VARIANT': variant})
+                self.assertEqual(rc, 6)
+                self.assertEqual([e for e in events if e['event'] == 'turn_semantic_failed'][-1]['reason_code'], 'outcome_read_evidence_missing')
 
     def test_stderr_noise_does_not_keep_or_kill_idle_turn(self):
         rc, events, _requests, _record, _stderr = self.run_driver('stderr_noise')

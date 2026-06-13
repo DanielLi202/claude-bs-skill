@@ -2065,6 +2065,147 @@ dependency_spec_review:
     rationale: "no dependency changes in this fixture"
 ```
 '''
+CYCLE025_UI_M3_OUTCOME_EXCERPT='''---
+schema_version: "1.2"
+title: "UI-M3 Outcome ready — render capsule + Execute with If-Match"
+goal: "Build the UI-M3 Outcome-ready surfaces inside the existing apps/symphony-ui app shell: the card renders outcome-capsule.md schema-v1.2 fields including tags; capsuleModel.ts narrowing layer validates RunDetail.outcome_capsule; Execute is PESSIMISTIC with If-Match REQUIRED; Re-shape is PESSIMISTIC with If-Match REQUIRED; a 409 revision_conflict triggers refetch."
+risk_level: low
+acceptance:
+  - id: a1
+    severity: P1
+    text: "capsuleModel.ts narrows outcome_capsule per outcome-capsule.md schema v1.2 and malformed rows degrade without crashing."
+  - id: a7
+    severity: P1
+    text: "Execute issues PESSIMISTIC If-Match command and refetches after 202."
+  - id: a8
+    severity: P1
+    text: "409 revision_conflict refetch path renders inline conflict and retries with fresh revision."
+---
+risk_surface:
+  surfaces:
+    input_validation_or_schema:
+      present: true
+      note: "RunDetail.outcome_capsule is untyped parsed YAML crossing the daemon→UI boundary; capsuleModel.ts must narrow per outcome-capsule.md schema v1.2."
+grounding_refs:
+  - "docs/ux/prototype/screens/outcome.jsx"
+  - "docs/architecture/schemas/outcome-capsule.md §2.1 top-level fields including tags + schema_version + output_contract + iteration + groundings + high_risk_actions"
+'''
+CYCLE025_UI_M3_GRADE_EXCERPT='''# Grade round 0 — cycle-025 / B-025 (UI-M3 Outcome ready — render capsule + Execute with If-Match)
+
+Verdict: FAIL — blocking P1 rows remain.
+
+```yaml
+grade_summary: {p0_count: 0, p1_count: 3, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: a1, status: fail, severity: P1}
+  - {id: a7, status: fail, severity: P1}
+  - {id: a8, status: fail, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: a1
+    status: fail
+    severity_if_fail: P1
+    spec_refs: ["docs/architecture/schemas/outcome-capsule.md §2/§3/§9/§10"]
+    evidence_ref: "capsule-malformed FAIL via F1; capsuleModel.ts narrows acceptance/assumptions/groundings/high_risk_actions per schema with per-row malformed degradation"
+  - acceptance_id: a7
+    status: fail
+    severity_if_fail: P1
+    spec_refs: ["docs/architecture/api-contract.md §4.0/§4.4 (DA-28)", "docs/decisions/architecture.md DA-29"]
+    evidence_ref: "execute-flow FAIL; OutcomeActions.execute sends client.execute(runId, revision, {}) through the frozen commandPolicy execute row (PESSIMISTIC, ifMatch required); post-202 stage rendering re-reads refetched §3.2 truth only"
+  - acceptance_id: a8
+    status: fail
+    severity_if_fail: P1
+    spec_refs: ["docs/architecture/api-contract.md §1.2/§1.5 (DA-29 409 revision_conflict)"]
+    evidence_ref: "execute-conflict FAIL; OutcomeActions.execute catches code==revision_conflict, refetches detail, renders both revisions inline, retry path re-reads currentRevision()"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: a1
+    status: fail
+    severity_if_fail: P1
+    scenario: "Malformed sections/rows degrade per-row without crash"
+    evidence_ref: "capsule-malformed blocked"
+  - acceptance_id: a7
+    status: fail
+    severity_if_fail: P1
+    scenario: "UI never renders a conduct stage before the refetched detail reports it"
+    evidence_ref: "execute-flow blocked"
+  - acceptance_id: a8
+    status: fail
+    severity_if_fail: P1
+    scenario: "One-2xx/one-409 split; no ghost conduct state between 409 and accepted retry; retry carries the fresh revision"
+    evidence_ref: "execute-conflict blocked"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: "fixture focuses on cycle-025 frontend facets"
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: "no dependency changes in this fixture"
+```
+'''
+CYCLE025_SATISFIED_GRADE=CYCLE025_UI_M3_GRADE_EXCERPT + '''
+
+Additional cycle-025 hardening evidence:
+- outcome capsule schema guard matrix covers schema_version, iteration, output_contract, tags controlled vocabulary plus unknown tag handling, high_risk_actions action enum deploy/delete/db_write/external_api/payment/merge_pr, groundings source_type and url/path rule, supports non-empty required, and a schema-valid fixture passes full schema.
+- outcome.tags[] render evidence: tags chip row is visible and rendered; a non-empty dogfood fixture surfaces a tag chip; empty tags are hidden/absent with no blank row.
+- execute command matrix: execute uses If-Match, pending scoped disable, inline error rendering, and catch failure handling/rejection coverage in the execute row.
+- re-shape command matrix: re-shape uses If-Match, pending scoped disable, inline error rendering, and catch failure handling/rejection coverage in the re-shape row.
+- 409 revision_conflict refetch branch: refetch failure / GET failure renders inline error, pending cleared and status reset before retry.
+'''
+FRONTEND_NEGATED_CYCLE025_FACET_OUTCOME='''---
+schema_version: "1.2"
+title: "UI-M3 negated fixture"
+goal: "Frontend shell copy only."
+acceptance:
+  - id: n1
+    severity: P1
+    text: "No capsuleModel narrowing layer is in scope; no outcome.tags[] rendering obligation; no PESSIMISTIC execute or re-shape command matrix."
+---
+'''
+FRONTEND_NEGATED_CYCLE025_FACET_GRADE='''# Grade — negated cycle-025 fixture
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: n1, status: pass, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: n1
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/ux/design-brief.md
+    evidence_ref: "No capsuleModel narrowing layer required; no outcome.tags[] rendering required; no PESSIMISTIC execute/re-shape command matrix required."
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: n1
+    status: pass
+    severity_if_fail: P1
+    scenario: "negated phrasing only"
+    evidence_ref: "no capsule schema guard, no tags render, no command matrix"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: "negated fixture"
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: "no dependency changes"
+```
+'''
 class GradeLintTests(unittest.TestCase):
     def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME,repo_root=None):
         with tempfile.TemporaryDirectory() as td:
@@ -2392,6 +2533,49 @@ class GradeLintTests(unittest.TestCase):
         for grade,outcome in (
             (CYCLE024_SATISFIED_GRADE, CYCLE024_UI_M2_OUTCOME_EXCERPT),
             (FRONTEND_NEGATED_CYCLE024_FACET_GRADE, FRONTEND_NEGATED_CYCLE024_FACET_OUTCOME),
+        ):
+            with self.subTest(outcome=outcome[:40]):
+                _proc,p=self.run_lint('code','low',grade,outcome)
+                errors='\n'.join(p['grade_lint']['errors'])
+                for prefix in new_prefixes:
+                    self.assertNotIn(prefix, errors)
+
+    def test_cycle025_ui_m3_real_excerpts_fire_schema_tags_command_facets(self):
+        proc,p=self.run_lint('code','low',CYCLE025_UI_M3_GRADE_EXCERPT,CYCLE025_UI_M3_OUTCOME_EXCERPT)
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertIn('frontend_outcome_capsule_schema_guard_evidence missing families:', errors)
+        self.assertIn('schema_version,iteration,output_contract,tags_controlled_or_unknown', errors)
+        self.assertIn('frontend_outcome_tags_render_evidence missing facets:', errors)
+        self.assertIn('frontend_pessimistic_command_matrix[re_shape] missing facets:', errors)
+        self.assertIn('frontend_pessimistic_command_matrix[conflict_refetch] missing facets:', errors)
+
+    def test_cycle023_and_cycle024_excerpts_do_not_fire_cycle025_frontend_facets(self):
+        new_prefixes=(
+            'frontend_outcome_capsule_schema_guard_evidence',
+            'frontend_outcome_tags_render_evidence',
+            'frontend_pessimistic_command_matrix',
+        )
+        fixtures=(
+            (CYCLE023_UI_M1_GRADE_EXCERPT, CYCLE023_UI_M1_OUTCOME_EXCERPT),
+            (CYCLE024_SATISFIED_GRADE, CYCLE024_UI_M2_OUTCOME_EXCERPT),
+        )
+        for grade,outcome in fixtures:
+            with self.subTest(outcome=outcome[:40]):
+                _proc,p=self.run_lint('code','low',grade,outcome)
+                errors='\n'.join(p['grade_lint']['errors'])
+                for prefix in new_prefixes:
+                    self.assertNotIn(prefix, errors)
+
+    def test_cycle025_satisfied_fixture_and_negated_phrasing_do_not_fire_new_facets(self):
+        new_prefixes=(
+            'frontend_outcome_capsule_schema_guard_evidence',
+            'frontend_outcome_tags_render_evidence',
+            'frontend_pessimistic_command_matrix',
+        )
+        for grade,outcome in (
+            (CYCLE025_SATISFIED_GRADE, CYCLE025_UI_M3_OUTCOME_EXCERPT),
+            (FRONTEND_NEGATED_CYCLE025_FACET_GRADE, FRONTEND_NEGATED_CYCLE025_FACET_OUTCOME),
         ):
             with self.subTest(outcome=outcome[:40]):
                 _proc,p=self.run_lint('code','low',grade,outcome)

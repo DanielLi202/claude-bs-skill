@@ -20,6 +20,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import select
 import signal
 import subprocess
@@ -46,7 +47,14 @@ WRITE_ACTIONS = {"write", "edit"}
 DRIVER_EVIDENCE_FILES = {"raw_vendor_output.jsonl", "rpc_requests.jsonl", "vendor_stderr.txt", "driver_events.jsonl", "codex_env.json"}
 GOAL_HEADER_PREFIX = "BS_GOAL_V1 "
 OUTCOME_READ_PREFIX = "BS_OUTCOME_READ "
+OUTCOME_READ_V2_PREFIX = "BS_OUTCOME_READ_V2 "
 ACTIVE_CLEANUP: dict[str, object] = {}
+
+
+FIX_ROUND_MARKER_RE = re.compile(r"<!--\s*bs-fix-round:\s*(?P<round>\d+);[^>]*-->")
+FIX_ROUND_HEADING_RE = re.compile(r"^##\s+Fix Round\s+(?P<round>\d+)\b", re.I)
+CORRECTIONS_LINE_RE = re.compile(r"^\s*Corrections:\s*(?P<tail>.*)$", re.I)
+CORRECTIONS_LIST_ITEM_RE = re.compile(r"^\s*(?:\d+[.)]|[-*])\s+\S")
 
 
 @dataclass
@@ -101,12 +109,70 @@ class TurnObservation:
             self.outcome_read_markers.append(marker)
 
 
+@dataclass(frozen=True)
+class FixRoundInfo:
+    round: int
+    heading_start_line: int
+    corrections_start_line: int
+    end_line: int
+    line_count: int
+    corrections_text: str
+    corrections_sha256: str
+
+
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def _sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def detect_fix_round_info(outcome_file: Path) -> FixRoundInfo | None:
+    text = outcome_file.read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
+    plain = [line.rstrip("\n").rstrip("\r") for line in lines]
+    markers = [(idx, m) for idx, line in enumerate(plain, start=1) for m in [FIX_ROUND_MARKER_RE.search(line)] if m]
+    if not markers:
+        return None
+    marker_line, marker = markers[-1]
+    round_number = int(marker.group("round"))
+    heading_line = None
+    for idx in range(marker_line, 0, -1):
+        m = FIX_ROUND_HEADING_RE.match(plain[idx - 1])
+        if m and int(m.group("round")) == round_number:
+            heading_line = idx
+            break
+    if heading_line is None:
+        return None
+    corrections_line = None
+    for idx in range(heading_line + 1, marker_line):
+        m = CORRECTIONS_LINE_RE.match(plain[idx - 1])
+        if not m:
+            continue
+        if m.group("tail").strip().lower() == "none":
+            return None
+        corrections_line = idx
+        break
+    if corrections_line is None:
+        return None
+    has_item = any(CORRECTIONS_LIST_ITEM_RE.match(plain[idx - 1]) for idx in range(corrections_line + 1, marker_line))
+    if not has_item:
+        return None
+    corrections_text = "".join(lines[corrections_line - 1:marker_line])
+    return FixRoundInfo(
+        round=round_number,
+        heading_start_line=heading_line,
+        corrections_start_line=corrections_line,
+        end_line=marker_line,
+        line_count=len(text.splitlines()),
+        corrections_text=corrections_text,
+        corrections_sha256=_sha256_text(corrections_text),
+    )
 
 
 def build_goal_header(run_id: str, outcome_sha: str, outcome_file: Path) -> str:
@@ -127,18 +193,44 @@ def parse_goal_header(objective: str | None) -> dict | None:
     return obj if isinstance(obj, dict) else None
 
 
-def build_goal_objective(outcome_file: Path, outcome_sha: str, run_id: str) -> str:
+def build_goal_objective(outcome_file: Path, outcome_sha: str, run_id: str, fix_round: FixRoundInfo | None = None) -> str:
     objective = (
         build_goal_header(run_id, outcome_sha, outcome_file)
         + "\nImplement the frozen bs outcome capsule exactly. The absolute outcome file is the single source of truth; read it before changing files and continue until the goal status is complete."
         + " Resolve dependencies only through the project package manager/registry (cargo, npm, pip, go, etc.); never run broad filesystem searches. Do not run find or recursive scans across $HOME, the home directory, caches, or any tree outside the worktree to locate cached packages, and never block waiting on such a search."
     )
+    if fix_round is not None:
+        objective += (
+            f"\nFix Round {fix_round.round}: Corrections supersede already-implemented round-0 work. "
+            f"The Fix Round {fix_round.round} block is at lines {fix_round.heading_start_line}-{fix_round.end_line} of {outcome_file.name}; "
+            f"the Corrections block starts at line {fix_round.corrections_start_line}; you MUST read it."
+            "\nCorrections excerpt (verbatim):\n"
+            f"{fix_round.corrections_text}"
+        )
     if len(objective) > 4000:
         raise LaunchFatal("goal objective exceeds Codex 4000 character limit")
     return objective
 
 
-def build_launcher_text(outcome_file: Path, outcome_sha: str) -> str:
+def build_launcher_text(outcome_file: Path, outcome_sha: str, fix_round: FixRoundInfo | None = None) -> str:
+    if fix_round is not None:
+        payload = json.dumps(
+            {
+                "path": str(outcome_file),
+                "sha256": outcome_sha,
+                "line_count": fix_round.line_count,
+                "fix_round": fix_round.round,
+                "corrections_start_line": fix_round.corrections_start_line,
+                "corrections_sha256": fix_round.corrections_sha256,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return (
+            f"Read the current goal objective. Before making changes, read all of {outcome_file}, including Fix Round {fix_round.round} Corrections, "
+            f"and emit exactly: {OUTCOME_READ_V2_PREFIX}{payload}. Then implement the frozen fix-round corrections to the letter and continue until the goal status is complete."
+        )
     payload = json.dumps({"path": str(outcome_file), "sha256": outcome_sha}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return (
         f"Read the current goal objective. Before making changes, read {outcome_file} and emit exactly: "
@@ -147,14 +239,24 @@ def build_launcher_text(outcome_file: Path, outcome_sha: str) -> str:
 
 
 def parse_outcome_read_marker(text: str) -> dict | None:
-    idx = text.find(OUTCOME_READ_PREFIX)
+    idx = text.find(OUTCOME_READ_V2_PREFIX)
+    version = 2
+    prefix = OUTCOME_READ_V2_PREFIX
+    if idx < 0:
+        idx = text.find(OUTCOME_READ_PREFIX)
+        version = 1
+        prefix = OUTCOME_READ_PREFIX
     if idx < 0:
         return None
     try:
-        obj, _ = json.JSONDecoder().raw_decode(text[idx + len(OUTCOME_READ_PREFIX):].lstrip())
+        obj, _ = json.JSONDecoder().raw_decode(text[idx + len(prefix):].lstrip())
     except json.JSONDecodeError:
         return None
-    return obj if isinstance(obj, dict) else None
+    if not isinstance(obj, dict):
+        return None
+    obj = dict(obj)
+    obj["_marker_version"] = version
+    return obj
 
 
 def normalize_goal_status(raw: object) -> str:
@@ -718,10 +820,11 @@ def launch_and_handshake(args: argparse.Namespace, raw: TextIO, rpc: TextIO, err
     thread_id = None
     codex_bin = resolve_codex_bin(args)
     outcome_sha = sha256_file(outcome_file)
+    fix_round = detect_fix_round_info(outcome_file)
     run_id = args.run_id or outcome_file.parent.name or hashlib.sha256(str(evidence_dir).encode()).hexdigest()[:16]
-    objective = build_goal_objective(outcome_file, outcome_sha, run_id)
+    objective = build_goal_objective(outcome_file, outcome_sha, run_id, fix_round)
     expected = parse_goal_header(objective) or {}
-    launcher = build_launcher_text(outcome_file, outcome_sha)
+    launcher = build_launcher_text(outcome_file, outcome_sha, fix_round)
     try:
         proc = subprocess.Popen([codex_bin, "app-server", "--listen", "stdio://"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, cwd=str(cwd), start_new_session=(os.name == "posix"))
         _stash_pgid(proc)
@@ -733,7 +836,7 @@ def launch_and_handshake(args: argparse.Namespace, raw: TextIO, rpc: TextIO, err
         thread_id = thread["result"]["thread"]["id"]
         ACTIVE_CLEANUP.update({"proc": proc, "raw": raw, "rpc": rpc, "err": err, "meta": meta, "thread_id": thread_id})
         install_signal_handlers()
-        emit_meta(meta, event="thread_started", thread_id=thread_id, ephemeral=False, outcome_sha256=outcome_sha, run_id=run_id)
+        emit_meta(meta, event="thread_started", thread_id=thread_id, ephemeral=False, outcome_sha256=outcome_sha, run_id=run_id, fix_round=fix_round.round if fix_round else None)
         write_codex_env_snapshot(args)
         current = rpc_call(proc, raw, rpc, err, 3, "thread/goal/get", {"threadId": thread_id}, args.handshake_timeout_sec).get("result") or {}
         existing = parse_goal_header(extract_goal_objective(current))
@@ -768,8 +871,30 @@ def final_goal_check(proc: subprocess.Popen, raw: TextIO, rpc: TextIO, err: Text
     return canonical
 
 
-def validate_outcome_read_marker(obs: TurnObservation, path: str, sha: str, meta: TextIO) -> bool:
+def validate_outcome_read_marker(obs: TurnObservation, path: str, sha: str, meta: TextIO, fix_round: FixRoundInfo | None = None) -> bool:
+    if fix_round is not None:
+        expected = {
+            "path": path,
+            "sha256": sha,
+            "line_count": fix_round.line_count,
+            "fix_round": fix_round.round,
+            "corrections_start_line": fix_round.corrections_start_line,
+            "corrections_sha256": fix_round.corrections_sha256,
+        }
+        for marker in obs.outcome_read_markers:
+            if marker.get("_marker_version") != 2:
+                emit_meta(meta, event="outcome_read_marker_v1_rejected_for_fix_round", fix_round=fix_round.round)
+                continue
+            mismatches = sorted(k for k, v in expected.items() if marker.get(k) != v)
+            ok = not mismatches
+            emit_meta(meta, event="outcome_read_marker_v2", match=ok, mismatches=mismatches, fix_round=fix_round.round)
+            if ok:
+                return True
+        emit_meta(meta, event="outcome_read_marker_missing_or_mismatch", expected_path=path, expected_sha256=sha, marker_count=len(obs.outcome_read_markers), fix_round=fix_round.round, required_marker="BS_OUTCOME_READ_V2")
+        return False
     for marker in obs.outcome_read_markers:
+        if marker.get("_marker_version") != 1:
+            continue
         ok = marker.get("path") == path and marker.get("sha256") == sha
         emit_meta(meta, event="outcome_read_marker", path=marker.get("path"), sha256=marker.get("sha256"), match=ok)
         if ok:
@@ -822,6 +947,7 @@ def main() -> int:
         return 4
     evidence = Path(args.evidence_dir).resolve()
     evidence.mkdir(parents=True, exist_ok=True)
+    fix_round = detect_fix_round_info(outcome)
     backoffs = [int(x) for x in args.launch_backoff.split(",") if x.strip()] or [1]
     with (evidence / "raw_vendor_output.jsonl").open("a", encoding="utf-8") as raw, (evidence / "rpc_requests.jsonl").open("a", encoding="utf-8") as rpc, (evidence / "vendor_stderr.txt").open("a", encoding="utf-8") as err, (evidence / "driver_events.jsonl").open("a", encoding="utf-8") as meta:
         proc = None
@@ -854,7 +980,7 @@ def main() -> int:
             if final != "complete":
                 emit_meta(meta, event="goal_non_success", goal_status=final, reason_code=f"goal_{final}_after_turn")
                 return 6
-            if not validate_outcome_read_marker(obs, outcome_path, outcome_sha, meta):
+            if not validate_outcome_read_marker(obs, outcome_path, outcome_sha, meta, fix_round):
                 emit_meta(meta, event="turn_semantic_failed", reason_code="outcome_read_evidence_missing")
                 return 6
             emit_meta(meta, event="driver_success", goal_status=final)

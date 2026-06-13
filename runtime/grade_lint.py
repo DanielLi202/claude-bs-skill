@@ -191,6 +191,23 @@ FRONTEND_PENDING_DISMISSAL_NEGATIVE_TERMS=re.compile(r"\b(?:ignored?|blocked|gua
 FRONTEND_PENDING_ESCAPE_PATH=re.compile(r"\b(?:Escape|Esc)\b", re.I)
 FRONTEND_PENDING_OVERLAY_PATH=re.compile(r"\b(?:(?:overlay|backdrop|scrim)[-_\s]?(?:click|tap)|outside\s+click|click(?:ing)?\s+outside|backdrop\s+click|overlay\s+click)\b", re.I)
 FRONTEND_PENDING_ROUTE_SURFACE_PATH=re.compile(r"\b(?:route|routing|navigate|navigation|surface\s+change|view\s+switch|switch(?:ing)?\s+(?:view|surface|project|workspace|route)|Rail\s+view|project\s+switch|workspace\s+switch)\b", re.I)
+FRONTEND_OUTCOME_CAPSULE_LAYER_SCOPE=re.compile(r"\bcapsuleModel\b|\bnarrowing\s+layer\b|\bnarrow(?:s|ed|ing)?\b[^.;\n]{0,80}\boutcome[_\s.-]?capsule\b|\boutcome[_\s.-]?capsule\b[^.;\n]{0,80}\bnarrow(?:s|ed|ing)?\b", re.I)
+FRONTEND_OUTCOME_CAPSULE_SCHEMA_SCOPE=re.compile(r"\boutcome-capsule\.md\b|\bschema[-_\s]?v?1\.2\b|\bschema_version\b", re.I)
+FRONTEND_INPUT_SCHEMA_SURFACE_SCOPE=re.compile(r"\binput_validation_or_schema\b|\binput[-_\s]?validation\b[^.;\n]{0,80}\bschema\b|\bschema\b[^.;\n]{0,80}\binput[-_\s]?validation\b", re.I)
+FRONTEND_SCHEMA_VALID_FIXTURE_EVIDENCE=re.compile(r"\bschema[-_\s]?valid\s+fixture\b|\bfixture\b[^.;\n]{0,120}\bpasses?\s+(?:the\s+)?(?:full\s+)?schema\b|\bfull\s+schema\b[^.;\n]{0,120}\bfixture\b", re.I)
+FRONTEND_TAGS_SCHEMA_CONTEXT=re.compile(r"\btags\b[^.;\n]{0,120}\b(?:schema|outcome-capsule|schema_version|v1\.2)\b|\b(?:schema|outcome-capsule|schema_version|v1\.2)\b[^.;\n]{0,120}\btags\b", re.I)
+FRONTEND_OUTCOME_TAGS_RENDER_SCOPE=re.compile(r"docs/ux/prototype/screens/outcome\.jsx|\boutcome\.tags\[\]", re.I)
+FRONTEND_TAGS_RENDER_NONEMPTY_FIXTURE=re.compile(r"\b(?:tdd|exploratory|dogfood|migration|experiment)\b", re.I)
+FRONTEND_TAGS_EMPTY_HIDDEN_EVIDENCE=re.compile(r"\b(?:empty|none|zero|absent|hidden|hide|omitted)\b[^.;\n]{0,120}\btags?\b|\btags?\b[^.;\n]{0,120}\b(?:empty|none|zero|absent|hidden|hide|omitted)\b", re.I)
+FRONTEND_EXECUTE_COMMAND=re.compile(r"\bexecute\b|commands/execute|Approve\s*&\s*start\s+Conduct", re.I)
+FRONTEND_RESHAPE_COMMAND=re.compile(r"\bre[-_\s]?shape\b|\breShape\b|commands/re-shape", re.I)
+FRONTEND_COMMAND_CONTEXT=re.compile(r"\bPESSIMISTIC\b|\bDA[-_\s]?2[89]\b|\bIf[-_\s]?Match\b", re.I)
+FRONTEND_IF_MATCH_EVIDENCE=re.compile(r"\bIf[-_\s]?Match\b", re.I)
+FRONTEND_INLINE_ERROR_EVIDENCE=re.compile(r"\binline\b[^.;\n]{0,80}\b(?:error|failure|alert|copy)\b|\b(?:error|failure|alert)\b[^.;\n]{0,80}\binline\b", re.I)
+FRONTEND_CATCH_FAILURE_EVIDENCE=re.compile(r"\bcatch(?:es|ed|ing)?\b|\brejection\b|\breject(?:s|ed|ing)?\b|\bfailure[-_\s]?handling\b|\bon\s+failure\b|\btransport\s+failure\b", re.I)
+FRONTEND_CONFLICT_REFETCH_SCOPE=re.compile(r"\b(?:409|revision_conflict)\b[\s\S]{0,220}\brefetch(?:es|ed|ing)?\b|\brefetch(?:es|ed|ing)?\b[\s\S]{0,220}\b(?:409|revision_conflict)\b", re.I)
+FRONTEND_REFETCH_FAILURE_EVIDENCE=re.compile(r"\b(?:refetch|GET)\b[^.;\n]{0,120}\b(?:fail(?:s|ed|ure)?|reject(?:s|ed|ion)|error)\b|\b(?:fail(?:s|ed|ure)?|reject(?:s|ed|ion)|error)\b[^.;\n]{0,120}\b(?:refetch|GET)\b", re.I)
+FRONTEND_PENDING_CLEARED_OR_STATUS_RESET=re.compile(r"\bpending\b[^.;\n]{0,120}\b(?:clear(?:s|ed|ing)?|reset(?:s|ting)?|status\s+reset)\b|\b(?:clear(?:s|ed|ing)?|reset(?:s|ting)?|status\s+reset)\b[^.;\n]{0,120}\bpending\b", re.I)
 EXACT_VERSION_RE=re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 class LintError(ValueError): pass
 
@@ -1312,6 +1329,98 @@ def validate_frontend_ui_source_affordance_evidence(bs, required_acceptance, acc
             if missing:
                 errors.append(f"frontend_ui_source_affordance_evidence[{item_id}] cited {source_label} missing affordances: {','.join(missing)}")
 
+def validate_frontend_outcome_capsule_schema_guard_evidence(bs, required_acceptance, acceptance_status, spec, neg, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not frontend_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    scope=text_blob(outcome_text, grade_text)
+    if not (
+        has_non_negated_scope_term(FRONTEND_OUTCOME_CAPSULE_LAYER_SCOPE, scope)
+        and has_non_negated_scope_term(FRONTEND_OUTCOME_CAPSULE_SCHEMA_SCOPE, scope)
+        and has_non_negated_scope_term(FRONTEND_INPUT_SCHEMA_SURFACE_SCOPE, scope)
+    ):
+        return
+    evidence_text=frontend_evidence_text(bs, grade_text)
+    facets=(
+        ('schema_version', re.compile(r"\bschema_version\b", re.I)),
+        ('iteration', re.compile(r"\biteration\b", re.I)),
+        ('output_contract', re.compile(r"\boutput_contract\b", re.I)),
+        ('tags_controlled_or_unknown', re.compile(r"\btags?\b[\s\S]{0,160}\b(?:unknown|controlled[-_\s]?vocabulary|controlled[-_\s]?vocab)\b|\b(?:unknown|controlled[-_\s]?vocabulary|controlled[-_\s]?vocab)\b[\s\S]{0,160}\btags?\b", re.I)),
+        ('high_risk_actions_action_enum', re.compile(r"\bhigh_risk_actions?\b[\s\S]{0,180}\b(?:action[-_\s]?enum|deploy|delete|db_write|external_api|payment|merge_pr)\b|\b(?:action[-_\s]?enum|deploy|delete|db_write|external_api|payment|merge_pr)\b[\s\S]{0,180}\bhigh_risk_actions?\b", re.I)),
+        ('groundings_locator_rule', re.compile(r"\bgroundings?\b[\s\S]{0,180}\b(?:source_type|url\s*/\s*path|url-or-path|url/path|url\b|path\b)\b|\b(?:source_type|url\s*/\s*path|url-or-path|url/path)\b[\s\S]{0,180}\bgroundings?\b", re.I)),
+        ('supports_non_empty', re.compile(r"\bsupports\b[\s\S]{0,120}\b(?:non[-_\s]?empty|not\s+empty|>=\s*1|at\s+least\s+one|required)\b|\b(?:non[-_\s]?empty|not\s+empty|>=\s*1|at\s+least\s+one|required)\b[\s\S]{0,120}\bsupports\b", re.I)),
+        ('schema_valid_fixture', FRONTEND_SCHEMA_VALID_FIXTURE_EVIDENCE),
+    )
+    missing=[name for name,pattern in facets if not has_non_negated_scope_term(pattern, evidence_text)]
+    if missing:
+        errors.append(f"frontend_outcome_capsule_schema_guard_evidence missing families: {','.join(missing)} (cycle-025 F7)")
+
+def validate_frontend_outcome_tags_render_evidence(bs, required_acceptance, acceptance_status, spec, neg, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not frontend_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    scope=text_blob(outcome_text, grade_text)
+    if not (
+        has_non_negated_scope_term(FRONTEND_OUTCOME_TAGS_RENDER_SCOPE, scope)
+        and has_non_negated_scope_term(FRONTEND_TAGS_SCHEMA_CONTEXT, scope)
+    ):
+        return
+    evidence_text=frontend_evidence_text(bs, grade_text)
+    facets=(
+        ('tags', re.compile(r"\btags?\b", re.I)),
+        ('chip_or_row', re.compile(r"\b(?:chip|row)s?\b", re.I)),
+        ('visible_or_rendered', re.compile(r"\b(?:visible|render(?:s|ed|ing)?|surfaces?)\b", re.I)),
+        ('non_empty_fixture_vocab', FRONTEND_TAGS_RENDER_NONEMPTY_FIXTURE),
+        ('empty_or_hidden_behavior', FRONTEND_TAGS_EMPTY_HIDDEN_EVIDENCE),
+    )
+    missing=[name for name,pattern in facets if not has_non_negated_scope_term(pattern, evidence_text)]
+    if missing:
+        errors.append(f"frontend_outcome_tags_render_evidence missing facets: {','.join(missing)} (cycle-025 F8)")
+
+def frontend_command_contexts(pattern, text, radius=260):
+    contexts=[]
+    for match in pattern.finditer(text or ''):
+        contexts.append(text[max(0,match.start()-radius):match.end()+radius])
+    return contexts
+
+def frontend_command_named_in_pessimistic_scope(pattern, text):
+    for context in frontend_command_contexts(pattern, text, radius=220):
+        if has_non_negated_scope_term(FRONTEND_COMMAND_CONTEXT, context):
+            return True
+    return False
+
+def frontend_command_has_facet(command_pattern, facet_pattern, evidence_text):
+    return any(has_non_negated_scope_term(facet_pattern, context) for context in frontend_command_contexts(command_pattern, evidence_text))
+
+def validate_frontend_pessimistic_command_matrix(bs, required_acceptance, acceptance_status, spec, neg, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not frontend_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    scope=text_blob(outcome_text, grade_text)
+    evidence_text=frontend_evidence_text(bs, grade_text)
+    commands=(
+        ('execute', FRONTEND_EXECUTE_COMMAND),
+        ('re_shape', FRONTEND_RESHAPE_COMMAND),
+    )
+    facets=(
+        ('If-Match', FRONTEND_IF_MATCH_EVIDENCE),
+        ('pending_or_scoped_disable', FRONTEND_PENDING_DISABLE_TERMS),
+        ('inline_error', FRONTEND_INLINE_ERROR_EVIDENCE),
+        ('catch_or_failure_handling', FRONTEND_CATCH_FAILURE_EVIDENCE),
+    )
+    for name,pattern in commands:
+        if not frontend_command_named_in_pessimistic_scope(pattern, scope):
+            continue
+        missing=[facet for facet,facet_pattern in facets if not frontend_command_has_facet(pattern, facet_pattern, evidence_text)]
+        if missing:
+            errors.append(f"frontend_pessimistic_command_matrix[{name}] missing facets: {','.join(missing)} (cycle-025 F10)")
+    if has_non_negated_scope_term(FRONTEND_CONFLICT_REFETCH_SCOPE, scope):
+        conflict_facets=(
+            ('refetch_failure_or_GET_failure', FRONTEND_REFETCH_FAILURE_EVIDENCE),
+            ('pending_cleared_or_status_reset', FRONTEND_PENDING_CLEARED_OR_STATUS_RESET),
+            ('inline_error', FRONTEND_INLINE_ERROR_EVIDENCE),
+        )
+        missing=[name for name,pattern in conflict_facets if not has_non_negated_scope_term(pattern, evidence_text)]
+        if missing:
+            errors.append(f"frontend_pessimistic_command_matrix[conflict_refetch] missing facets: {','.join(missing)} (cycle-025 F11)")
+
 def load_yaml_path(path):
     if yaml is not None:
         try:
@@ -1903,6 +2012,9 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
     validate_frontend_terminal_state_enum_coverage(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_frontend_da30_retry_snapshot_retention(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_frontend_ui_source_affordance_evidence(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_frontend_outcome_capsule_schema_guard_evidence(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_frontend_outcome_tags_render_evidence(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    validate_frontend_pessimistic_command_matrix(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, spec+neg, errors, grade_claims)
     validate_rpc_cleanup_acceptance_obligations(required_acceptance, acceptance_status, spec+neg, errors)
     validate_event_source_obligations(required_acceptance, spec+neg, errors)
