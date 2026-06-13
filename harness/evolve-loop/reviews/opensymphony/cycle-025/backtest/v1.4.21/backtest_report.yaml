@@ -55,17 +55,12 @@ cycles:
   baseline_error_count: 9
   new_error_count: 9
   delta_errors: []
-- &id001
-  cycle: cycle-022
+- cycle: cycle-022
   risk: medium
   grade: grade_round_3.md
   baseline_error_count: 5
-  new_error_count: 7
-  delta_errors:
-  - 'frontend_pessimistic_command_matrix[execute] missing facets: pending_or_scoped_disable,inline_error,catch_or_failure_handling
-    (cycle-025 F10)'
-  - 'frontend_pessimistic_command_matrix[re_shape] missing facets: pending_or_scoped_disable,inline_error,catch_or_failure_handling
-    (cycle-025 F10)'
+  new_error_count: 5
+  delta_errors: []
 - cycle: cycle-023
   risk: low
   grade: grade_round_2.md
@@ -91,5 +86,4 @@ cycles:
   - 'frontend_pessimistic_command_matrix[conflict_refetch] missing facets: refetch_failure_or_GET_failure,pending_cleared_or_status_reset
     (cycle-025 F11)'
 must_fire: true
-misfire_candidates:
-- *id001
+misfire_candidates: []
