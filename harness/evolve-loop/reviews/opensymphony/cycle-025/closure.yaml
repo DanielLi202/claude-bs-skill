@@ -22,5 +22,5 @@ escalated_to_human:
   agent to set the goal complete/blocked or continue; do NOT auto-complete or change
   the default success oracle without maintainer approval. [needs_human; cycle-025
   r2; GOAL — goal_active_after_turn now 8 occurrences across cycles 022-025]'
-closed: false
-updated_at: '2026-06-13T02:51:03Z'
+closed: true
+updated_at: '2026-06-13T02:51:11Z'
