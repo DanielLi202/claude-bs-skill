@@ -116,7 +116,9 @@ class CodexDriverUnitTests(unittest.TestCase):
                 codex_driver.observe_event({'method': 'item/completed', 'params': {'item': {'type': 'commandExecution', 'command': ['cargo', 'build'], 'exitCode': 101}}}, obs)
                 codex_driver.observe_event({'method': 'item/commandExecution/outputDelta', 'params': {}}, obs)
             self.assertEqual(obs.command_completed_count, 5)
-            self.assertEqual(list(obs.command_fp_window)[0], ('cargo build', 101))
+            fp, ts = list(obs.command_fp_window)[0]  # entries are ((cmd, exit), monotonic_ts)
+            self.assertEqual(fp, ('cargo build', 101))
+            self.assertIsInstance(ts, float)
             self.assertIsNone(obs.last_real_progress_at)
             codex_driver.observe_event({'method': 'turn/diff/updated', 'params': {}}, obs)
             self.assertIsNotNone(obs.last_real_progress_at)
@@ -157,6 +159,52 @@ class CodexDriverUnitTests(unittest.TestCase):
             # a real source edit must change it
             (root / 'src.rs').write_text('fn main(){ /* edit */ }', encoding='utf-8')
             self.assertNotEqual(h1, codex_driver.source_tree_hash(root, evidence))
+
+    def test_source_tree_hash_excludes_nested_build_dirs(self):
+        # review P2-4: nested node_modules/target must be pruned, not only top-level
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            evidence = root / 'evidence'; evidence.mkdir()
+            (root / 'packages' / 'app').mkdir(parents=True)
+            (root / 'packages' / 'app' / 'main.ts').write_text('export const x = 1', encoding='utf-8')
+            nested = root / 'packages' / 'app' / 'node_modules'
+            nested.mkdir()
+            (nested / 'dep.js').write_text('a', encoding='utf-8')
+            h1 = codex_driver.source_tree_hash(root, evidence)
+            # churn the NESTED build dir — source hash must not move
+            (nested / 'dep.js').write_text('b' * 5000, encoding='utf-8')
+            (nested / 'dep2.js').write_text('c', encoding='utf-8')
+            self.assertEqual(h1, codex_driver.source_tree_hash(root, evidence))
+
+    def test_progress_suspect_recency_ages_out_stale_repeats(self):
+        # review P1-1: 4 early identical commands then a long-running command (no new
+        # completions) must NOT remain a loud repeat once they fall outside the window.
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            evidence = root / 'evidence'; evidence.mkdir()
+            obs = codex_driver.TurnObservation(root, evidence)
+            for _ in range(4):
+                codex_driver.observe_event({'method': 'item/completed', 'params': {'item': {'type': 'commandExecution', 'command': ['cargo', 'test'], 'exitCode': 0}}}, obs)
+            now = list(obs.command_fp_window)[-1][1]
+            # counted within a fresh window
+            m_fresh = codex_driver.compute_progress_suspect_metrics(obs, now=now, command_recency_sec=60)
+            self.assertEqual(m_fresh['command_repeat_max'], 4)
+            # but 1000s later (a long command still running, zero new completions) they age out
+            m_stale = codex_driver.compute_progress_suspect_metrics(obs, now=now + 1000, command_recency_sec=60)
+            self.assertEqual(m_stale['command_repeat_max'], 0)
+            self.assertFalse(codex_driver.progress_suspect_cheap_signal(m_stale, 4, 0.20, 0.70))
+
+    def test_progress_suspect_empty_command_not_counted(self):
+        # review P2-3: missing command text must not collapse into a ("", exit) repeat
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            evidence = root / 'evidence'; evidence.mkdir()
+            obs = codex_driver.TurnObservation(root, evidence)
+            for _ in range(6):
+                codex_driver.observe_event({'method': 'item/completed', 'params': {'item': {'type': 'commandExecution', 'exitCode': 0}}}, obs)
+            self.assertEqual(obs.command_completed_count, 6)
+            self.assertEqual(len(obs.command_fp_window), 0)
+            self.assertEqual(codex_driver.compute_progress_suspect_metrics(obs)['command_repeat_max'], 0)
 
     def test_evidence_delta_ignores_preexisting_and_driver_logs(self):
         with tempfile.TemporaryDirectory() as td:
@@ -247,7 +295,7 @@ class CodexDriverUnitTests(unittest.TestCase):
         self.assertIn('start_new_session=(os.name == "posix")', source)
         self.assertIn('_stash_pgid(proc)', source)
         self.assertIn('os.killpg', source)
-        self.assertIn('"version": "1.4.22"', source)
+        self.assertIn('"version": "1.4.23"', source)
         self.assertIn('--terminal-candidate-idle-sec', source)
         self.assertIn('--on-terminal-candidate', source)
 
@@ -411,6 +459,14 @@ for line in sys.stdin:
                 emit({'method':'item/completed','params':{'item':{'type':'commandExecution','command':['cargo','build'],'exitCode':101}}})
                 emit({'method':'item/commandExecution/outputDelta','params':{}})
                 time.sleep(0.1)
+        elif mode == 'command_loop_with_progress':
+            # Looks loud (repeated command) BUT emits real progress (turn/diff/updated)
+            # every iteration — E7 must NOT fire (recent_real_progress keeps clearing).
+            while True:
+                emit({'method':'item/completed','params':{'item':{'type':'commandExecution','command':['cargo','build'],'exitCode':101}}})
+                emit({'method':'item/commandExecution/outputDelta','params':{}})
+                emit({'method':'turn/diff/updated','params':{}})
+                time.sleep(0.1)
         elif mode == 'text_delta_only':
             if marker:
                 emit({'method':'item/agentMessage/delta','params':{'itemId':'msg-1','delta':marker}})
@@ -438,6 +494,16 @@ for line in sys.stdin:
         elif mode == 'grandchild_then_complete':
             gc = subprocess.Popen(['sleep', '120'])
             open('grandchild.pid', 'w').write(str(gc.pid))
+            open('workspace-write.txt', 'w').write('done')
+            if marker:
+                emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':marker + ' Done'}}})
+            emit({'jsonrpc':'2.0','method':'turn/completed','params':{'turn':{'status':'completed'}}})
+        elif mode == 'nudge_then_die':
+            # turn 1 completes normally; the nudge turn (turn_count>=2) kills the app-server
+            # AFTER its turn/start response, so the driver must fail closed, not exit 1.
+            if turn_count >= 2:
+                sys.exit(0)
+            time.sleep(0.05)
             open('workspace-write.txt', 'w').write('done')
             if marker:
                 emit({'method':'item/completed','params':{'item':{'type':'agentMessage','phase':'final_answer','text':marker + ' Done'}}})
@@ -548,6 +614,27 @@ class CodexDriverIntegrationTests(unittest.TestCase):
         self.assertNotIn('turn_progress_suspect_terminated', names)
         self.assertIn('turn_wall_clock_limit', names)
 
+    def test_progress_suspect_does_not_fire_when_real_progress_present(self):
+        # review P2-6: a loud repeated command that ALSO emits turn/diff/updated each
+        # iteration is making real progress -> recent_real_progress clears -> no fire.
+        rc, events, _requests, _record, _stderr = self.run_driver(
+            'command_loop_with_progress', timeout=25,
+            extra_args=['--progress-suspect-age-sec', '1', '--progress-suspect-poll-sec', '1',
+                        '--progress-suspect-stagnant-polls', '2', '--progress-suspect-repeat-k', '4',
+                        '--wall-clock-limit-sec', '6', '--on-wall-clock-limit', 'terminate'])
+        names = [e['event'] for e in events]
+        self.assertNotIn('turn_progress_suspect', names)
+        self.assertIn('turn_wall_clock_limit', names)
+
+    def test_conduct_forwards_progress_suspect_and_nudge_flags(self):
+        src = (Path(__file__).resolve().parents[1] / 'runtime' / 'conduct.sh').read_text(encoding='utf-8')
+        for flag in ('--progress-suspect-age-sec', '--on-progress-suspect', '--goal-completion-nudge'):
+            self.assertIn(flag, src)
+        # parsed AND forwarded into the driver ARGS, and the policy value is validated
+        self.assertIn('ARGS+=(--on-progress-suspect', src)
+        self.assertIn('ARGS+=(--goal-completion-nudge)', src)
+        self.assertIn('invalid --on-progress-suspect', src)
+
     def test_goal_active_without_nudge_flag_returns_6_and_sends_no_nudge(self):
         rc, events, _requests, _record, _stderr = self.run_driver('ok', extra_env={'FAKE_FINAL_GOAL_STATUS': 'active'})
         self.assertEqual(rc, 6)
@@ -562,6 +649,18 @@ class CodexDriverIntegrationTests(unittest.TestCase):
         self.assertEqual([e for e in events if e['event'] == 'goal_completion_nudge_result'][-1]['goal_status'], 'complete')
         self.assertEqual(rc, 0, _stderr)
         self.assertIn('driver_success', names)
+
+    def test_goal_completion_nudge_failure_fails_closed_not_exit_1(self):
+        # review P1-2: if the nudge turn errors / kills the app-server, the driver must
+        # map to goal_non_success / exit 6, never an uncaught exit 1.
+        rc, events, _requests, _record, _stderr = self.run_driver(
+            'nudge_then_die', timeout=20, extra_args=['--goal-completion-nudge'],
+            extra_env={'FAKE_FINAL_GOAL_STATUS': 'active'})
+        names = [e['event'] for e in events]
+        self.assertIn('goal_completion_nudge_sent', names)
+        self.assertIn('goal_completion_nudge_recheck_skipped', names)
+        self.assertIn('goal_non_success', names)
+        self.assertEqual(rc, 6, _stderr)
 
     def test_goal_completion_nudge_is_one_shot_and_oracle_still_blocks(self):
         # nudge sent once, goal stays active -> driver still fails closed (oracle unchanged)

@@ -27,9 +27,10 @@ updated_at: '2026-06-13T02:51:11Z'
 escalations_disposition:
   adjudicated_by: maintainer, per AI-council verdict ~/.claude/council-logs/20260613-211210-bs-evolve-7-escalations.md
   adjudicated_at: '2026-06-13'
-  goal_completion_nudge: IMPLEMENTED in v1.4.22 (opt-in --goal-completion-nudge; one follow-up turn when a
-    semantically-validated turn leaves the goal active; never auto-completes, oracle unchanged; enabled by
-    default in commands/bs.md conduct invocation). Resolves the recurring goal_active_after_turn (8x cycles 022-025).
+  goal_completion_nudge: IMPLEMENTED in v1.4.22, hardened in v1.4.23 (opt-in --goal-completion-nudge; one
+    follow-up turn when a semantically-validated turn leaves the goal active; never auto-completes, oracle
+    unchanged; RECOMMENDED (SHOULD) by commands/bs.md — conduct.sh's own default stays off). Resolves the
+    recurring goal_active_after_turn (8x cycles 022-025).
   frontend_semantic_prompt_checklist: OPEN — the 3 grade/role + grade/critic + shape/role frontend semantic
     rules (F7-F11) are the deferred "UI-contract review" prompt-layer (bucket 2), held for a separate decision
     on whether bs prompts should grow a frontend/UI-source normative layer (twin of the v1.4.15 agent-contract

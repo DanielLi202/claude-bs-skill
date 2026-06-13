@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Codex app-server driver for bs v1.4.22.
+"""Codex app-server driver for bs v1.4.23.
 
 Delegates a frozen outcome capsule through a persistent, non-ephemeral Codex
 app-server thread using `thread/goal/set`, not text `/goal`. The driver computes
@@ -101,6 +101,9 @@ class TurnObservation:
     observed_skills: set[str] = field(default_factory=set)
     # E7 progress-suspect signals (see PROGRESS_* constants).
     event_fp_window: deque = field(default_factory=lambda: deque(maxlen=PROGRESS_EVENT_WINDOW))
+    # command_fp_window entries are ((normalized_command, exit_code), monotonic_ts) so repeats
+    # can be counted within a RECENT time window — a busy-loop keeps completing identical
+    # commands, while early repeats followed by one long-running command age out (review P1-1).
     command_fp_window: deque = field(default_factory=lambda: deque(maxlen=PROGRESS_COMMAND_WINDOW))
     command_completed_count: int = 0
     diff_update_count: int = 0
@@ -530,7 +533,9 @@ def observe_event(obj: dict, obs: TurnObservation) -> None:
         obs.note_real_progress()
     if method == "item/completed" and typ == "commandExecution":
         obs.command_completed_count += 1
-        obs.command_fp_window.append((_normalize_command(item.get("command")), item.get("exitCode")))
+        cmd_norm = _normalize_command(item.get("command"))
+        if cmd_norm:  # never collapse unknown/empty commands into one ("", exit) repeat (review P2-3)
+            obs.command_fp_window.append(((cmd_norm, item.get("exitCode")), time.monotonic()))
     text = item.get("text") or _content_text(item.get("content"))
     if isinstance(text, str) and text:
         obs.first_model_output_at = obs.first_model_output_at or time.monotonic()
@@ -702,10 +707,21 @@ def post_turn_validate(args: argparse.Namespace, obs: TurnObservation, meta: Tex
     return 0
 
 
-def compute_progress_suspect_metrics(obs: TurnObservation) -> dict:
-    """Pure summary of the rolling event/command windows (no I/O — unit-testable)."""
+def compute_progress_suspect_metrics(obs: TurnObservation, now: float | None = None, command_recency_sec: float | None = None) -> dict:
+    """Pure summary of the rolling event/command windows (no I/O — unit-testable).
+
+    When `now` + `command_recency_sec` are given, command repeats are counted only
+    among completions within the recent window: a real busy-loop keeps completing
+    identical commands, whereas a few early identical commands followed by one
+    legitimate long-running command (which emits NO completions) age out and stop
+    counting as a loud repeat (review P1-1). Without the args, all retained
+    commands are counted (back-compat / synchronous unit tests)."""
     events = list(obs.event_fp_window)
-    commands = list(obs.command_fp_window)
+    raw_commands = list(obs.command_fp_window)  # ((fp, ts), …)
+    if now is not None and command_recency_sec is not None:
+        commands = [fp for (fp, ts) in raw_commands if now - ts <= command_recency_sec]
+    else:
+        commands = [fp for (fp, _ts) in raw_commands]
     event_counts = Counter(events)
     command_counts = Counter(commands)
     ew = len(events)
@@ -733,12 +749,30 @@ def progress_suspect_cheap_signal(metrics: dict, repeat_k: int, novelty_max: flo
 
 
 def source_tree_hash(cwd: Path, evidence_dir: Path) -> str:
-    """Hash of source-only files (build/dep/cache dirs excluded) — the 'is anything
-    in source actually changing' confirmer. A clean long compile churns target/ but
-    leaves source stable; a busy-loop rewriting the same file also leaves it stable —
-    so stagnation alone never fires, only AND-ed with the loud-repeat signal."""
-    snap = snapshot_tree(cwd, evidence_dir)
-    items = sorted((p, d) for p, d in snap.files.items() if not (Path(p).parts and Path(p).parts[0] in PROGRESS_BUILD_DIRS))
+    """Hash of source-only files — the 'is anything in source actually changing'
+    confirmer. A clean long compile churns target/ but leaves source stable; a
+    busy-loop rewriting the same file also leaves it stable — so stagnation alone
+    never fires, only AND-ed with the loud-repeat signal. Build/dep/cache dirs are
+    pruned DURING descent at any depth (not only top-level), so nested node_modules/
+    target/.next never get stat'd and nested build churn cannot mask stagnation
+    (review P2-4)."""
+    er = evidence_dir.resolve()
+    items: list[tuple[str, str]] = []
+    for dirpath, dirnames, filenames in os.walk(cwd):
+        dirnames[:] = [d for d in dirnames if d not in PROGRESS_BUILD_DIRS and d not in {".git", "__pycache__"}]
+        dp = Path(dirpath)
+        if _is_relative_to(dp, er):
+            dirnames[:] = []
+            continue
+        for fn in filenames:
+            p = dp / fn
+            if _is_relative_to(p, er):
+                continue
+            try:
+                items.append((p.relative_to(cwd).as_posix(), _fingerprint(p)))
+            except (OSError, ValueError):
+                pass
+    items.sort()
     return hashlib.sha256(json.dumps(items, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
@@ -816,7 +850,11 @@ def wait_for_turn_completion(proc: subprocess.Popen, raw: TextIO, err: TextIO, m
             stale = True
         if args.progress_suspect_age_sec > 0 and elapsed >= args.progress_suspect_age_sec and now - last_suspect_eval >= args.progress_suspect_poll_sec:
             last_suspect_eval = now
-            metrics = compute_progress_suspect_metrics(obs)
+            # count command repeats only among recent completions: a busy-loop keeps
+            # completing identical commands across this span, while a single long-running
+            # command (no completions) ages its early repeats out (review P1-1).
+            command_recency_sec = args.progress_suspect_poll_sec * max(1, args.progress_suspect_stagnant_polls)
+            metrics = compute_progress_suspect_metrics(obs, now=now, command_recency_sec=command_recency_sec)
             recent_real_progress = obs.last_real_progress_at is not None and (now - obs.last_real_progress_at) < args.progress_suspect_poll_sec
             if recent_real_progress:
                 progress_suspect_emitted = False  # genuine forward motion re-arms detection
@@ -953,7 +991,7 @@ def launch_and_handshake(args: argparse.Namespace, raw: TextIO, rpc: TextIO, err
     try:
         proc = subprocess.Popen([codex_bin, "app-server", "--listen", "stdio://"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, cwd=str(cwd), start_new_session=(os.name == "posix"))
         _stash_pgid(proc)
-        rpc_call(proc, raw, rpc, err, 1, "initialize", {"clientInfo": {"name": "bs-codex-driver", "version": "1.4.22"}, "capabilities": {"experimentalApi": True}}, args.handshake_timeout_sec)
+        rpc_call(proc, raw, rpc, err, 1, "initialize", {"clientInfo": {"name": "bs-codex-driver", "version": "1.4.23"}, "capabilities": {"experimentalApi": True}}, args.handshake_timeout_sec)
         params = {"cwd": str(cwd), "approvalPolicy": "never", "sandbox": "workspace-write", "ephemeral": False}
         if args.model:
             params["model"] = args.model
@@ -1010,7 +1048,13 @@ def send_goal_completion_nudge(proc: subprocess.Popen, raw: TextIO, rpc: TextIO,
     changes the success oracle — the caller re-checks the real goal status after."""
     emit_meta(meta, event="goal_completion_nudge_sent", thread_id=thread_id)
     rpc_call(proc, raw, rpc, err, 700001, "turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": GOAL_NUDGE_TEXT}], "cwd": str(cwd), "approvalPolicy": "never", "sandboxPolicy": {"type": "workspaceWrite", "writableRoots": [str(cwd)], "networkAccess": False}, "effort": args.effort}, args.handshake_timeout_sec)
-    rc = wait_for_turn_completion(proc, raw, err, meta, obs, args)
+    # The nudge only resolves goal status — it produces no workspace delta, so run the
+    # wait with expected-effect disabled to avoid a spurious semantic_required_effect_missing
+    # observation on a successful no-delta nudge (review P2-5).
+    nudge_args = argparse.Namespace(**vars(args))
+    nudge_args.expected_effect_required = False
+    nudge_args.expected_effect_kind = "none"
+    rc = wait_for_turn_completion(proc, raw, err, meta, obs, nudge_args)
     emit_meta(meta, event="goal_completion_nudge_turn_done", rc=rc)
     return rc
 
@@ -1130,10 +1174,24 @@ def main() -> int:
                 return turn_rc
             final = final_goal_check(proc, raw, rpc, err, meta, thread_id, args.handshake_timeout_sec)
             if final == "active" and args.goal_completion_nudge:
+                # Fail-closed: a nudge turn that errors / kills the app-server must NOT
+                # raise out to a bare exit 1. Capture the rc, only re-check on a live
+                # process, and on any failure leave `final` at its non-complete value so
+                # the oracle below maps it to goal_non_success / exit 6 (review P1-2).
                 nudge_obs = TurnObservation(cwd, evidence)
-                send_goal_completion_nudge(proc, raw, rpc, err, meta, nudge_obs, args, thread_id, cwd)
-                final = final_goal_check(proc, raw, rpc, err, meta, thread_id, args.handshake_timeout_sec, req_id=800002)
-                emit_meta(meta, event="goal_completion_nudge_result", goal_status=final)
+                try:
+                    nudge_rc = send_goal_completion_nudge(proc, raw, rpc, err, meta, nudge_obs, args, thread_id, cwd)
+                except (LaunchTransient, LaunchFatal) as exc:
+                    emit_meta(meta, event="goal_completion_nudge_failed", reason=str(exc))
+                    nudge_rc = 2
+                if nudge_rc == 0 and proc.poll() is None:
+                    try:
+                        final = final_goal_check(proc, raw, rpc, err, meta, thread_id, args.handshake_timeout_sec, req_id=800002)
+                    except (LaunchTransient, LaunchFatal) as exc:
+                        emit_meta(meta, event="goal_completion_nudge_recheck_failed", reason=str(exc))
+                    emit_meta(meta, event="goal_completion_nudge_result", goal_status=final)
+                else:
+                    emit_meta(meta, event="goal_completion_nudge_recheck_skipped", nudge_rc=nudge_rc, proc_alive=proc.poll() is None)
             if final != "complete":
                 emit_meta(meta, event="goal_non_success", goal_status=final, reason_code=f"goal_{final}_after_turn")
                 return 6
