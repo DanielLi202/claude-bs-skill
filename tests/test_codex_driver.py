@@ -58,6 +58,10 @@ class CodexDriverUnitTests(unittest.TestCase):
         self.assertIn('--first-work-item-terminate-sec', source)
         self.assertIn('--on-no-work-items', source)
         self.assertIn('turn_no_work_items_stale', source)
+        self.assertIn('--progress-suspect-age-sec', source)
+        self.assertIn('--on-progress-suspect', source)
+        self.assertIn('turn_progress_suspect', source)
+        self.assertIn('--goal-completion-nudge', source)
         self.assertNotIn('exec --json', source)
 
     def test_codex_bin_env_requires_test_gate(self):
@@ -102,6 +106,57 @@ class CodexDriverUnitTests(unittest.TestCase):
             self.assertEqual(obs.skill_events_seen, 1)
             self.assertEqual(obs.observed_mcp_servers, {'alpha'})
             self.assertEqual(obs.observed_skills, {'beta'})
+
+    def test_progress_suspect_observe_event_tracks_commands_and_real_progress(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            evidence = root / 'evidence'; evidence.mkdir()
+            obs = codex_driver.TurnObservation(root, evidence)
+            for _ in range(5):
+                codex_driver.observe_event({'method': 'item/completed', 'params': {'item': {'type': 'commandExecution', 'command': ['cargo', 'build'], 'exitCode': 101}}}, obs)
+                codex_driver.observe_event({'method': 'item/commandExecution/outputDelta', 'params': {}}, obs)
+            self.assertEqual(obs.command_completed_count, 5)
+            self.assertEqual(list(obs.command_fp_window)[0], ('cargo build', 101))
+            self.assertIsNone(obs.last_real_progress_at)
+            codex_driver.observe_event({'method': 'turn/diff/updated', 'params': {}}, obs)
+            self.assertIsNotNone(obs.last_real_progress_at)
+            self.assertEqual(obs.diff_update_count, 1)
+
+    def test_progress_suspect_cheap_signal_fires_on_busy_loop_only(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            evidence = root / 'evidence'; evidence.mkdir()
+            busy = codex_driver.TurnObservation(root, evidence)
+            for _ in range(5):
+                codex_driver.observe_event({'method': 'item/completed', 'params': {'item': {'type': 'commandExecution', 'command': 'pytest -x', 'exitCode': 1}}}, busy)
+                codex_driver.observe_event({'method': 'item/commandExecution/outputDelta', 'params': {}}, busy)
+            mb = codex_driver.compute_progress_suspect_metrics(busy)
+            self.assertGreaterEqual(mb['command_repeat_max'], 4)
+            self.assertTrue(codex_driver.progress_suspect_cheap_signal(mb, 4, 0.20, 0.70))
+            # A diverse, low-repeat turn must NOT trip the cheap signal.
+            diverse = codex_driver.TurnObservation(root, evidence)
+            for i in range(8):
+                codex_driver.observe_event({'method': 'item/completed', 'params': {'item': {'type': 'commandExecution', 'command': ['echo', str(i)], 'exitCode': 0}}}, diverse)
+                codex_driver.observe_event({'method': 'item/started', 'params': {'item': {'type': 'fileChange'}}}, diverse)
+                codex_driver.observe_event({'method': 'item/completed', 'params': {'item': {'type': 'reasoning'}}}, diverse)
+            md = codex_driver.compute_progress_suspect_metrics(diverse)
+            self.assertFalse(codex_driver.progress_suspect_cheap_signal(md, 4, 0.20, 0.70))
+
+    def test_source_tree_hash_excludes_build_dirs(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            evidence = root / 'evidence'; evidence.mkdir()
+            (root / 'src.rs').write_text('fn main(){}', encoding='utf-8')
+            (root / 'target').mkdir()
+            (root / 'target' / 'a.o').write_text('x', encoding='utf-8')
+            h1 = codex_driver.source_tree_hash(root, evidence)
+            # build-artifact churn must not change the source hash (stagnation holds)
+            (root / 'target' / 'a.o').write_text('y' * 9999, encoding='utf-8')
+            (root / 'target' / 'b.o').write_text('z', encoding='utf-8')
+            self.assertEqual(h1, codex_driver.source_tree_hash(root, evidence))
+            # a real source edit must change it
+            (root / 'src.rs').write_text('fn main(){ /* edit */ }', encoding='utf-8')
+            self.assertNotEqual(h1, codex_driver.source_tree_hash(root, evidence))
 
     def test_evidence_delta_ignores_preexisting_and_driver_logs(self):
         with tempfile.TemporaryDirectory() as td:
@@ -192,7 +247,7 @@ class CodexDriverUnitTests(unittest.TestCase):
         self.assertIn('start_new_session=(os.name == "posix")', source)
         self.assertIn('_stash_pgid(proc)', source)
         self.assertIn('os.killpg', source)
-        self.assertIn('"version": "1.4.21"', source)
+        self.assertIn('"version": "1.4.22"', source)
         self.assertIn('--terminal-candidate-idle-sec', source)
         self.assertIn('--on-terminal-candidate', source)
 
@@ -261,6 +316,7 @@ if mode == 'exit':
     sys.exit(99)
 record = os.environ.get('FAKE_CODEX_RECORD')
 goal = None
+turn_count = 0
 final_status = os.environ.get('FAKE_FINAL_GOAL_STATUS', 'complete')
 emit_marker = os.environ.get('FAKE_EMIT_MARKER', '1') == '1'
 
@@ -305,7 +361,13 @@ for line in sys.stdin:
         if goal is None:
             emit({'jsonrpc':'2.0','id':req['id'],'result':{}})
         else:
-            status = final_status if req['id'] == 800001 else goal.get('status', 'active')
+            if req['id'] >= 800001:
+                if os.environ.get('FAKE_GOAL_COMPLETE_AFTER_NUDGE') == '1' and turn_count >= 2:
+                    status = 'complete'
+                else:
+                    status = final_status
+            else:
+                status = goal.get('status', 'active')
             emit({'jsonrpc':'2.0','id':req['id'],'result':{'goal':{'objective':goal['objective'],'status':status}}})
     elif method == 'thread/goal/set':
         goal = {'objective':req.get('params', {}).get('objective'), 'status':req.get('params', {}).get('status')}
@@ -313,9 +375,12 @@ for line in sys.stdin:
     elif method in ('thread/goal/clear', 'thread/archive'):
         emit({'jsonrpc':'2.0','id':req['id'],'result':{}})
     elif method == 'turn/start':
+        turn_count += 1
         text = req.get('params', {}).get('input', [{}])[0].get('text', '')
-        if record:
+        if record and turn_count == 1:
             open(record, 'w').write(json.dumps({'input': req.get('params', {}).get('input'), 'text': text}))
+        if record and turn_count >= 2:
+            open(record + '.nudge', 'w').write(json.dumps({'text': text, 'turn': turn_count}))
         emit({'jsonrpc':'2.0','id':req['id'],'result':{'turn':{'id':'turn-1'}}})
         marker = marker_from(text) if emit_marker else ''
         if mode == 'stderr_noise':
@@ -339,6 +404,13 @@ for line in sys.stdin:
                 emit({'method':'mcpServer/startupStatus/updated','params':{'serverName':'alpha'}})
                 emit({'method':'skills/changed','params':{'skillName':'beta'}})
                 time.sleep(0.05)
+        elif mode == 'command_busy_loop':
+            # LOUD busy-loop: identical failing command repeating forever, no file writes,
+            # no diff/fileChange (zero real progress). Exercises the E7 turn_progress_suspect path.
+            while True:
+                emit({'method':'item/completed','params':{'item':{'type':'commandExecution','command':['cargo','build'],'exitCode':101}}})
+                emit({'method':'item/commandExecution/outputDelta','params':{}})
+                time.sleep(0.1)
         elif mode == 'text_delta_only':
             if marker:
                 emit({'method':'item/agentMessage/delta','params':{'itemId':'msg-1','delta':marker}})
@@ -459,6 +531,46 @@ class CodexDriverIntegrationTests(unittest.TestCase):
         self.assertEqual(final['raw_goal_status'], 'usageLimited')
         self.assertIn('cleanup_goal_clear', [e['event'] for e in events])
         self.assertIn('cleanup_thread_archive', [e['event'] for e in events])
+
+    def test_progress_suspect_fires_observe_only_end_to_end(self):
+        rc, events, _requests, _record, _stderr = self.run_driver(
+            'command_busy_loop', timeout=25,
+            extra_args=['--progress-suspect-age-sec', '1', '--progress-suspect-poll-sec', '1',
+                        '--progress-suspect-stagnant-polls', '2', '--progress-suspect-repeat-k', '4',
+                        '--wall-clock-limit-sec', '6', '--on-wall-clock-limit', 'terminate'])
+        names = [e['event'] for e in events]
+        self.assertIn('turn_progress_suspect', names)
+        sus = [e for e in events if e['event'] == 'turn_progress_suspect'][0]
+        self.assertGreaterEqual(sus['command_repeat_max'], 4)
+        self.assertEqual(sus['policy'], 'observe')
+        self.assertFalse(sus['recent_real_progress'])
+        # observe-only: the suspect path NEVER reaps; only the explicit wall-clock limit ends the turn
+        self.assertNotIn('turn_progress_suspect_terminated', names)
+        self.assertIn('turn_wall_clock_limit', names)
+
+    def test_goal_active_without_nudge_flag_returns_6_and_sends_no_nudge(self):
+        rc, events, _requests, _record, _stderr = self.run_driver('ok', extra_env={'FAKE_FINAL_GOAL_STATUS': 'active'})
+        self.assertEqual(rc, 6)
+        names = [e['event'] for e in events]
+        self.assertNotIn('goal_completion_nudge_sent', names)
+        self.assertIn('goal_non_success', names)
+
+    def test_goal_completion_nudge_resolves_active_goal_to_complete(self):
+        rc, events, _requests, _record, _stderr = self.run_driver('ok', extra_args=['--goal-completion-nudge'], extra_env={'FAKE_FINAL_GOAL_STATUS': 'active', 'FAKE_GOAL_COMPLETE_AFTER_NUDGE': '1'})
+        names = [e['event'] for e in events]
+        self.assertIn('goal_completion_nudge_sent', names)
+        self.assertEqual([e for e in events if e['event'] == 'goal_completion_nudge_result'][-1]['goal_status'], 'complete')
+        self.assertEqual(rc, 0, _stderr)
+        self.assertIn('driver_success', names)
+
+    def test_goal_completion_nudge_is_one_shot_and_oracle_still_blocks(self):
+        # nudge sent once, goal stays active -> driver still fails closed (oracle unchanged)
+        rc, events, _requests, _record, _stderr = self.run_driver('ok', extra_args=['--goal-completion-nudge'], extra_env={'FAKE_FINAL_GOAL_STATUS': 'active'})
+        names = [e['event'] for e in events]
+        self.assertEqual(names.count('goal_completion_nudge_sent'), 1)
+        self.assertEqual([e for e in events if e['event'] == 'goal_completion_nudge_result'][-1]['goal_status'], 'active')
+        self.assertEqual(rc, 6)
+        self.assertIn('goal_non_success', names)
 
     def test_missing_outcome_read_marker_fails_even_when_goal_complete(self):
         rc, events, _requests, _record, _stderr = self.run_driver('ok', extra_env={'FAKE_EMIT_MARKER': '0'})

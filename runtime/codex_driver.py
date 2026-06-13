@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Codex app-server driver for bs v1.4.21.
+"""Codex app-server driver for bs v1.4.22.
 
 Delegates a frozen outcome capsule through a persistent, non-ephemeral Codex
 app-server thread using `thread/goal/set`, not text `/goal`. The driver computes
@@ -28,6 +28,7 @@ import sys
 import tempfile
 import time
 import tomllib
+from collections import Counter, deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TextIO
@@ -55,6 +56,20 @@ FIX_ROUND_MARKER_RE = re.compile(r"<!--\s*bs-fix-round:\s*(?P<round>\d+);[^>]*--
 FIX_ROUND_HEADING_RE = re.compile(r"^##\s+Fix Round\s+(?P<round>\d+)\b", re.I)
 CORRECTIONS_LINE_RE = re.compile(r"^\s*Corrections:\s*(?P<tail>.*)$", re.I)
 CORRECTIONS_LIST_ITEM_RE = re.compile(r"^\s*(?:\d+[.)]|[-*])\s+\S")
+
+# E7 turn_progress_suspect (v1.4.22): LOUD busy-loop / fake-alive detection.
+# Dual of turn_progress_stale ("silence is not failure"): "noise is not progress".
+# A vendor stuck in an identical-command retry loop, or rewriting the same file
+# back and forth, keeps stdout loud (so silence detectors never fire) while making
+# zero real progress (cycle-019 12h-hang class). The signals here are derived from
+# the event stream the driver already consumes plus a gated source-tree hash; the
+# detector is OBSERVE-ONLY by default and never reaps the process (post-soak only).
+PROGRESS_EVENT_WINDOW = 80      # rolling (method,item_type) fingerprints for novelty
+PROGRESS_COMMAND_WINDOW = 16    # rolling (normalized_command, exit_code) fingerprints
+# Source-only stagnation hash: a busy-loop that churns build artifacts must still
+# leave SOURCE untouched. Excluding build/dep/cache dirs keeps a clean long compile
+# (which legitimately rebuilds target/) from masking real source progress either way.
+PROGRESS_BUILD_DIRS = {"target", "node_modules", "dist", "build", ".cache", ".venv", "venv", ".next", ".turbo", "coverage", ".pytest_cache", ".mypy_cache", ".gradle", "out"}
 
 
 @dataclass
@@ -84,10 +99,20 @@ class TurnObservation:
     skill_events_seen: int = 0
     observed_mcp_servers: set[str] = field(default_factory=set)
     observed_skills: set[str] = field(default_factory=set)
+    # E7 progress-suspect signals (see PROGRESS_* constants).
+    event_fp_window: deque = field(default_factory=lambda: deque(maxlen=PROGRESS_EVENT_WINDOW))
+    command_fp_window: deque = field(default_factory=lambda: deque(maxlen=PROGRESS_COMMAND_WINDOW))
+    command_completed_count: int = 0
+    diff_update_count: int = 0
+    last_real_progress_at: float | None = None
 
     @property
     def write_action_count(self) -> int:
         return sum(self.command_actions.get(k, 0) for k in WRITE_ACTIONS)
+
+    def note_real_progress(self) -> None:
+        # turn/diff/updated or a completed fileChange == the workspace actually moved.
+        self.last_real_progress_at = time.monotonic()
 
     def start(self) -> None:
         self.turn_start_snapshot = snapshot_tree(self.cwd, self.evidence_dir)
@@ -446,12 +471,32 @@ def _mark_work_item(obs: TurnObservation) -> None:
         obs.first_work_item_at = time.monotonic()
 
 
+def _normalize_command(command: object) -> str:
+    """Collapse a command (list argv or string) to a stable fingerprint scalar so
+    an identical retried command matches across invocations regardless of argv
+    framing or incidental whitespace."""
+    if isinstance(command, list):
+        text = " ".join(str(part) for part in command)
+    elif isinstance(command, str):
+        text = command
+    elif command is None:
+        return ""
+    else:
+        text = str(command)
+    return " ".join(text.split())
+
+
 def observe_event(obj: dict, obs: TurnObservation) -> None:
     method = obj.get("method")
     params = obj.get("params") or {}
     params = params if isinstance(params, dict) else {}
     item = params.get("item") or {}
     item = item if isinstance(item, dict) else {}
+    item_type_fp = item.get("type") if isinstance(item.get("type"), str) else None
+    obs.event_fp_window.append((method if isinstance(method, str) else None, item_type_fp))
+    if method in {"turn/diff/updated", "thread/diff/updated"}:
+        obs.diff_update_count += 1
+        obs.note_real_progress()
     if isinstance(method, str) and method.startswith("mcpServer/"):
         obs.mcp_events_seen += 1
         name = _name_from_params(params, item)
@@ -481,6 +526,11 @@ def observe_event(obj: dict, obs: TurnObservation) -> None:
         _mark_work_item(obs)
     if method in {"item/started", "item/completed"} and typ == "fileChange":
         obs.file_change_events += 1
+    if method == "item/completed" and typ == "fileChange":
+        obs.note_real_progress()
+    if method == "item/completed" and typ == "commandExecution":
+        obs.command_completed_count += 1
+        obs.command_fp_window.append((_normalize_command(item.get("command")), item.get("exitCode")))
     text = item.get("text") or _content_text(item.get("content"))
     if isinstance(text, str) and text:
         obs.first_model_output_at = obs.first_model_output_at or time.monotonic()
@@ -652,6 +702,54 @@ def post_turn_validate(args: argparse.Namespace, obs: TurnObservation, meta: Tex
     return 0
 
 
+def compute_progress_suspect_metrics(obs: TurnObservation) -> dict:
+    """Pure summary of the rolling event/command windows (no I/O — unit-testable)."""
+    events = list(obs.event_fp_window)
+    commands = list(obs.command_fp_window)
+    event_counts = Counter(events)
+    command_counts = Counter(commands)
+    ew = len(events)
+    top_event = max(event_counts.values()) if event_counts else 0
+    return {
+        "event_window": ew,
+        "command_window": len(commands),
+        "distinct_events": len(event_counts),
+        "distinct_commands": len(command_counts),
+        "event_novelty_ratio": round(len(event_counts) / ew, 4) if ew else 1.0,
+        "top_event_freq": round(top_event / ew, 4) if ew else 0.0,
+        "command_repeat_max": max(command_counts.values()) if command_counts else 0,
+        "commands_completed": obs.command_completed_count,
+        "diff_updates": obs.diff_update_count,
+    }
+
+
+def progress_suspect_cheap_signal(metrics: dict, repeat_k: int, novelty_max: float, top_freq: float) -> bool:
+    """Stream-only gate (no FS): a loud identical-command repeat AND a low-novelty
+    event window. Gates the more expensive source-tree hash so the FS probe only
+    runs when the cheap signals already point at a busy-loop."""
+    if metrics["command_repeat_max"] < repeat_k:
+        return False
+    return metrics["event_novelty_ratio"] <= novelty_max or metrics["top_event_freq"] >= top_freq
+
+
+def source_tree_hash(cwd: Path, evidence_dir: Path) -> str:
+    """Hash of source-only files (build/dep/cache dirs excluded) — the 'is anything
+    in source actually changing' confirmer. A clean long compile churns target/ but
+    leaves source stable; a busy-loop rewriting the same file also leaves it stable —
+    so stagnation alone never fires, only AND-ed with the loud-repeat signal."""
+    snap = snapshot_tree(cwd, evidence_dir)
+    items = sorted((p, d) for p, d in snap.files.items() if not (Path(p).parts and Path(p).parts[0] in PROGRESS_BUILD_DIRS))
+    return hashlib.sha256(json.dumps(items, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+
+def _write_progress_suspect_marker(evidence_dir: Path, payload: dict) -> None:
+    try:
+        with (evidence_dir / "progress_suspect.jsonl").open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 def wait_for_turn_completion(proc: subprocess.Popen, raw: TextIO, err: TextIO, meta: TextIO, obs: TurnObservation, args: argparse.Namespace) -> int:
     start = time.monotonic()
     last_stdout = start
@@ -663,6 +761,9 @@ def wait_for_turn_completion(proc: subprocess.Popen, raw: TextIO, err: TextIO, m
     stale = False
     wall = False
     terminal_candidate = False
+    progress_suspect_emitted = False
+    last_suspect_eval = start
+    suspect_hash_history: deque = deque(maxlen=max(2, args.progress_suspect_stagnant_polls))
     obs.start()
     assert proc.stdout is not None and proc.stderr is not None
     wall_limit = args.wall_clock_limit_sec or (args.timeout_sec if args.timeout_sec > 0 and args.on_wall_clock_limit in {"fail", "terminate"} else 0)
@@ -713,6 +814,30 @@ def wait_for_turn_completion(proc: subprocess.Popen, raw: TextIO, err: TextIO, m
         if args.stale_notice_sec > 0 and not stale and silent > args.stale_notice_sec:
             emit_meta(meta, event="turn_progress_stale", stale_for_sec=round(silent, 3), stale_notice_sec=args.stale_notice_sec)
             stale = True
+        if args.progress_suspect_age_sec > 0 and elapsed >= args.progress_suspect_age_sec and now - last_suspect_eval >= args.progress_suspect_poll_sec:
+            last_suspect_eval = now
+            metrics = compute_progress_suspect_metrics(obs)
+            recent_real_progress = obs.last_real_progress_at is not None and (now - obs.last_real_progress_at) < args.progress_suspect_poll_sec
+            if recent_real_progress:
+                progress_suspect_emitted = False  # genuine forward motion re-arms detection
+            cheap = progress_suspect_cheap_signal(metrics, args.progress_suspect_repeat_k, args.progress_suspect_novelty_max, args.progress_suspect_top_freq)
+            workspace_stagnant = False
+            if cheap and not recent_real_progress:
+                suspect_hash_history.append(source_tree_hash(obs.cwd, obs.evidence_dir))
+                workspace_stagnant = len(suspect_hash_history) >= args.progress_suspect_stagnant_polls and len(set(suspect_hash_history)) == 1
+            else:
+                suspect_hash_history.clear()
+            if cheap and not recent_real_progress and workspace_stagnant and not progress_suspect_emitted:
+                progress_suspect_emitted = True
+                payload = dict(reason_code="loud_repetition_no_source_progress", policy=args.on_progress_suspect, elapsed_sec=round(elapsed, 3), stagnant_evals=len(suspect_hash_history), recent_real_progress=recent_real_progress, **metrics)
+                emit_meta(meta, event="turn_progress_suspect", **payload)
+                if args.on_progress_suspect == "annotate":
+                    _write_progress_suspect_marker(obs.evidence_dir, payload)
+                elif args.on_progress_suspect == "needs_human":
+                    emit_meta(meta, event="turn_progress_suspect_needs_human", **payload)
+                # OBSERVE-ONLY: never reap the process here. Killing on this predicate
+                # is a post-soak decision (council 2026-06-13); a busy-loop that is
+                # actually slow-but-working would otherwise be a false-block.
         if args.progress_report_sec > 0 and now - last_report >= args.progress_report_sec:
             emit_meta(meta, event="turn_monitor_snapshot", status="stale" if stale else "running", elapsed_sec=round(elapsed, 3), stale_for_sec=round(silent, 3), process_alive=proc.poll() is None, last_progress_kind="stdout" if last_stdout > start else "none")
             emit_meta(meta, event="turn_long_running", elapsed_sec=round(elapsed, 3))
@@ -828,7 +953,7 @@ def launch_and_handshake(args: argparse.Namespace, raw: TextIO, rpc: TextIO, err
     try:
         proc = subprocess.Popen([codex_bin, "app-server", "--listen", "stdio://"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1, cwd=str(cwd), start_new_session=(os.name == "posix"))
         _stash_pgid(proc)
-        rpc_call(proc, raw, rpc, err, 1, "initialize", {"clientInfo": {"name": "bs-codex-driver", "version": "1.4.21"}, "capabilities": {"experimentalApi": True}}, args.handshake_timeout_sec)
+        rpc_call(proc, raw, rpc, err, 1, "initialize", {"clientInfo": {"name": "bs-codex-driver", "version": "1.4.22"}, "capabilities": {"experimentalApi": True}}, args.handshake_timeout_sec)
         params = {"cwd": str(cwd), "approvalPolicy": "never", "sandbox": "workspace-write", "ephemeral": False}
         if args.model:
             params["model"] = args.model
@@ -864,11 +989,30 @@ def launch_and_handshake(args: argparse.Namespace, raw: TextIO, rpc: TextIO, err
         raise LaunchFatal(f"missing expected app-server field: {exc}") from exc
 
 
-def final_goal_check(proc: subprocess.Popen, raw: TextIO, rpc: TextIO, err: TextIO, meta: TextIO, thread_id: str, timeout: int) -> str:
-    resp = rpc_call(proc, raw, rpc, err, 800001, "thread/goal/get", {"threadId": thread_id}, timeout)
+def final_goal_check(proc: subprocess.Popen, raw: TextIO, rpc: TextIO, err: TextIO, meta: TextIO, thread_id: str, timeout: int, req_id: int = 800001) -> str:
+    resp = rpc_call(proc, raw, rpc, err, req_id, "thread/goal/get", {"threadId": thread_id}, timeout)
     canonical, raw_status = extract_goal_status(resp.get("result") or {})
     emit_meta(meta, event="goal_status_final", goal_status=canonical, raw_goal_status=raw_status, thread_id=thread_id)
     return canonical
+
+
+GOAL_NUDGE_TEXT = (
+    "Your previous turn finished but the goal status is still active. "
+    "If the outcome's acceptance is fully met, set the goal status to complete via thread/goal/set. "
+    "If you are blocked, set it to blocked with a short reason. "
+    "Do not start unrelated work and do not re-run completed steps; only resolve the goal status."
+)
+
+
+def send_goal_completion_nudge(proc: subprocess.Popen, raw: TextIO, rpc: TextIO, err: TextIO, meta: TextIO, obs: TurnObservation, args: argparse.Namespace, thread_id: str, cwd: Path) -> int:
+    """Send exactly one follow-up turn asking the agent to resolve a still-active
+    goal, then wait for it. Best-effort: never auto-completes the goal and never
+    changes the success oracle — the caller re-checks the real goal status after."""
+    emit_meta(meta, event="goal_completion_nudge_sent", thread_id=thread_id)
+    rpc_call(proc, raw, rpc, err, 700001, "turn/start", {"threadId": thread_id, "input": [{"type": "text", "text": GOAL_NUDGE_TEXT}], "cwd": str(cwd), "approvalPolicy": "never", "sandboxPolicy": {"type": "workspaceWrite", "writableRoots": [str(cwd)], "networkAccess": False}, "effort": args.effort}, args.handshake_timeout_sec)
+    rc = wait_for_turn_completion(proc, raw, err, meta, obs, args)
+    emit_meta(meta, event="goal_completion_nudge_turn_done", rc=rc)
+    return rc
 
 
 def validate_outcome_read_marker(obs: TurnObservation, path: str, sha: str, meta: TextIO, fix_round: FixRoundInfo | None = None) -> bool:
@@ -922,6 +1066,14 @@ def main() -> int:
     ap.add_argument("--progress-report-sec", type=int, default=900)
     ap.add_argument("--terminal-candidate-idle-sec", type=int, default=0, help="when >0, emit turn_terminal_candidate once a turn is silent this long AND a workspace delta already exists (post-answer/post-delta idle deadlock); 0 disables. Distinct from genuinely-long active work with no delta yet.")
     ap.add_argument("--on-terminal-candidate", default="observe", choices=["observe", "terminate"], help="observe (default) only emits telemetry and keeps waiting (silence is not failure); terminate reaps the process group and exits 8 (interrupted_with_delta) for the orchestrator's verify-and-accept path.")
+    ap.add_argument("--progress-suspect-age-sec", type=int, default=2700, help="E7 fake-alive/busy-loop detection ('noise is not progress'): only evaluate after a turn has run this long (default 2700=45min); 0 disables. OBSERVE-ONLY — never reaps the process. Most turns finish well before this, so the common path has zero overhead.")
+    ap.add_argument("--progress-suspect-poll-sec", type=int, default=120, help="how often (sec) to evaluate the progress-suspect predicate once armed by --progress-suspect-age-sec")
+    ap.add_argument("--progress-suspect-repeat-k", type=int, default=4, help="minimum count of one identical (normalized-command, exit-code) fingerprint in the rolling window to count as a loud repeat")
+    ap.add_argument("--progress-suspect-novelty-max", type=float, default=0.20, help="event-window distinct/size ratio at or below which the window is treated as low-novelty (repetitive)")
+    ap.add_argument("--progress-suspect-top-freq", type=float, default=0.70, help="alternative novelty trigger: top single event-fingerprint frequency at or above which the window is treated as repetitive")
+    ap.add_argument("--progress-suspect-stagnant-polls", type=int, default=5, help="consecutive armed evaluations the source-only tree hash must stay identical to confirm workspace stagnation")
+    ap.add_argument("--on-progress-suspect", default="observe", choices=["observe", "annotate", "needs_human"], help="observe (default) emits turn_progress_suspect telemetry only; annotate also appends evidence/progress_suspect.jsonl; needs_human additionally emits a louder decision-point event for orchestrator triage. None reap the process (post-soak decision per council 2026-06-13).")
+    ap.add_argument("--goal-completion-nudge", action="store_true", help="when a turn completes and is semantically validated but the goal status is still 'active' (not complete/blocked), send exactly ONE follow-up turn asking the agent to set the goal complete or blocked, then re-check. Does NOT auto-complete the goal or change the default success oracle (final must still normalize to 'complete').")
     ap.add_argument("--heartbeat-sec", type=int, default=30)
     ap.add_argument("--inferred-completion-sec", type=int, default=5)
     ap.add_argument("--handshake-timeout-sec", type=int, default=20)
@@ -977,6 +1129,11 @@ def main() -> int:
             if turn_rc != 0:
                 return turn_rc
             final = final_goal_check(proc, raw, rpc, err, meta, thread_id, args.handshake_timeout_sec)
+            if final == "active" and args.goal_completion_nudge:
+                nudge_obs = TurnObservation(cwd, evidence)
+                send_goal_completion_nudge(proc, raw, rpc, err, meta, nudge_obs, args, thread_id, cwd)
+                final = final_goal_check(proc, raw, rpc, err, meta, thread_id, args.handshake_timeout_sec, req_id=800002)
+                emit_meta(meta, event="goal_completion_nudge_result", goal_status=final)
             if final != "complete":
                 emit_meta(meta, event="goal_non_success", goal_status=final, reason_code=f"goal_{final}_after_turn")
                 return 6
