@@ -2206,6 +2206,20 @@ dependency_spec_review:
     rationale: "no dependency changes"
 ```
 '''
+# v1.4.21 backtest false_positive regression (cycle-022): a client/transport substrate names
+# execute/re-shape with If-Match/PESSIMISTIC context (wrapper + commandPolicy table) but ships
+# no command UI — the pessimistic-command matrix must NOT demand UI evidence there.
+CYCLE022_COMMAND_SUBSTRATE_OUTCOME=CYCLE022_FRONTEND_ESCAPE_OUTCOME.replace('''adversarial_acceptance:''', '''  - id: a5
+    text: "Stage-transition writes (execute/approve/re-shape/cancel) must carry If-Match; missing header in a stage-transition request is rejected client-side before any network call; stale revision surfaces the 409 revision_conflict envelope with expected_revision/current_revision/changed_since details"
+    type: command
+    command: "cd apps/symphony-ui && pnpm run test -- -t if-match"
+adversarial_acceptance:''')
+CYCLE022_COMMAND_SUBSTRATE_GRADE=CYCLE022_FRONTEND_ESCAPE_GRADE + '''
+
+If-Match wrapper evidence (real cycle-022 grade_round_3 rows):
+- "evidence/grade/r2_a5_ifmatch.log (filter exit 0) re-confirmed by r3_vitest.log full suite — stage commands always send If-Match; missing revision rejects with client_missing_revision; optional commands per contract"
+- "evidence/grade/r2_a7_policy.log + r3_vitest.log — commandPolicy asserts the full api-contract §4.0 matrix incl. approve:fail confirm-required, cancel:vendor-working confirm-required, off-switch per-scope rows, If-Match required exactly on execute/approve/re-shape/cancel"
+'''
 class GradeLintTests(unittest.TestCase):
     def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME,repo_root=None):
         with tempfile.TemporaryDirectory() as td:
@@ -2549,6 +2563,13 @@ class GradeLintTests(unittest.TestCase):
         self.assertIn('frontend_outcome_tags_render_evidence missing facets:', errors)
         self.assertIn('frontend_pessimistic_command_matrix[re_shape] missing facets:', errors)
         self.assertIn('frontend_pessimistic_command_matrix[conflict_refetch] missing facets:', errors)
+
+    def test_cycle022_command_substrate_does_not_fire_pessimistic_command_matrix(self):
+        # cycle-022 backtest false_positive: wrapper/commandPolicy claims name the commands with
+        # If-Match/PESSIMISTIC context but carry no UI-affordance claim — the matrix must stay silent.
+        _proc,p=self.run_lint('code','low',CYCLE022_COMMAND_SUBSTRATE_GRADE,CYCLE022_COMMAND_SUBSTRATE_OUTCOME)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertNotIn('frontend_pessimistic_command_matrix', errors)
 
     def test_cycle023_and_cycle024_excerpts_do_not_fire_cycle025_frontend_facets(self):
         new_prefixes=(

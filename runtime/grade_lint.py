@@ -202,6 +202,11 @@ FRONTEND_TAGS_EMPTY_HIDDEN_EVIDENCE=re.compile(r"\b(?:empty|none|zero|absent|hid
 FRONTEND_EXECUTE_COMMAND=re.compile(r"\bexecute\b|commands/execute|Approve\s*&\s*start\s+Conduct", re.I)
 FRONTEND_RESHAPE_COMMAND=re.compile(r"\bre[-_\s]?shape\b|\breShape\b|commands/re-shape", re.I)
 FRONTEND_COMMAND_CONTEXT=re.compile(r"\bPESSIMISTIC\b|\bDA[-_\s]?2[89]\b|\bIf[-_\s]?Match\b", re.I)
+# v1.4.21 backtest refinement (cycle-022 false_positive): the matrix facet demands command-UI
+# evidence, so the trigger must see an interactive-surface claim near the command name — a pure
+# client/transport substrate (If-Match wrapper, commandPolicy table: cycle-022 UI-M0) names the
+# commands with DA-28/29 context but ships no command UI and must not be in scope.
+FRONTEND_COMMAND_UI_AFFORDANCE=re.compile(r"\bbutton(?:s)?\b|\bclick(?:s|ed|ing)?\b|\bonClick\b|\brender(?:s|ed|ing)?\b|\bscreen\b|\bcard\b|\bpanel\b|\bregion\b|\bmodal\b|\baffordance(?:s)?\b|\bfooter\b|\bdrawer\b", re.I)
 FRONTEND_IF_MATCH_EVIDENCE=re.compile(r"\bIf[-_\s]?Match\b", re.I)
 FRONTEND_INLINE_ERROR_EVIDENCE=re.compile(r"\binline\b[^.;\n]{0,80}\b(?:error|failure|alert|copy)\b|\b(?:error|failure|alert)\b[^.;\n]{0,80}\binline\b", re.I)
 FRONTEND_CATCH_FAILURE_EVIDENCE=re.compile(r"\bcatch(?:es|ed|ing)?\b|\brejection\b|\breject(?:s|ed|ing)?\b|\bfailure[-_\s]?handling\b|\bon\s+failure\b|\btransport\s+failure\b", re.I)
@@ -1383,7 +1388,7 @@ def frontend_command_contexts(pattern, text, radius=260):
 
 def frontend_command_named_in_pessimistic_scope(pattern, text):
     for context in frontend_command_contexts(pattern, text, radius=220):
-        if has_non_negated_scope_term(FRONTEND_COMMAND_CONTEXT, context):
+        if has_non_negated_scope_term(FRONTEND_COMMAND_CONTEXT, context) and has_non_negated_scope_term(FRONTEND_COMMAND_UI_AFFORDANCE, context):
             return True
     return False
 

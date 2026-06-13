@@ -212,7 +212,7 @@ The driver spawns `codex app-server` in its own POSIX process group (`start_new_
 | runtime/codex_fix_driver.py | 0ba1be44f6ddf4f8ff8d40a8a661bd317c85752c5e9597f6c2ac13afb9d1ae4a |
 | runtime/reshape_fix_round.py | a458e5b7dfdf504b594441c48dd81ee83aeb28d0d8f51784ca40e2ded15e5fe3 |
 | runtime/conduct.sh | 7f8ae29ccaa91e86234c50e647a284dc5ef8f1494058b0b97ea2c6aae8115d8b |
-| runtime/grade_lint.py | d7e53183035741cedd8cd691dde8588f2e3c98a7af19a2f8c39a6ba69f515d0f |
+| runtime/grade_lint.py | 1e631e78e8850c63dc9668cebb7b9cac2f6b4e3863e1c7c621eef2119cb72c28 |
 | runtime/grade_verify.py | cd7baca6f0102d8920408bfd03d18711f76ad003d353cded54c74935c223407f |
 | runtime/sync_status_marker.py | 4e0371d55d855dd18b6fd403e5c57a27099de412d99349efcd469e2595a3555a |
 | commands/bs.md | 0178d78d5915c22621bf58e2872c566fe37fa04231fe7ef7c08aaff54dc88e17 |

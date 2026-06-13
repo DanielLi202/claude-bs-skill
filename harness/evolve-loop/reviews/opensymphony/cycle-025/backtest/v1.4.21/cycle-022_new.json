@@ -1,0 +1,20 @@
+{
+  "grade_lint": {
+    "code_baseline_gate": true,
+    "errors": [
+      "frontend_sse_reconnect_lifecycle[a4] missing facets: old_source_close_or_dispose,new_source_creation,stale_old_source_events_rejected",
+      "frontend_sse_reconnect_lifecycle[a8] missing facets: old_source_close_or_dispose,new_source_creation,stale_old_source_events_rejected",
+      "frontend_sse_reconnect_lifecycle[adv5] missing facets: old_source_close_or_dispose,new_source_creation,stale_old_source_events_rejected",
+      "frontend_identity_mismatch_recovery[a8] missing facets: mismatched_response_rejected,callback_only_side_effect_insufficient,no_connected_or_write_reenable_until_fresh_matching_identity,sse_connected_mismatched_identity_not_success",
+      "frontend_identity_mismatch_recovery[adv6] missing facets: mismatched_response_rejected,callback_only_side_effect_insufficient,no_connected_or_write_reenable_until_fresh_matching_identity,sse_connected_mismatched_identity_not_success",
+      "frontend_pessimistic_command_matrix[execute] missing facets: pending_or_scoped_disable,inline_error,catch_or_failure_handling (cycle-025 F10)",
+      "frontend_pessimistic_command_matrix[re_shape] missing facets: pending_or_scoped_disable,inline_error,catch_or_failure_handling (cycle-025 F10)"
+    ],
+    "grade_file": "/Users/lidongyuan/workspace/utils/OpenSymphony-V3/.prompts/dogfood/cycle-022/grade_round_3.md",
+    "medium_high_code_gate": true,
+    "outcome_file": "/Users/lidongyuan/workspace/utils/OpenSymphony-V3/.prompts/dogfood/cycle-022/outcome.md",
+    "risk_level": "medium",
+    "status": "fail",
+    "task_type": "code"
+  }
+}
