@@ -49,7 +49,12 @@ escalations_disposition:
     load-and-cite; lint untouched, sanity zero-delta vs v1.4.14). Renumbered from working title v1.4.14
     (taken by the loop''s autonomous cycle-020 release). Charter: docs/v1.4.14-plan.md.'
   E7_turn_progress_suspect: APPROVED as Track B (observe-only telemetry, multi-signal quorum incl. repeated
-    error-signature; delta-aware action; >=2-cycle soak gate) — NOT YET IMPLEMENTED; ships as v1.4.16+
-    per charter Track B.
+    error-signature; delta-aware action; >=2-cycle soak gate). IMPLEMENTED in v1.4.22 (re-ratified by AI-council
+    verdict ~/.claude/council-logs/20260613-211210-bs-evolve-7-escalations.md, maintainer-approved 2026-06-13):
+    codex_driver.py turn_progress_suspect — loud identical-command repeat AND low event novelty AND source-only
+    tree stagnation AND no recent diff/fileChange; OBSERVE-ONLY (observe/annotate/needs_human), never reaps;
+    >=2-cycle soak before any terminating variant. Same release shipped the (separately-escalated, cycle-025)
+    opt-in --goal-completion-nudge. E1-E6 confirmed already implemented in v1.4.15 (council independently
+    re-derived the identical DRY-block + path-trigger + deterministic-lint design).
   post_release_acceptance_watch: zero Grade false-blocking on non-agent code tasks across subsequent cycles;
     first violation triggers a precision-refinement cycle (v1.4.12 precedent).
