@@ -2,7 +2,7 @@ cycle: cycle-025
 r1: done
 r2: done
 skill_release: v1.4.21
-remediation: null
+remediation: 2a108a7
 escalated_to_human:
 - 'bs-skill prompts/grade/role.md: add semantic frontend checklist — schema parser
   guard matrix (capsule narrowing vs outcome-capsule.md v1.2), prototype-visible elements
@@ -23,4 +23,4 @@ escalated_to_human:
   the default success oracle without maintainer approval. [needs_human; cycle-025
   r2; GOAL — goal_active_after_turn now 8 occurrences across cycles 022-025]'
 closed: false
-updated_at: '2026-06-13T01:31:36Z'
+updated_at: '2026-06-13T02:51:03Z'
