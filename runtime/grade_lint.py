@@ -216,23 +216,19 @@ FRONTEND_PENDING_CLEARED_OR_STATUS_RESET=re.compile(r"\bpending\b[^.;\n]{0,120}\
 REFERENCE_SOURCE_PATHS_RE=re.compile(r"\bdocs/ux/design-brief\.md\b|\bdocs/decisions/ux\.md\b|\bUX[-_\s]?\d+\b|\bdocs/ux/prototype/[^\s`'\"|)]+|\bdocs/architecture/api-contract\.md\b|\bdocs/architecture/schemas/[A-Za-z0-9_.-]+\.md\b|\bdocs/agents/(?:shape|conduct|grade|evolve)/AGENT\.md\b", re.I)
 REFERENCE_SOURCE_CONTRACT_TOKEN_RE=re.compile(r"\bREFERENCE_SOURCE_CONTRACT_REVIEW_V1\b|\breference_obligations\b|\bobligation_id\b", re.I)
 REFERENCE_BEHAVIORAL_UI_QUERY_RE=re.compile(r"\b(?:get|find|query)ByRole\b|\bbyRole\b[^.;\n]{0,80}\bname\b|\b(?:get|find|query)ByLabelText\b|\baccessible[-_\s]?name\b|\blabel(?:ed)?[-_\s]?text\b", re.I)
-REFERENCE_BEHAVIORAL_UI_INTERACTION_RE=re.compile(r"\buserEvent\b|\bfireEvent\b|\b(?:click|type|keyboard|tab|hover|press)(?:s|ed|ing)?\b", re.I)
+REFERENCE_BEHAVIORAL_UI_INTERACTION_RE=re.compile(r"\b(?:userEvent|fireEvent)\b", re.I)  # require the interaction API, not bare verbs like "click handler invoked" (review P2-9)
 REFERENCE_BEHAVIORAL_UI_STATE_ASSERT_RE=re.compile(r"\bstate\s+assert(?:ion|s|ed)?\b|\bassert(?:s|ed|ion)?\b[^.;\n]{0,120}\b(?:before|during|after|transition|state|disabled|enabled|visible|hidden)\b|\bexpect\s*\(|\btoBe(?:Disabled|Enabled|Visible|Hidden)\b", re.I)
 REFERENCE_STORYBOOK_PLAY_INTERACTION_RE=re.compile(r"\bStorybook\b[^.;\n]{0,120}\bplay\(\)[^.;\n]{0,180}\b(?:userEvent|fireEvent|click|type|expect|assert|state|disabled|enabled|visible|hidden)\b|\bplay\(\)[^.;\n]{0,180}\b(?:userEvent|fireEvent|click|type|expect|assert|state|disabled|enabled|visible|hidden)\b", re.I)
 REFERENCE_STATIC_PRESENCE_RE=re.compile(r"\b(?:heading|landmark|testid|data-testid|screenshot|static[-_\s]?DOM|DOM[-_\s]?only|DOM\s+presence|copy\s+(?:present|exists)|text\s+(?:present|exists)|presence[-_\s]?only)\b", re.I)
 REFERENCE_NARROWING_RE=re.compile(r"\b(?:narrow(?:s|ed|ing)?|weaken(?:s|ed|ing)?|exclude(?:s|d|ing)?|omit(?:s|ted|ting)?|out[-_\s]?of[-_\s]?scope|not\s+in\s+scope|defer(?:s|red|ring)?|future\s+work)\b", re.I)
 REFERENCE_WAIVER_UNVERIFIED_RE=re.compile(r"\b(?:waiver|waiver_id|tracked_waiver_ref|maintainer_waiver_ref|user_waiver_ref|UNVERIFIED|unverified|scope_basis_ref)\b", re.I)
 REFERENCE_HOSTILE_FIXTURE_ID_RE=re.compile(r"\b(?:hostile|adversarial|malicious|escape)[-_\s]?(?:fixture|case|probe)[-_:\s]*(?:id|ids)?\b|\bhostile_fixture_ids?\b|\badversarial_fixture_ids?\b", re.I)
-REFERENCE_HOSTILE_FIXTURE_ID_TOKEN_RE=re.compile(r"(?<![A-Za-z0-9_-])([a-z0-9]+(?:-[a-z0-9]+)+)(?![A-Za-z0-9_-])")
-REFERENCE_HOSTILE_FIXTURE_ID_TOKEN_STOPWORDS={
-    'hostile-fixture','hostile-fixture-id','hostile-fixture-ids',
-    'adversarial-fixture','adversarial-fixture-id','adversarial-fixture-ids',
-    'malicious-fixture','malicious-fixture-id','malicious-fixture-ids',
-    'escape-fixture','escape-fixture-id','escape-fixture-ids',
-}
 REFERENCE_PRODUCTION_PATH_ANCHOR_RE=re.compile(r"\bproduction[-_\s]?path[-_\s]?anchor\b|\bproduction[-_\s]?(?:provider|default|wiring|path)\b|\bclient[-_\s]to[-_\s]handler\b|\bhandler\b[^.;\n]{0,120}\b(?:consume|consumes|parse|parses|read|reads|use|uses)\b|\brequest[-_\s]?body\b[^.;\n]{0,120}\b(?:handler|route|daemon|backend)\b|\boutcome[-_\s]?(?:write|merge)\b", re.I)
 REFERENCE_NEGATED_REQUIREMENT_RE=re.compile(r"\b(?:no|not|never)\b[^.;\n]{0,140}\b(?:required|in\s+scope|applicable|needed)\b|\bnot_applicable\b", re.I)
-REFERENCE_HISTORICAL_OR_EXAMPLE_CONTEXT_RE=re.compile(r"\b(?:historical|history|backtest|retro|migration|migrat(?:e|ed|ion)|example|sample|old\s+escape|prior\s+escape|previous\s+escape|legacy\s+escape|false[-_\s]?(?:positive|fire)|regression\s+corpus)\b", re.I)
+# Narrowed (review NEW-P2-1): bare "example/sample/migration" must NOT mark a row historical —
+# that over-excluded genuine CURRENT source citations. Only unambiguous historical/backtest
+# context excludes a row from B2 triggering.
+REFERENCE_HISTORICAL_OR_EXAMPLE_CONTEXT_RE=re.compile(r"\b(?:historical|history|backtest|retro|old\s+escape|prior\s+escape|previous\s+escape|legacy\s+escape|false[-_\s]?(?:positive|fire)|regression\s+corpus|must[-_\s]?not[-_\s]?fire)\b", re.I)
 REFERENCE_CURRENT_SOURCE_KEYS={
     'spec_ref','spec_refs','source_ref','source_refs','context_pointer','context_pointers',
     'grounding_ref','grounding_refs','contract_ref','contract_refs','schema_ref','schema_refs',
@@ -1324,7 +1320,11 @@ def reference_row_has_production_anchor(row_text):
         or has_non_negated_scope_term(FRONTEND_PRODUCTION_WIRING_EVIDENCE, row_text)
     )
 
-def reference_hostile_fixture_ids(entry, row_text):
+def reference_hostile_fixture_ids(entry, row_text=None):
+    # ONLY structured ledger ids count. Inferring "ids" from kebab-case prose tokens
+    # (read-only, command-timeout, negative-pgid) let vague grade prose bypass the gate
+    # (review P1-8). The hostile_fixture_manifest evidence class requires the Shape ledger
+    # to NAME the adversarial fixtures; the grade row cites their executed results.
     values=[]
     if isinstance(entry,dict):
         for key in ('hostile_fixture_ids','required_hostile_fixture_ids','adversarial_fixture_ids','fixture_ids'):
@@ -1333,14 +1333,7 @@ def reference_hostile_fixture_ids(entry, row_text):
                 values.extend(item for item in value if isinstance(item,str) and item.strip())
             elif isinstance(value,str) and value.strip():
                 values.append(value.strip())
-    if values:
-        return values
-    tokens=[]
-    for match in REFERENCE_HOSTILE_FIXTURE_ID_TOKEN_RE.finditer(row_text or ''):
-        token=match.group(1)
-        if token not in REFERENCE_HOSTILE_FIXTURE_ID_TOKEN_STOPWORDS:
-            tokens.append(token)
-    return tokens
+    return values
 
 def reference_row_has_behavioral_ui_evidence(row_text):
     return (

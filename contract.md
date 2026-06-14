@@ -249,7 +249,7 @@ The goal-completion nudge (`--goal-completion-nudge`, default off) addresses rec
 | runtime/codex_fix_driver.py | 0ba1be44f6ddf4f8ff8d40a8a661bd317c85752c5e9597f6c2ac13afb9d1ae4a |
 | runtime/reshape_fix_round.py | a458e5b7dfdf504b594441c48dd81ee83aeb28d0d8f51784ca40e2ded15e5fe3 |
 | runtime/conduct.sh | 3a1877940b0b63cd156cde75878615a0340d91c5ac02ab39ee9f13590e38d726 |
-| runtime/grade_lint.py | 1b02de940848fa61223961cff6401ae3328b26c66de68baad6ea125fe17cf4b9 |
+| runtime/grade_lint.py | 1f8fde18150763039e7bddaf5fc2de2c8da7836ea824de11a93afeecafdd9f5b |
 | runtime/grade_verify.py | cd7baca6f0102d8920408bfd03d18711f76ad003d353cded54c74935c223407f |
 | runtime/sync_status_marker.py | 4e0371d55d855dd18b6fd403e5c57a27099de412d99349efcd469e2595a3555a |
 | commands/bs.md | 60970c90e67577704fcb5c00aae919cad7202a98dfa8f46e8c1bfc0824275c37 |

@@ -2944,6 +2944,36 @@ class GradeLintTests(unittest.TestCase):
         self.assertIn('reference_source_contract_review.hostile_fixture_ids_missing[GRADE-HOSTILE-01]', '\n'.join(p['grade_lint']['errors']))
         self.assert_reference_clean(REFERENCE_HOSTILE_MIN_GRADE,REFERENCE_HOSTILE_MIN_IDS_OUTCOME)
 
+    def test_reference_source_bare_click_without_userevent_must_fire_behavioral(self):
+        # review P2-9: getByRole + static presence + bare "click" (no userEvent/fireEvent) is NOT behavioral
+        grade=REFERENCE_VALID_GRADE.replace(
+            "src/action.test.tsx: getByRole('button', {name:/Next/}) + userEvent.click asserts disabled then enabled state assertion",
+            "src/action.test.tsx: heading and data-testid present; getByRole queried; click handler invoked; expect(state).toBeVisible()")
+        proc,p=self.run_lint('code','low',grade,REFERENCE_VALID_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn('reference_source_contract_review.behavioral_ui_test_missing[UX-101-ACTION-STATE]', '\n'.join(p['grade_lint']['errors']))
+        self.assert_reference_clean(REFERENCE_VALID_GRADE,REFERENCE_VALID_OUTCOME)
+
+    def test_reference_source_hostile_kebab_prose_still_fires(self):
+        # review P1-8: kebab-case prose tokens (read-only, command-timeout) are NOT fixture ids
+        grade=REFERENCE_HOSTILE_MIN_GRADE.replace(
+            "hostile_fixture_ids executed but not named",
+            "read-only isolation passed; command-timeout negative-pgid test passed")
+        proc,p=self.run_lint('code','low',grade,REFERENCE_HOSTILE_MIN_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn('reference_source_contract_review.hostile_fixture_ids_missing[GRADE-HOSTILE-01]', '\n'.join(p['grade_lint']['errors']))
+
+    def test_reference_source_current_example_citation_still_triggers(self):
+        # review NEW-P2-1: bare "example" must not over-exclude a genuine CURRENT source citation
+        import re as _re
+        outcome_no_ledger=_re.sub(r"```yaml\nreference_obligations:.*?```", "Outcome body without a reference_obligations ledger.", REFERENCE_VALID_OUTCOME, flags=_re.S)
+        grade=REFERENCE_VALID_GRADE.replace('    obligation_id: UX-101-ACTION-STATE\n','').replace(
+            "src/action.test.tsx: getByRole('button', {name:/Next/}) + userEvent.click asserts disabled then enabled state assertion",
+            "example current docs/ux/design-brief.md §10.11 behavior covered")
+        proc,p=self.run_lint('code','low',grade,outcome_no_ledger)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn('reference_source_contract_review.reference_obligations_missing', '\n'.join(p['grade_lint']['errors']))
+
     def test_reference_source_advisory_request_artifact_emitted_never_verdict_gated(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td); gf=root/'grade.md'; of=root/'outcome.md'; ef=root/'evidence'/'grade_lint_round_0.json'
