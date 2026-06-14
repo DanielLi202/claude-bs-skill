@@ -295,7 +295,7 @@ class CodexDriverUnitTests(unittest.TestCase):
         self.assertIn('start_new_session=(os.name == "posix")', source)
         self.assertIn('_stash_pgid(proc)', source)
         self.assertIn('os.killpg', source)
-        self.assertIn('"version": "1.4.25"', source)
+        self.assertIn('"version": "1.4.26"', source)
         self.assertIn('--terminal-candidate-idle-sec', source)
         self.assertIn('--on-terminal-candidate', source)
 
