@@ -215,13 +215,28 @@ FRONTEND_REFETCH_FAILURE_EVIDENCE=re.compile(r"\b(?:refetch|GET)\b[^.;\n]{0,120}
 FRONTEND_PENDING_CLEARED_OR_STATUS_RESET=re.compile(r"\bpending\b[^.;\n]{0,120}\b(?:clear(?:s|ed|ing)?|reset(?:s|ting)?|status\s+reset)\b|\b(?:clear(?:s|ed|ing)?|reset(?:s|ting)?|status\s+reset)\b[^.;\n]{0,120}\bpending\b", re.I)
 REFERENCE_SOURCE_PATHS_RE=re.compile(r"\bdocs/ux/design-brief\.md\b|\bdocs/decisions/ux\.md\b|\bUX[-_\s]?\d+\b|\bdocs/ux/prototype/[^\s`'\"|)]+|\bdocs/architecture/api-contract\.md\b|\bdocs/architecture/schemas/[A-Za-z0-9_.-]+\.md\b|\bdocs/agents/(?:shape|conduct|grade|evolve)/AGENT\.md\b", re.I)
 REFERENCE_SOURCE_CONTRACT_TOKEN_RE=re.compile(r"\bREFERENCE_SOURCE_CONTRACT_REVIEW_V1\b|\breference_obligations\b|\bobligation_id\b", re.I)
-REFERENCE_BEHAVIORAL_UI_EVIDENCE_RE=re.compile(r"\bgetByRole\b|\bgetByLabelText\b|\baccessible[-_\s]?name\b|\buserEvent\b|\bStorybook\b[^.;\n]{0,80}\bplay\(\)|\bplay\(\)\b|\bstate\s+assert(?:ion|s|ed)?\b|\bassert(?:s|ed|ion)?\b[^.;\n]{0,120}\b(?:before|during|after|transition|state|disabled|enabled|visible|hidden)\b", re.I)
+REFERENCE_BEHAVIORAL_UI_QUERY_RE=re.compile(r"\b(?:get|find|query)ByRole\b|\bbyRole\b[^.;\n]{0,80}\bname\b|\b(?:get|find|query)ByLabelText\b|\baccessible[-_\s]?name\b|\blabel(?:ed)?[-_\s]?text\b", re.I)
+REFERENCE_BEHAVIORAL_UI_INTERACTION_RE=re.compile(r"\buserEvent\b|\bfireEvent\b|\b(?:click|type|keyboard|tab|hover|press)(?:s|ed|ing)?\b", re.I)
+REFERENCE_BEHAVIORAL_UI_STATE_ASSERT_RE=re.compile(r"\bstate\s+assert(?:ion|s|ed)?\b|\bassert(?:s|ed|ion)?\b[^.;\n]{0,120}\b(?:before|during|after|transition|state|disabled|enabled|visible|hidden)\b|\bexpect\s*\(|\btoBe(?:Disabled|Enabled|Visible|Hidden)\b", re.I)
+REFERENCE_STORYBOOK_PLAY_INTERACTION_RE=re.compile(r"\bStorybook\b[^.;\n]{0,120}\bplay\(\)[^.;\n]{0,180}\b(?:userEvent|fireEvent|click|type|expect|assert|state|disabled|enabled|visible|hidden)\b|\bplay\(\)[^.;\n]{0,180}\b(?:userEvent|fireEvent|click|type|expect|assert|state|disabled|enabled|visible|hidden)\b", re.I)
 REFERENCE_STATIC_PRESENCE_RE=re.compile(r"\b(?:heading|landmark|testid|data-testid|screenshot|static[-_\s]?DOM|DOM[-_\s]?only|DOM\s+presence|copy\s+(?:present|exists)|text\s+(?:present|exists)|presence[-_\s]?only)\b", re.I)
 REFERENCE_NARROWING_RE=re.compile(r"\b(?:narrow(?:s|ed|ing)?|weaken(?:s|ed|ing)?|exclude(?:s|d|ing)?|omit(?:s|ted|ting)?|out[-_\s]?of[-_\s]?scope|not\s+in\s+scope|defer(?:s|red|ring)?|future\s+work)\b", re.I)
 REFERENCE_WAIVER_UNVERIFIED_RE=re.compile(r"\b(?:waiver|waiver_id|tracked_waiver_ref|maintainer_waiver_ref|user_waiver_ref|UNVERIFIED|unverified|scope_basis_ref)\b", re.I)
 REFERENCE_HOSTILE_FIXTURE_ID_RE=re.compile(r"\b(?:hostile|adversarial|malicious|escape)[-_\s]?(?:fixture|case|probe)[-_:\s]*(?:id|ids)?\b|\bhostile_fixture_ids?\b|\badversarial_fixture_ids?\b", re.I)
+REFERENCE_HOSTILE_FIXTURE_ID_TOKEN_RE=re.compile(r"(?<![A-Za-z0-9_-])([a-z0-9]+(?:-[a-z0-9]+)+)(?![A-Za-z0-9_-])")
+REFERENCE_HOSTILE_FIXTURE_ID_TOKEN_STOPWORDS={
+    'hostile-fixture','hostile-fixture-id','hostile-fixture-ids',
+    'adversarial-fixture','adversarial-fixture-id','adversarial-fixture-ids',
+    'malicious-fixture','malicious-fixture-id','malicious-fixture-ids',
+    'escape-fixture','escape-fixture-id','escape-fixture-ids',
+}
 REFERENCE_PRODUCTION_PATH_ANCHOR_RE=re.compile(r"\bproduction[-_\s]?path[-_\s]?anchor\b|\bproduction[-_\s]?(?:provider|default|wiring|path)\b|\bclient[-_\s]to[-_\s]handler\b|\bhandler\b[^.;\n]{0,120}\b(?:consume|consumes|parse|parses|read|reads|use|uses)\b|\brequest[-_\s]?body\b[^.;\n]{0,120}\b(?:handler|route|daemon|backend)\b|\boutcome[-_\s]?(?:write|merge)\b", re.I)
 REFERENCE_NEGATED_REQUIREMENT_RE=re.compile(r"\b(?:no|not|never)\b[^.;\n]{0,140}\b(?:required|in\s+scope|applicable|needed)\b|\bnot_applicable\b", re.I)
+REFERENCE_HISTORICAL_OR_EXAMPLE_CONTEXT_RE=re.compile(r"\b(?:historical|history|backtest|retro|migration|migrat(?:e|ed|ion)|example|sample|old\s+escape|prior\s+escape|previous\s+escape|legacy\s+escape|false[-_\s]?(?:positive|fire)|regression\s+corpus)\b", re.I)
+REFERENCE_CURRENT_SOURCE_KEYS={
+    'spec_ref','spec_refs','source_ref','source_refs','context_pointer','context_pointers',
+    'grounding_ref','grounding_refs','contract_ref','contract_refs','schema_ref','schema_refs',
+}
 EXACT_VERSION_RE=re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 class LintError(ValueError): pass
 
@@ -1158,27 +1173,26 @@ def frontend_has_production_wiring_or_honesty(text):
         or has_non_negated_scope_term(FRONTEND_UNAVAILABLE_HONESTY_WITH_BACKLOG, text)
     )
 
-def reference_source_in_scope(grade_text='', outcome_text='', outcome_blocks=None) -> bool:
+def reference_source_in_scope(grade_text='', outcome_text='', outcome_blocks=None, grade_blocks=None) -> bool:
     primary=text_blob(
         primary_outcome_subject_text(outcome_blocks),
         primary_outcome_header_text(outcome_text),
         primary_grade_header_text(grade_text),
     )
-    scope=text_blob(primary, outcome_text, grade_text[:5000])
-    if not has_non_negated_scope_term(REFERENCE_SOURCE_PATHS_RE, scope):
+    # Agent-contract §6 owns agent implementation tasks. B2 is opt-in there:
+    # Shape must emit a reference_obligations ledger before the source-contract
+    # lint family applies, so a compliant §6 Grade-agent refactor is not forced
+    # into B2 merely because it cites docs/agents/<agent>/AGENT.md.
+    if reference_agent_task_in_scope(grade_text,outcome_text,outcome_blocks):
+        return reference_ledger_has_b2_obligation(outcome_blocks)
+    if not frontend_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
         return False
-    if frontend_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
-        return True
-    # Agent-contract §6 is the primary gate for agent implementations. B2 only
-    # opts Grade-agent verifier hostile-contract rows into this family; Shape and
-    # Evolve primary tasks stay with their already-scoped deterministic facets.
-    if grade_agent_task_in_scope(grade_text,outcome_text,outcome_blocks):
-        return has_non_negated_scope_term(re.compile(r"\bdocs/agents/grade/AGENT\.md\b", re.I), scope)
-    if shape_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks) or evolve_agent_task_in_scope(grade_text,outcome_text,outcome_blocks):
-        return False
-    if has_non_negated_scope_term(REFERENCE_SOURCE_CONTRACT_TOKEN_RE, scope):
-        return True
-    return has_non_negated_scope_term(REFERENCE_SOURCE_PATHS_RE, primary)
+    current_sources=text_blob(
+        primary,
+        reference_current_source_text(outcome_blocks or []),
+        reference_current_source_text(grade_blocks or []),
+    )
+    return has_non_negated_scope_term(REFERENCE_SOURCE_PATHS_RE, current_sources)
 
 def reference_obligation_rows(outcome_blocks):
     rows=first(outcome_blocks or [],'reference_obligations')
@@ -1207,15 +1221,78 @@ def reference_required_classes(entry):
 def reference_obligation_kind(entry):
     return entry.get('kind') if isinstance(entry,dict) and isinstance(entry.get('kind'),str) else ''
 
-def reference_entry_has_waiver_or_unverified(entry):
+def string_leaf_values(value):
+    if isinstance(value,str):
+        return [value]
+    if isinstance(value,dict):
+        out=[]
+        for v in value.values():
+            out.extend(string_leaf_values(v))
+        return out
+    if isinstance(value,list):
+        out=[]
+        for item in value:
+            out.extend(string_leaf_values(item))
+        return out
+    return []
+
+def reference_current_source_text(value):
+    if isinstance(value,dict):
+        out=[]
+        for key,item in value.items():
+            if isinstance(key,str) and key in REFERENCE_CURRENT_SOURCE_KEYS:
+                out.extend(string_leaf_values(item))
+            else:
+                out.extend(reference_current_source_text(item).split())
+        return ' '.join(out)
+    if isinstance(value,list):
+        return ' '.join(reference_current_source_text(item) for item in value)
+    return ''
+
+def reference_row_current_source_text(row):
+    if not isinstance(row,dict):
+        return ''
+    return text_blob(*(row.get(key) for key in REFERENCE_CURRENT_SOURCE_KEYS))
+
+def reference_ledger_has_b2_obligation(outcome_blocks):
+    return bool(reference_obligation_rows(outcome_blocks))
+
+def reference_agent_task_in_scope(grade_text='', outcome_text='', outcome_blocks=None):
+    return (
+        shape_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks)
+        or grade_agent_task_in_scope(grade_text,outcome_text,outcome_blocks)
+        or evolve_agent_task_in_scope(grade_text,outcome_text,outcome_blocks)
+    )
+
+def nonempty_string(value):
+    return isinstance(value,str) and bool(value.strip())
+
+def reference_entry_has_structured_waiver(entry):
+    if not isinstance(entry,dict):
+        return False
+    waiver=entry.get('waiver')
+    if not isinstance(waiver,dict):
+        return False
+    if not nonempty_string(waiver.get('reason')):
+        return False
+    return any(nonempty_string(waiver.get(key)) for key in ('waiver_id','tracked_waiver_ref','maintainer_waiver_ref','user_waiver_ref','ref','id'))
+
+def reference_entry_is_unverified_with_scope_basis(entry):
     if not isinstance(entry,dict):
         return False
     status=entry.get('status')
-    if isinstance(status,str) and status.lower()=='unverified':
+    return isinstance(status,str) and status.upper()=='UNVERIFIED' and nonempty_string(entry.get('scope_basis_ref'))
+
+def reference_entry_has_waiver_or_unverified(entry):
+    return reference_entry_has_structured_waiver(entry) or reference_entry_is_unverified_with_scope_basis(entry)
+
+def reference_row_has_current_source(row, row_text):
+    structured=reference_row_current_source_text(row)
+    if has_non_negated_scope_term(REFERENCE_SOURCE_PATHS_RE, structured):
         return True
-    if isinstance(entry.get('waiver'),dict) and entry['waiver'].get('reason'):
-        return True
-    return has_non_negated_scope_term(REFERENCE_WAIVER_UNVERIFIED_RE, text_blob(entry))
+    if has_non_negated_scope_term(REFERENCE_SOURCE_PATHS_RE, row_text):
+        return not has_non_negated_scope_term(REFERENCE_HISTORICAL_OR_EXAMPLE_CONTEXT_RE, row_text)
+    return False
 
 def reference_citing_rows(bs, required_acceptance, statuses=None):
     rows=[]
@@ -1234,7 +1311,7 @@ def reference_citing_rows(bs, required_acceptance, statuses=None):
             row_text=text_blob(row)
             if not reference_obligation_id(row) and has_non_negated_scope_term(REFERENCE_NEGATED_REQUIREMENT_RE, row_text):
                 continue
-            if has_non_negated_scope_term(REFERENCE_SOURCE_PATHS_RE, row_text) or reference_obligation_id(row):
+            if reference_row_has_current_source(row, row_text) or reference_obligation_id(row):
                 rows.append((block_name,i,row,row_text,severity))
     return rows
 
@@ -1245,7 +1322,6 @@ def reference_row_has_production_anchor(row_text):
     return (
         has_non_negated_scope_term(REFERENCE_PRODUCTION_PATH_ANCHOR_RE, row_text)
         or has_non_negated_scope_term(FRONTEND_PRODUCTION_WIRING_EVIDENCE, row_text)
-        or has_non_negated_scope_term(FRONTEND_UNAVAILABLE_HONESTY_WITH_BACKLOG, row_text)
     )
 
 def reference_hostile_fixture_ids(entry, row_text):
@@ -1259,11 +1335,26 @@ def reference_hostile_fixture_ids(entry, row_text):
                 values.append(value.strip())
     if values:
         return values
-    return ['inline'] if has_non_negated_scope_term(REFERENCE_HOSTILE_FIXTURE_ID_RE, row_text) else []
+    tokens=[]
+    for match in REFERENCE_HOSTILE_FIXTURE_ID_TOKEN_RE.finditer(row_text or ''):
+        token=match.group(1)
+        if token not in REFERENCE_HOSTILE_FIXTURE_ID_TOKEN_STOPWORDS:
+            tokens.append(token)
+    return tokens
+
+def reference_row_has_behavioral_ui_evidence(row_text):
+    return (
+        has_non_negated_scope_term(REFERENCE_STORYBOOK_PLAY_INTERACTION_RE, row_text)
+        or (
+            has_non_negated_scope_term(REFERENCE_BEHAVIORAL_UI_QUERY_RE, row_text)
+            and has_non_negated_scope_term(REFERENCE_BEHAVIORAL_UI_INTERACTION_RE, row_text)
+            and has_non_negated_scope_term(REFERENCE_BEHAVIORAL_UI_STATE_ASSERT_RE, row_text)
+        )
+    )
 
 def validate_reference_source_contract_review(bs, required_acceptance, acceptance_status, spec, neg, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
     calc={'P0':0,'P1':0}
-    if not reference_source_in_scope(grade_text,outcome_text,outcome_blocks):
+    if not reference_source_in_scope(grade_text,outcome_text,outcome_blocks,bs):
         return calc, []
     pass_rows=reference_pass_rows(bs, required_acceptance)
     citing_rows=reference_citing_rows(bs, required_acceptance, {'pass','fail','unverified'})
@@ -1291,13 +1382,19 @@ def validate_reference_source_contract_review(bs, required_acceptance, acceptanc
             errors.append(f'reference_source_contract_review.reference_obligations[{oid}].required_evidence_classes is required')
             calc['P1']+=1
         if (
-            (isinstance(entry.get('status'),str) and entry['status'].lower() in {'excluded','narrowed','not_applicable','out_of_scope'})
+            (isinstance(entry.get('status'),str) and entry['status'].lower() in {'excluded','narrowed','not_applicable','out_of_scope','unverified'})
             or has_non_negated_scope_term(REFERENCE_NARROWING_RE, text_blob(entry.get('status'), entry.get('must'), entry.get('rationale'), entry.get('not_sufficient')))
         ) and not reference_entry_has_waiver_or_unverified(entry):
             errors.append(f'reference_source_contract_review.silent_narrowing[{oid}] referenced obligation narrowed/excluded without waiver or UNVERIFIED scope_basis_ref')
             calc['P1']+=1
 
     pass_rows_by_oid={}
+    addressed_rows_by_oid={}
+    for block_name,i,row,row_text,severity in citing_rows:
+        oid=reference_obligation_id(row)
+        if oid and row.get('status') in {'pass','fail','unverified'}:
+            addressed_rows_by_oid.setdefault(oid,[]).append((block_name,i,row,row_text,severity))
+
     for block_name,i,row,row_text,severity in pass_rows:
         oid=reference_obligation_id(row)
         if not oid:
@@ -1323,7 +1420,7 @@ def validate_reference_source_contract_review(bs, required_acceptance, acceptanc
             kind in {'ui_action_state_label','ui_state_behavior'}
             or 'behavioral_ui_test' in classes
         ):
-            if has_non_negated_scope_term(REFERENCE_STATIC_PRESENCE_RE, row_text) and not has_non_negated_scope_term(REFERENCE_BEHAVIORAL_UI_EVIDENCE_RE, row_text):
+            if has_non_negated_scope_term(REFERENCE_STATIC_PRESENCE_RE, row_text) and not reference_row_has_behavioral_ui_evidence(row_text):
                 errors.append(f'reference_source_contract_review.behavioral_ui_test_missing[{oid}] PASS cites static DOM/heading/landmark/testid/screenshot presence without behavioral UI evidence')
                 calc[severity]+=1
         if kind=='verifier_hostile_contract' or 'hostile_fixture_manifest' in classes:
@@ -1332,6 +1429,9 @@ def validate_reference_source_contract_review(bs, required_acceptance, acceptanc
                 calc[severity]+=1
 
     for oid,entry in entries_by_id.items():
+        if not reference_entry_has_waiver_or_unverified(entry) and not addressed_rows_by_oid.get(oid):
+            errors.append(f'reference_source_contract_review.reference_obligation_unaddressed[{oid}] ledger obligation has no bound Grade pass/fail/unverified row')
+            calc['P1']+=1
         bound_rows=pass_rows_by_oid.get(oid,[])
         grade_claim=text_blob([row for _block,_i,row,_text,_severity in bound_rows])
         evidence_summary=text_blob([row_evidence_text([row]) for _block,_i,row,_text,_severity in bound_rows])
@@ -2339,7 +2439,7 @@ def lint(task_type,risk_level,grade_file,outcome_file,repo_root=None):
         validate_outcome(obs,errors)
         required=adversarial_acceptance_metadata(obs)
         validate_adv(summary,gbs,errors,required) if isinstance(summary,dict) else errors.append('cannot validate adversarial grade without grade_summary')
-    ref_in_scope=bool(code_gate and reference_source_in_scope(grade_text,outcome_text,obs))
+    ref_in_scope=bool(code_gate and reference_source_in_scope(grade_text,outcome_text,obs,gbs))
     return {'grade_lint':{'status':'fail' if errors else 'pass','task_type':task_type,'risk_level':risk_level,'code_baseline_gate':code_gate,'medium_high_code_gate':gated,'grade_file':str(grade_file),'outcome_file':str(outcome_file),'reference_source_review':{'in_scope':ref_in_scope,'advisory_request_count':len(reference_requests)},'reference_obligation_review_requests':reference_requests,'errors':errors}}
 
 def write_reference_obligation_review_requests(evidence_file, result):
@@ -2348,8 +2448,11 @@ def write_reference_obligation_review_requests(evidence_file, result):
         return
     requests=(result.get('grade_lint') or {}).get('reference_obligation_review_requests') or []
     out=Path(evidence_file).resolve().parent/'reference_obligation_review_request.jsonl'
-    out.parent.mkdir(parents=True,exist_ok=True)
-    out.write_text(''.join(json.dumps(row,ensure_ascii=False,sort_keys=True)+'\n' for row in requests),encoding='utf-8')
+    try:
+        out.parent.mkdir(parents=True,exist_ok=True)
+        out.write_text(''.join(json.dumps(row,ensure_ascii=False,sort_keys=True)+'\n' for row in requests),encoding='utf-8')
+    except OSError:
+        pass
 def main(argv=None):
     ap=argparse.ArgumentParser(); ap.add_argument('--task-type',required=True,choices=['code','docs','infra','refactor','spec']); ap.add_argument('--risk-level',required=True,choices=['low','medium','high']); ap.add_argument('--grade-file',required=True); ap.add_argument('--outcome-file',required=True); ap.add_argument('--evidence-file'); ap.add_argument('--repo-root')
     a=ap.parse_args(argv)

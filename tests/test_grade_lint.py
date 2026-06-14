@@ -2288,16 +2288,124 @@ REFERENCE_FIXTURE_ONLY_GRADE=REFERENCE_VALID_GRADE.replace(
     "src/action.test.tsx: getByRole('button', {name:/Next/}) + userEvent.click asserts disabled then enabled state assertion",
     "mocked fixture provider renders the production behavior through a provider seam only"
 )
+REFERENCE_FIXTURE_ONLY_BACKLOG_GRADE=REFERENCE_FIXTURE_ONLY_GRADE.replace(
+    "provider seam only",
+    "provider seam only; missing_upstream: B-123"
+)
 REFERENCE_PRODUCTION_ANCHOR_GRADE=REFERENCE_FIXTURE_ONLY_GRADE.replace(
     "provider seam only",
     "provider seam plus production_path_anchor: client-to-handler request path and handler consumes request body"
 )
 REFERENCE_STATIC_ONLY_GRADE=REFERENCE_VALID_GRADE.replace(
     "src/action.test.tsx: getByRole('button', {name:/Next/}) + userEvent.click asserts disabled then enabled state assertion",
-    "heading and landmark present in a static DOM screenshot; data-testid exists"
+    "heading and landmark present in a static DOM screenshot; data-testid exists; assert visible state"
 )
 REFERENCE_NARROWED_OUTCOME=REFERENCE_VALID_OUTCOME.replace('waiver: null', 'status: excluded\n    rationale: "narrowed out of current scope"')
+REFERENCE_NARROWED_NULL_WAIVER_OUTCOME=REFERENCE_VALID_OUTCOME.replace('waiver: null', 'status: excluded\n    waiver: null')
 REFERENCE_NARROWED_WAIVED_OUTCOME=REFERENCE_VALID_OUTCOME.replace('waiver: null', 'status: UNVERIFIED\n    scope_basis_ref: "scope note"')
+REFERENCE_UNADDRESSED_OUTCOME=REFERENCE_VALID_OUTCOME.replace('''    waiver: null
+```
+''', '''    waiver: null
+  - obligation_id: "UX-102-UNBOUND"
+    source_ref: {path: "docs/ux/design-brief.md", section: "§10.12", quote_hash: "sha256:test2"}
+    kind: "ui_action_state_label"
+    must: "A second referenced obligation must be addressed."
+    required_evidence_classes: ["behavioral_ui_test"]
+    waiver: null
+```
+''')
+REFERENCE_HISTORICAL_ONLY_OUTCOME='''---
+title: "Frontend React copy cleanup"
+goal: "Frontend React copy-only task with no current referenced design source."
+acceptance:
+  - id: HIST-A1
+    severity: P1
+    text: "The local copy cleanup is verified."
+---
+'''
+REFERENCE_HISTORICAL_ONLY_GRADE='''# Grade — historical prose must not trigger B2
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: HIST-A1, status: pass, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: HIST-A1
+    status: pass
+    severity_if_fail: P1
+    spec_ref: "local outcome acceptance"
+    evidence_ref: "copy cleanup test passed"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: HIST-A1
+    status: pass
+    severity_if_fail: P1
+    scenario: "historical backtest old escape mentioned docs/ux/design-brief.md but that source is not current scope"
+    evidence_ref: "copy cleanup regression passed"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: "copy fixture has no secrets"
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: "copy fixture changes no dependencies"
+```
+'''
+REFERENCE_BACKEND_API_OUTCOME='''---
+title: "Rust daemon API schema helper"
+goal: "Backend daemon helper checks an internal API shape without frontend UI work."
+context_pointers:
+  - "docs/architecture/api-contract.md"
+acceptance:
+  - id: API-A1
+    severity: P1
+    text: "The backend helper validates the response envelope shape."
+---
+'''
+REFERENCE_BACKEND_API_GRADE='''# Grade — backend api taxonomy deferred fixture
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: API-A1, status: pass, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: API-A1
+    status: pass
+    severity_if_fail: P1
+    spec_ref: "docs/architecture/api-contract.md §3"
+    evidence_ref: "backend response envelope schema test passed"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: API-A1
+    status: pass
+    severity_if_fail: P1
+    scenario: "malformed response envelope is rejected"
+    evidence_ref: "backend malformed envelope test passed"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: "backend schema fixture has no secrets"
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: "backend schema fixture changes no dependencies"
+```
+'''
 REFERENCE_HOSTILE_OUTCOME=CYCLE020_GRADE_AGENT_ESCAPE_OUTCOME + '''
 ```yaml
 reference_obligations:
@@ -2315,6 +2423,68 @@ REFERENCE_HOSTILE_GRADE=CYCLE020_GRADE_AGENT_ESCAPE_GRADE.replace(
     1,
 )
 REFERENCE_HOSTILE_IDS_OUTCOME=REFERENCE_HOSTILE_OUTCOME.replace('waiver: null', 'hostile_fixture_ids: ["cmd-write-forbidden-root", "artifact-path-traversal"]\n    waiver: null')
+REFERENCE_HOSTILE_MIN_OUTCOME='''---
+title: "Frontend React verifier source review"
+goal: "Frontend React verification panel tracks a referenced verifier contract."
+context_pointers:
+  - "docs/agents/grade/AGENT.md"
+acceptance:
+  - id: RS-H1
+    severity: P1
+    text: "Referenced verifier hostile fixtures are executed and named."
+---
+# Outcome
+```yaml
+reference_obligations:
+  - obligation_id: "GRADE-HOSTILE-01"
+    source_ref: {path: "docs/agents/grade/AGENT.md", section: "capabilities.forbidden", quote_hash: "sha256:test"}
+    kind: "verifier_hostile_contract"
+    must: "Grade verifier rejects hostile command/path escape fixtures."
+    required_evidence_classes: ["hostile_fixture_manifest"]
+    waiver: null
+```
+'''
+REFERENCE_HOSTILE_MIN_IDS_OUTCOME=REFERENCE_HOSTILE_MIN_OUTCOME.replace(
+    'waiver: null',
+    'hostile_fixture_ids: ["cmd-write-forbidden-root", "artifact-path-traversal"]\n    waiver: null'
+)
+REFERENCE_HOSTILE_MIN_GRADE='''# Grade — hostile fixture id shape fixture
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: RS-H1, status: pass, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: RS-H1
+    obligation_id: GRADE-HOSTILE-01
+    status: pass
+    severity_if_fail: P1
+    spec_ref: "docs/agents/grade/AGENT.md"
+    evidence_ref: "hostile_fixture_ids executed but not named"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: RS-H1
+    status: pass
+    severity_if_fail: P1
+    scenario: "hostile verifier fixture execution"
+    evidence_ref: "hostile fixture regression passed"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: "hostile fixture id shape fixture has no secrets"
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: "hostile fixture id shape fixture changes no dependencies"
+```
+'''
 class GradeLintTests(unittest.TestCase):
     def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME,repo_root=None):
         with tempfile.TemporaryDirectory() as td:
@@ -2327,6 +2497,13 @@ class GradeLintTests(unittest.TestCase):
             self.assertTrue(proc.stdout, proc.stderr)
             self.assertTrue(ef.exists())
             return proc,json.loads(proc.stdout)
+
+    def assert_reference_clean(self, grade, outcome):
+        proc,p=self.run_lint('code','low',grade,outcome)
+        self.assertEqual(proc.returncode,0,p)
+        self.assertEqual(p['grade_lint']['status'],'pass',p)
+        self.assertNotIn('reference_source_contract_review', '\n'.join(p['grade_lint']['errors']))
+        return p
 
     def test_old_cycle009_happy_path_only_medium_code_fails(self):
         proc,p=self.run_lint(); self.assertEqual(proc.returncode,1); e='\n'.join(p['grade_lint']['errors']); self.assertIn('adversarial_checks',e); self.assertIn('trust_surface_inventory',e); self.assertIn('deferred_claims',e)
@@ -2713,42 +2890,59 @@ class GradeLintTests(unittest.TestCase):
         self.assertEqual(proc.returncode,0,p)
         self.assertNotIn('reference_source_contract_review', '\n'.join(p['grade_lint']['errors']))
 
+    def test_reference_source_historical_backtest_prose_must_not_trigger_b2(self):
+        self.assert_reference_clean(REFERENCE_HISTORICAL_ONLY_GRADE,REFERENCE_HISTORICAL_ONLY_OUTCOME)
+
+    def test_reference_source_backend_api_taxonomy_is_defined_but_trigger_deferred(self):
+        self.assert_reference_clean(REFERENCE_BACKEND_API_GRADE,REFERENCE_BACKEND_API_OUTCOME)
+
+    def test_reference_source_agent_task_without_ledger_must_not_force_b2(self):
+        proc,p=self.run_lint('code','low',CYCLE020_GRADE_AGENT_ESCAPE_GRADE,CYCLE020_GRADE_AGENT_ESCAPE_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertNotIn('reference_source_contract_review.reference_obligations_missing', '\n'.join(p['grade_lint']['errors']))
+
     def test_reference_source_binding_and_required_classes_must_fire_and_clean_pair(self):
         proc,p=self.run_lint('code','low',REFERENCE_MISSING_BINDING_GRADE,REFERENCE_MISSING_BINDING_AND_CLASSES_OUTCOME)
         self.assertEqual(proc.returncode,1)
         errors='\n'.join(p['grade_lint']['errors'])
         self.assertIn('reference_source_contract_review.reference_obligations[UX-101-ACTION-STATE].required_evidence_classes is required', errors)
         self.assertIn('reference_source_contract_review.obligation_binding_missing[spec_compliance_matrix[0]]', errors)
-        proc,p=self.run_lint('code','low',REFERENCE_VALID_GRADE,REFERENCE_VALID_OUTCOME)
-        self.assertEqual(proc.returncode,0,p)
+        self.assert_reference_clean(REFERENCE_VALID_GRADE,REFERENCE_VALID_OUTCOME)
+
+    def test_reference_source_unaddressed_ledger_obligation_must_fire(self):
+        proc,p=self.run_lint('code','low',REFERENCE_VALID_GRADE,REFERENCE_UNADDRESSED_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn('reference_source_contract_review.reference_obligation_unaddressed[UX-102-UNBOUND]', '\n'.join(p['grade_lint']['errors']))
 
     def test_reference_source_fixture_only_production_anchor_must_fire_and_clean_pair(self):
         proc,p=self.run_lint('code','low',REFERENCE_FIXTURE_ONLY_GRADE,REFERENCE_PRODUCTION_OUTCOME)
         self.assertEqual(proc.returncode,1)
         self.assertIn('reference_source_contract_review.production_path_anchor_missing[UX-101-ACTION-STATE]', '\n'.join(p['grade_lint']['errors']))
-        proc,p=self.run_lint('code','low',REFERENCE_PRODUCTION_ANCHOR_GRADE,REFERENCE_PRODUCTION_OUTCOME)
-        self.assertEqual(proc.returncode,0,p)
+        proc,p=self.run_lint('code','low',REFERENCE_FIXTURE_ONLY_BACKLOG_GRADE,REFERENCE_PRODUCTION_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn('reference_source_contract_review.production_path_anchor_missing[UX-101-ACTION-STATE]', '\n'.join(p['grade_lint']['errors']))
+        self.assert_reference_clean(REFERENCE_PRODUCTION_ANCHOR_GRADE,REFERENCE_PRODUCTION_OUTCOME)
 
     def test_reference_source_static_presence_ui_must_fire_and_behavioral_clean_pair(self):
         proc,p=self.run_lint('code','low',REFERENCE_STATIC_ONLY_GRADE,REFERENCE_VALID_OUTCOME)
         self.assertEqual(proc.returncode,1)
         self.assertIn('reference_source_contract_review.behavioral_ui_test_missing[UX-101-ACTION-STATE]', '\n'.join(p['grade_lint']['errors']))
-        proc,p=self.run_lint('code','low',REFERENCE_VALID_GRADE,REFERENCE_VALID_OUTCOME)
-        self.assertEqual(proc.returncode,0,p)
+        self.assert_reference_clean(REFERENCE_VALID_GRADE,REFERENCE_VALID_OUTCOME)
 
     def test_reference_source_silent_narrowing_must_fire_and_unverified_clean_pair(self):
         proc,p=self.run_lint('code','low',REFERENCE_VALID_GRADE,REFERENCE_NARROWED_OUTCOME)
         self.assertEqual(proc.returncode,1)
         self.assertIn('reference_source_contract_review.silent_narrowing[UX-101-ACTION-STATE]', '\n'.join(p['grade_lint']['errors']))
-        proc,p=self.run_lint('code','low',REFERENCE_VALID_GRADE,REFERENCE_NARROWED_WAIVED_OUTCOME)
-        self.assertEqual(proc.returncode,0,p)
+        proc,p=self.run_lint('code','low',REFERENCE_VALID_GRADE,REFERENCE_NARROWED_NULL_WAIVER_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn('reference_source_contract_review.silent_narrowing[UX-101-ACTION-STATE]', '\n'.join(p['grade_lint']['errors']))
+        self.assert_reference_clean(REFERENCE_VALID_GRADE,REFERENCE_NARROWED_WAIVED_OUTCOME)
 
-    def test_reference_source_hostile_fixture_ids_must_fire_on_cycle020_text_and_clean_pair(self):
-        proc,p=self.run_lint('code','low',REFERENCE_HOSTILE_GRADE,REFERENCE_HOSTILE_OUTCOME)
+    def test_reference_source_hostile_fixture_ids_must_fire_on_vague_prose_and_clean_pair(self):
+        proc,p=self.run_lint('code','low',REFERENCE_HOSTILE_MIN_GRADE,REFERENCE_HOSTILE_MIN_OUTCOME)
         self.assertEqual(proc.returncode,1)
         self.assertIn('reference_source_contract_review.hostile_fixture_ids_missing[GRADE-HOSTILE-01]', '\n'.join(p['grade_lint']['errors']))
-        proc,p=self.run_lint('code','low',REFERENCE_HOSTILE_GRADE,REFERENCE_HOSTILE_IDS_OUTCOME)
-        self.assertNotIn('reference_source_contract_review.hostile_fixture_ids_missing', '\n'.join(p['grade_lint']['errors']))
+        self.assert_reference_clean(REFERENCE_HOSTILE_MIN_GRADE,REFERENCE_HOSTILE_MIN_IDS_OUTCOME)
 
     def test_reference_source_advisory_request_artifact_emitted_never_verdict_gated(self):
         with tempfile.TemporaryDirectory() as td:
@@ -2762,6 +2956,17 @@ class GradeLintTests(unittest.TestCase):
             rows=[json.loads(line) for line in request.read_text().splitlines()]
             self.assertEqual([row['obligation_id'] for row in rows], ['UX-101-ACTION-STATE'])
             self.assertFalse(verdict.exists())
+
+    def test_reference_source_advisory_request_write_failure_is_non_gating(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td); gf=root/'grade.md'; of=root/'outcome.md'; ef=root/'evidence'/'grade_lint_round_0.json'
+            request_dir=ef.parent/'reference_obligation_review_request.jsonl'
+            request_dir.mkdir(parents=True)
+            gf.write_text(textwrap.dedent(REFERENCE_VALID_GRADE)); of.write_text(textwrap.dedent(REFERENCE_VALID_OUTCOME))
+            proc=subprocess.run([sys.executable,str(LINTER),'--task-type','code','--risk-level','low','--grade-file',str(gf),'--outcome-file',str(of),'--evidence-file',str(ef)],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            self.assertEqual(proc.returncode,0,proc.stdout+proc.stderr)
+            payload=json.loads(proc.stdout)
+            self.assertEqual(payload['grade_lint']['status'],'pass')
 
     def write_frontend_dependency_repo(self, root, *, drift):
         (root/'docs'/'architecture').mkdir(parents=True)
