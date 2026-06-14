@@ -1,7 +1,7 @@
 cycle: cycle-029
 r1: done
 r2: done
-skill_release: null
+skill_release: v1.4.28
 remediation: null
 escalated_to_human:
 - id: C2
@@ -26,4 +26,4 @@ escalated_to_human:
   - F1
   - F2
 closed: false
-updated_at: '2026-06-14T15:11:46Z'
+updated_at: '2026-06-14T15:38:07Z'
