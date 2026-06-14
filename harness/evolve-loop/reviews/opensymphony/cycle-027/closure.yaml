@@ -1,8 +1,25 @@
 cycle: cycle-027
 r1: done
-r2: null
+r2: done
 skill_release: null
 remediation: null
-escalated_to_human: []
+escalated_to_human:
+- id: C3
+  from: cycle-027 r2
+  title: Trusted B2 evidence provenance for semantic production-path claims
+  determinism: needs_human
+  target: contract.md REFERENCE_SOURCE_CONTRACT_REVIEW_V1 + prompts/grade/role.md
+    + reference_obligation advisory workflow
+  change: 'Design a provenance or human-review layer for production_path_anchor obligations:
+    PASS evidence should carry artifact spans to source/test files or a blocking human/advisory
+    verdict for DEMONSTRATED vs NOT_DEMONSTRATED, scoped to referenced-source production_path_anchor
+    obligations whose semantic adequacy cannot be proven by source-pattern lint. Not
+    a grade_lint regex because an agent can forge prose claiming a test used the production
+    path. This is the irreducible residual of cycle-027 F1 (forged DA-31/DA-30 obligations)
+    and Agy''s B2 council point that evidence is agent-forgeable; the deterministic
+    C1 anchor (v1.4.26) catches the obvious mock-only pattern but cannot prove an
+    arbitrary test drove production.'
+  addresses:
+  - F1
 closed: false
-updated_at: '2026-06-14T09:05:25Z'
+updated_at: '2026-06-14T09:13:55Z'
