@@ -17,5 +17,5 @@ escalated_to_human:
     lint cannot safely infer (e.g. a re-probe leaving load=loaded with config=null).
   addresses:
   - F1
-closed: false
-updated_at: '2026-06-14T07:51:50Z'
+closed: true
+updated_at: '2026-06-14T07:52:07Z'
