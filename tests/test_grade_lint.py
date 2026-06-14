@@ -2019,6 +2019,56 @@ CYCLE024_SATISFIED_GRADE=CYCLE024_UI_M2_GRADE_EXCERPT.replace(
     "evidence_ref: \"evidence/grade/pnpm_vitest_full_round_2.log run-detail PASS: GET /api/v1/runs/run%2Fid (encoded); RunDetail additive §3.2 typing; null default provider renders 'Shape question detail unavailable: shape_session.md is not yet served by the daemon.' + '0 answered · 5 total · shape_session.md'; production source scan contains no question fixture text; commandPolicy rows reused byte-identical\"",
     "evidence_ref: \"evidence/grade/pnpm_vitest_full_round_2.log run-detail PASS: fixture-only; real provider pending B-019 (unavailable state shown); production provider/default wiring: default runtime provider is wired to the unavailable B-019 null provider until the daemon serves shape_session.md; GET /api/v1/runs/run%2Fid (encoded); RunDetail additive §3.2 typing; null default provider renders 'Shape question detail unavailable: shape_session.md is not yet served by the daemon.' + '0 answered · 5 total · shape_session.md'; production source scan contains no question fixture text; commandPolicy rows reused byte-identical\"",
 )
+CYCLE026_NEGATIVE_FAILURE_OUTCOME_EXCERPT='''---
+schema_version: "1.2"
+title: "UI-M4 Tweaks panel — vendor/model/effort/persona + config source layers"
+goal: "Build the UI-M4 Tweaks panel inside the existing apps/symphony-ui app shell as a read-truth runtime-preferences form."
+risk_level: low
+acceptance:
+  - id: a6
+    text: "Re-probe + load/error states (commandPolicy refresh-capability; AA copy): on mount the panel loads capabilities + config through the injected client and shows a loading state, then the loaded controls; a 'Re-probe vendors' button issues exactly one POST /api/v1/daemon/commands/refresh-capability (no If-Match) and on success refetches capabilities so the controls reflect the new probe (asserted by changing the second capabilities mock and seeing a previously-disabled vendor become enabled); when GET /api/v1/capabilities or GET /api/v1/config rejects, the panel renders an honest error line naming the failed call ('GET /api/v1/capabilities failed: <reason>') and a retry affordance that re-issues the GET — never a global spinner, never a crash ('tweaks-reprobe' describe block)."
+---
+'''
+CYCLE026_NEGATIVE_FAILURE_GRADE_EXCERPT='''# Grade Round 1 — B-026 UI-M4 Tweaks panel (cycle-026)
+```yaml
+grade_summary:
+  p0_count: 0
+  p1_count: 0
+  p2_count: 0
+```
+```yaml
+acceptance_status:
+  - id: a6
+    status: pass
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: a6
+    spec_refs: ["api-contract refresh-capability command policy", "docs/ops/contributing.md AA error copy"]
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: "evidence/grade/pnpm_vitest_full_round_1.log tweaks-reprobe PASS: mount loads capabilities+config with loading state; Re-probe issues exactly one POST refresh-capability (no If-Match) then refetches (previously-disabled vendor becomes enabled on 2nd mock); GET rejection renders honest error line naming the failed call + retry affordance re-issuing the GET; no global spinner, no crash. The panel scopes its own loading/error states to its initial load only — they are local to the Tweaks panel, never the shell. The DA-30 stale-while-revalidate region behavior is owned by the B-023 shell and inherited unchanged here (shell.test.tsx is byte-frozen per a8): the existing snapshot stays rendered in the Ledger and Inspector regions during retry or degraded refresh (existing_snapshot_retained_in_regions_during_retry_or_degraded), and the shell's loading/error panels are scoped to the initial load with no prior snapshot and never replace an existing snapshot (initial_load_panels_scoped_to_no_prior_snapshot_not_replacements); both remain green in evidence/grade/pnpm_vitest_full_round_1.log (shell suite)"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: a1
+    scenario: "Seam routing negative: across capabilities()+config()+refreshCapability() the transport receives exactly [GET /api/v1/capabilities, GET /api/v1/config, POST /api/v1/daemon/commands/refresh-capability body:{}] and the POST carries no ifMatch header (sent[2].ifMatch undefined)"
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: "evidence/grade/pnpm_vitest_full_round_1.log tweaks-client PASS"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: "cycle-026 fixture has no secret audit surface"
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: "no dependency changes in this fixture"
+```
+'''
 FRONTEND_NEGATED_CYCLE024_FACET_OUTCOME='''---
 schema_version: "1.2"
 title: "UI-M2 negated fixture-honesty row"
@@ -2828,6 +2878,23 @@ class GradeLintTests(unittest.TestCase):
                 errors='\n'.join(p['grade_lint']['errors'])
                 for prefix in new_prefixes:
                     self.assertNotIn(prefix, errors)
+
+    def test_negative_failure_branch_coverage_cycle026_real_escape_must_fire(self):
+        proc,p=self.run_lint('code','low',CYCLE026_NEGATIVE_FAILURE_GRADE_EXCERPT,CYCLE026_NEGATIVE_FAILURE_OUTCOME_EXCERPT)
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertIn(
+            'negative_failure_branch_coverage[a6] missing branches: GET /api/v1/capabilities after POST /api/v1/daemon/commands/refresh-capability (failure+retry); GET /api/v1/config (failure+retry)',
+            errors,
+        )
+
+    def test_negative_failure_branch_coverage_cycle023_get_retry_real_clean(self):
+        _proc,p=self.run_lint('code','low',CYCLE023_UI_M1_GRADE_EXCERPT,CYCLE023_UI_M1_OUTCOME_EXCERPT)
+        self.assertNotIn('negative_failure_branch_coverage', '\n'.join(p['grade_lint']['errors']))
+
+    def test_negative_failure_branch_coverage_cycle024_post_resubmit_real_clean(self):
+        _proc,p=self.run_lint('code','low',CYCLE024_UI_M2_GRADE_EXCERPT,CYCLE024_UI_M2_OUTCOME_EXCERPT)
+        self.assertNotIn('negative_failure_branch_coverage', '\n'.join(p['grade_lint']['errors']))
 
     def test_cycle025_ui_m3_real_excerpts_fire_schema_tags_command_facets(self):
         proc,p=self.run_lint('code','low',CYCLE025_UI_M3_GRADE_EXCERPT,CYCLE025_UI_M3_OUTCOME_EXCERPT)

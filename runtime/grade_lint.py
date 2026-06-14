@@ -56,6 +56,11 @@ STRING_TRAVERSAL_TERMS=re.compile(r"\.\.|slash|backslash|absolute\s+path|%2f|%5c
 SYMLINK_CONTAINMENT_TERMS=re.compile(r"symlink|canonical(?:ize|ise|ization|isation)?|realpath|starts?_with|starts[-\s]?with|root[-_\s]?contain(?:ed|ment)?|within\s+(?:the\s+)?(?:root|directory)|no[-_\s]?follow|lstat|symlink_metadata|link_metadata", re.I)
 REQUEST_TARGET_TERMS=re.compile(r"request[-_\s]?target|request\s+line|raw\s+http|http/1\.1|path\s+segment|percent[-_\s]?encod|url[-_\s]?encod|crlf|control\s+char|request\s+delimiter", re.I)
 REQUEST_TARGET_FACET_TERMS=re.compile(r"delimiter|\?|#|\bspaces?\b|control|crlf|\\r|\\n|percent[-_\s]?encod|url[-_\s]?encod", re.I)
+HTTP_CALL_RE=re.compile(r"\b(GET|POST|PUT|PATCH|DELETE)s?\s+`?(/[^\s`'\"),;]+)", re.I)
+HTTP_FAILURE_TERMS=re.compile(r"\b(?:reject(?:s|ed|ion)?|fail(?:s|ed|ure)?|error(?!\?)|timeout)\b", re.I)
+HTTP_RETRY_TERMS=re.compile(r"\b(?:retry|re[-_\s]?issue(?:s|d|ing)?|re[-_\s]?invoke(?:s|d|ing)?|resubmit(?:s|ted|ting)?)\b", re.I)
+HTTP_POST_SUCCESS_TERMS=re.compile(r"\b(?:on\s+success|after\s+success|after\s+successful|succeeds?|successful|202)\b", re.I)
+HTTP_REFETCH_TERMS=re.compile(r"\b(?:refetch(?:es|ed|ing)?|re[-_\s]?fetch(?:es|ed|ing)?|reload(?:s|ed|ing)?|re[-_\s]?load(?:s|ed|ing)?)\b", re.I)
 SECRET_AUDIT_SCOPE_TERMS=re.compile(r"\b(?:auth|secret|token|credential|password|oauth|bearer|api[-_\s]?key|vendor[-_\s]?stderr|stderr|logs?|logging|traces?|tracing|events?|evidence|debug|display|errors?|serialization)\b", re.I)
 NEGATED_SCOPE_PREFIX=re.compile(r"(?:\bno\b|\bnot\b|\bnever\b|\bwithout\b|\bdoes\s+not\b|\bdo\s+not\b|\bdoesn't\b|\bdon't\b|\bnot_applicable\b)\W+(?:[\w/.-]+\W+){0,8}$", re.I)
 SECRET_TOKEN_SHAPE_PATTERNS={
@@ -627,6 +632,178 @@ def row_evidence_text(rows):
         if isinstance(row,dict):
             values.extend(row.get(field) for field in evidence_fields if field in row)
     return text_blob(values)
+
+def canonical_http_path(path):
+    return (path or '').strip().strip('`"\'').rstrip('.,:')
+
+def http_call_atoms(text):
+    atoms=[]
+    for match in HTTP_CALL_RE.finditer(text or ''):
+        method=match.group(1).upper()
+        path=canonical_http_path(match.group(2))
+        if not path:
+            continue
+        atom={'method':method,'path':path,'start':match.start(),'end':match.end()}
+        if not any(existing['method']==method and existing['path']==path for existing in atoms):
+            atoms.append(atom)
+    return atoms
+
+def http_path_tail(path):
+    parts=[part for part in (path or '').strip('/').split('/') if part and not part.startswith('{')]
+    return parts[-1].lower() if parts else ''
+
+def negative_failure_branch_key(branch):
+    return (branch.get('method'), branch.get('path'))
+
+def append_negative_failure_branch(branches, atom):
+    key=negative_failure_branch_key(atom)
+    if not any(negative_failure_branch_key(branch)==key for branch in branches):
+        branches.append({'method':atom['method'],'path':atom['path']})
+
+def negative_failure_claim_segments(text):
+    return [segment.strip() for segment in re.split(r"(?<=[.;])\s+|[;\n]+", text or '') if segment.strip()]
+
+def negative_failure_branch_atoms(text):
+    branches=[]
+    for segment in negative_failure_claim_segments(text):
+        if not has_non_negated_scope_term(HTTP_FAILURE_TERMS,segment):
+            continue
+        calls=http_call_atoms(segment)
+        if not calls:
+            continue
+        if (
+            any(call['method']=='POST' for call in calls)
+            and any(call['method']=='GET' for call in calls)
+            and has_non_negated_scope_term(HTTP_POST_SUCCESS_TERMS,segment)
+            and has_non_negated_scope_term(HTTP_REFETCH_TERMS,segment)
+        ):
+            calls=[call for call in calls if call['method']=='GET']
+        for call in calls:
+            append_negative_failure_branch(branches,call)
+    return branches
+
+def negative_failure_post_refetch_contexts(text):
+    contexts=[]
+    for post in (atom for atom in http_call_atoms(text) if atom['method']=='POST'):
+        next_breaks=[pos for pos in ((text or '').find(';',post['end']),(text or '').find('.',post['end'])) if pos!=-1]
+        refetch_end=min(next_breaks) if next_breaks else post['end']+420
+        refetch_end=min(refetch_end, post['end']+420)
+        context=(text or '')[max(0,post['start']-180):refetch_end]
+        refetch_context=(text or '')[post['end']:refetch_end]
+        if HTTP_POST_SUCCESS_TERMS.search(context) and HTTP_REFETCH_TERMS.search(context):
+            contexts.append((post,context,refetch_context))
+    return contexts
+
+def upgrade_negative_failure_followup_branches(text, branches):
+    contexts=negative_failure_post_refetch_contexts(text)
+    if not contexts:
+        return branches
+    upgraded=[]
+    for branch in branches:
+        next_branch=dict(branch)
+        if branch.get('method')=='GET':
+            tail=http_path_tail(branch.get('path',''))
+            for post,context,refetch_context in contexts:
+                if (branch.get('path') in refetch_context) or (tail and re.search(rf"\b{re.escape(tail)}\b",refetch_context,re.I)):
+                    next_branch['after_method']=post['method']
+                    next_branch['after_path']=post['path']
+                    break
+        upgraded.append(next_branch)
+    return upgraded
+
+def negative_failure_branch_occurrences(branch, text):
+    matches=[]
+    for match in HTTP_CALL_RE.finditer(text or ''):
+        method=match.group(1).upper()
+        path=canonical_http_path(match.group(2))
+        if method==branch.get('method') and path==branch.get('path'):
+            matches.append((match.start(),match.end()))
+    return matches
+
+def negative_failure_branch_after_context_present(branch, text, branch_start, branch_end):
+    after_method=branch.get('after_method')
+    after_path=branch.get('after_path')
+    if not after_method or not after_path:
+        return True
+    for start,end in negative_failure_branch_occurrences({'method':after_method,'path':after_path}, text):
+        context=(text or '')[max(0,min(start,branch_start)-240):max(end,branch_end)+420]
+        if HTTP_POST_SUCCESS_TERMS.search(context) and HTTP_REFETCH_TERMS.search(context):
+            return True
+    return False
+
+def negative_failure_branch_has_evidence(branch, evidence_text, *, requires_retry):
+    for start,end in negative_failure_branch_occurrences(branch,evidence_text):
+        context=(evidence_text or '')[max(0,start-220):end+320]
+        if not has_non_negated_scope_term(HTTP_FAILURE_TERMS,context):
+            continue
+        if requires_retry and not has_non_negated_scope_term(HTTP_RETRY_TERMS,context):
+            continue
+        if not negative_failure_branch_after_context_present(branch,evidence_text,start,end):
+            continue
+        return True
+    return False
+
+def negative_failure_branch_label(branch, *, requires_retry):
+    label=f"{branch.get('method')} {branch.get('path')}"
+    if branch.get('after_method') and branch.get('after_path'):
+        label+=f" after {branch.get('after_method')} {branch.get('after_path')}"
+    facets='failure+retry' if requires_retry else 'failure'
+    return f"{label} ({facets})"
+
+def rows_have_negative_failure_exemption(rows):
+    for row in rows:
+        if not isinstance(row,dict) or row.get('status')!='not_applicable':
+            continue
+        if any(isinstance(row.get(k),str) and row.get(k).strip() for k in ('rationale','scope_basis_ref','tracked_waiver_ref','maintainer_waiver_ref','user_waiver_ref')):
+            return True
+    return False
+
+def negative_failure_branch_severity(acceptance_id, required_acceptance, status_meta, spec_rows):
+    severity=required_acceptance.get(acceptance_id,{}).get('severity')
+    if severity in BLOCKING:
+        return severity
+    severity=status_meta.get(acceptance_id,{}).get('severity')
+    if severity in BLOCKING:
+        return severity
+    for row in spec_rows:
+        severity=row_blocking_severity(row, required_acceptance)
+        if severity in BLOCKING:
+            return severity
+    return None
+
+def validate_negative_failure_branch_coverage(required_acceptance, acceptance_status, spec, neg, errors):
+    status_meta=acceptance_status_metadata(acceptance_status)
+    spec_by_acceptance=row_collection_by_acceptance(spec)
+    neg_by_acceptance=row_collection_by_acceptance(neg)
+    ids=set(required_acceptance) | set(status_meta) | set(spec_by_acceptance)
+    for acceptance_id in sorted(ids):
+        spec_rows=spec_by_acceptance.get(acceptance_id,[])
+        neg_rows=neg_by_acceptance.get(acceptance_id,[])
+        if negative_failure_branch_severity(acceptance_id, required_acceptance, status_meta, spec_rows) not in BLOCKING:
+            continue
+        if rows_have_negative_failure_exemption(spec_rows+neg_rows):
+            continue
+        claim_text=text_blob(
+            required_acceptance.get(acceptance_id,{}).get('text',''),
+            status_meta.get(acceptance_id,{}).get('text',''),
+            spec_rows,
+        )
+        if not (has_non_negated_scope_term(HTTP_FAILURE_TERMS,claim_text) and http_call_atoms(claim_text)):
+            continue
+        branches=negative_failure_branch_atoms(claim_text)
+        if not branches:
+            continue
+        branches=upgrade_negative_failure_followup_branches(claim_text,branches)
+        pass_rows=[row for row in spec_rows+neg_rows if isinstance(row,dict) and row.get('status')=='pass']
+        evidence_text=row_evidence_text(pass_rows)
+        requires_retry=has_non_negated_scope_term(HTTP_RETRY_TERMS,claim_text)
+        missing=[
+            negative_failure_branch_label(branch,requires_retry=requires_retry)
+            for branch in branches
+            if not negative_failure_branch_has_evidence(branch,evidence_text,requires_retry=requires_retry)
+        ]
+        if missing:
+            errors.append(f"negative_failure_branch_coverage[{acceptance_id}] missing branches: {'; '.join(missing)}")
 
 def subprocess_lifecycle_evidence_text(rows):
     evidence_fields=('evidence_ref','evidence_refs','method','evidence_method','audit_method','evidence_summary','summary','note','details','rationale')
@@ -2286,6 +2463,7 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
     if missing_neg: errors.append('negative_regression_tests missing P0/P1 outcome acceptance IDs: '+','.join(missing_neg))
     prop_calc=validate_property_obligations(required_acceptance, neg, errors)
     calc['P0']+=prop_calc['P0']; calc['P1']+=prop_calc['P1']
+    validate_negative_failure_branch_coverage(required_acceptance, acceptance_status, spec, neg, errors)
     validate_shape_forbidden_read_isolation_audit(spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_outcome_capsule_v12_structural_schema(outcome_blocks, errors, grade_text=grade_text, outcome_text=outcome_text)
     validate_shape_protocol_evidence(bs, outcome_blocks, errors, grade_text=grade_text, outcome_text=outcome_text)
