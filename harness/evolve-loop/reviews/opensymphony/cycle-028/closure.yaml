@@ -1,7 +1,7 @@
 cycle: cycle-028
 r1: done
 r2: done
-skill_release: null
+skill_release: v1.4.27
 remediation: null
 escalated_to_human:
 - id: C2
@@ -58,4 +58,4 @@ escalated_to_human:
   addresses:
   - harness
 closed: false
-updated_at: '2026-06-14T12:58:00Z'
+updated_at: '2026-06-14T13:25:44Z'
