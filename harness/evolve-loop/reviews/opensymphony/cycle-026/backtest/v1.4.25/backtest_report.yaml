@@ -1,0 +1,96 @@
+baseline_ref: v1.4.24
+target_cycle: cycle-026
+target_cycles:
+- cycle-026
+cycles:
+- cycle: cycle-009
+  risk: medium
+  grade: grade_round_1.md
+  baseline_error_count: 16
+  new_error_count: 16
+  delta_errors: []
+- cycle: cycle-013
+  risk: medium
+  grade: grade_round_0.md
+  baseline_error_count: 10
+  new_error_count: 10
+  delta_errors: []
+- cycle: cycle-015
+  risk: low
+  grade: grade_round_0.md
+  baseline_error_count: 7
+  new_error_count: 7
+  delta_errors: []
+- cycle: cycle-016
+  risk: medium
+  grade: grade_round_0.md
+  baseline_error_count: 1
+  new_error_count: 1
+  delta_errors: []
+- cycle: cycle-017
+  risk: low
+  grade: grade_round_0.md
+  baseline_error_count: 2
+  new_error_count: 2
+  delta_errors: []
+- cycle: cycle-018
+  risk: medium
+  grade: grade_round_1.md
+  baseline_error_count: 15
+  new_error_count: 15
+  delta_errors: []
+- cycle: cycle-019
+  risk: medium
+  grade: grade_round_0.md
+  baseline_error_count: 4
+  new_error_count: 4
+  delta_errors: []
+- cycle: cycle-020
+  risk: medium
+  grade: grade_round_1.md
+  baseline_error_count: 7
+  new_error_count: 7
+  delta_errors: []
+- cycle: cycle-021
+  risk: medium
+  grade: grade_round_2.md
+  baseline_error_count: 9
+  new_error_count: 9
+  delta_errors: []
+- cycle: cycle-022
+  risk: medium
+  grade: grade_round_3.md
+  baseline_error_count: 7
+  new_error_count: 7
+  delta_errors: []
+- cycle: cycle-023
+  risk: low
+  grade: grade_round_2.md
+  baseline_error_count: 13
+  new_error_count: 13
+  delta_errors: []
+- cycle: cycle-024
+  risk: low
+  grade: grade_round_2.md
+  baseline_error_count: 6
+  new_error_count: 6
+  delta_errors: []
+- cycle: cycle-025
+  risk: medium
+  grade: grade_round_0.md
+  baseline_error_count: 34
+  new_error_count: 34
+  delta_errors: []
+- cycle: cycle-026
+  risk: low
+  grade: grade_round_1.md
+  baseline_error_count: 0
+  new_error_count: 1
+  delta_errors:
+  - 'negative_failure_branch_coverage[a6] missing branches: GET /api/v1/capabilities
+    after POST /api/v1/daemon/commands/refresh-capability (failure+retry); GET /api/v1/config
+    (failure+retry)'
+must_fire: true
+must_fire_by_cycle:
+  cycle-026: true
+misfire_candidates: []
