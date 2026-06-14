@@ -54,6 +54,18 @@ TRUSTED_CONTAINMENT_BINARY_TERMS=re.compile(r"\bsandbox-exec\b", re.I)
 TRUSTED_CONTAINMENT_SURFACES={"external_subprocess","file_modes","destructive_operation"}
 TRUSTED_CONTAINMENT_BINARY_ABSOLUTE_INVOCATION=re.compile(r"(?:^|[\s`'\"])/(?:usr/)?bin/sandbox-exec(?:\b|[`'\"])", re.I)
 TRUSTED_CONTAINMENT_BINARY_PATH_POISON_EVIDENCE=re.compile(r"\b(?:fake|poison(?:ed|ing)?|shadow(?:ed|ing)?|earlier|prepend(?:ed)?)\b[^.;\n]{0,120}\bPATH\b[^.;\n]{0,160}\bsandbox-exec\b|\bsandbox-exec\b[^.;\n]{0,160}\b(?:fake|poison(?:ed|ing)?|shadow(?:ed|ing)?|earlier|prepend(?:ed)?)\b[^.;\n]{0,120}\bPATH\b", re.I)
+SCANNED_PID_KILL_SIGNAL_TERMS=re.compile(r"\bSIG(?:TERM|KILL)\b|\bkill(?:ed|s|ing)?\b|\bsignal(?:led|ed|s|ing)?\b|\breap(?:ed|s|ing)?\b", re.I)
+SCANNED_PID_KILL_SCAN_TERMS=re.compile(r"\bfull[-_\s]?(?:process[-_\s]?table|table)\b|\bwhole[-_\s]+process[-_\s]+table\b|\bprocess[-_\s]?table\b|\benumerat(?:e|es|ed|ing)\s+pids?\b|\bscan(?:s|ned|ning)?\b|\b(?:match(?:es|ed|ing)?|matched)\s+(?:pids?|process(?:es)?|argv|env(?:iron(?:ment)?)?|marker|containment|selector|targets?)\b|\b(?:pids?|argv|env(?:iron(?:ment)?)?|marker|containment|selector|targets?)[^.;,\n]{0,60}\bmatch(?:es|ed|ing)?\b|\b(?:argv|env(?:iron(?:ment)?))[^.;,\n]{0,100}\b(?:marker|containment[-_\s]?id|selector|target|pid|match)\b|\b(?:marker|containment[-_\s]?id|selector|target|pid|match)[^.;,\n]{0,100}\b(?:argv|env(?:iron(?:ment)?))\b|\bmarker\b|\bcontainment[-_\s]?id\b|/proc\b|\bproc_listallpids\b|\bKERN_PROCARGS2\b", re.I)
+SCANNED_PID_KILL_SELECTOR_TERMS=re.compile(r"\bselector\b|\bblast[-_\s]?radius\b|\bunrelated\s+process(?:es)?\b|\binnocent\b|\bonly\b[^.;,\n]{0,100}\b(?:matched?|selected|target(?:ed)?|exact[-_\s]?marker|containment[-_\s]?id|this\s+acceptance|process(?:es)?\s+carrying)\b", re.I)
+SCANNED_PID_KILL_DESTRUCTIVE_SURFACES={"destructive_operation"}
+SCANNED_PID_KILL_KNOWN_CHILD_ONLY_TERMS=re.compile(r"\b(?:single|known|direct)\s+child\s+pid\b|\bchild\.id\(\)\b|\bknown[-_\s]?child\b", re.I)
+SCANNED_PID_KILL_DECOY_TERMS=re.compile(r"\b(?:live|long[-_\s]?lived)?\s*(?:decoy|innocent|unrelated|sibling)\s+(?:process|pid)\b|\bdecoys?\b|\binnocent\b|\bunrelated\s+process(?:es)?\b|\bsibling\s+process(?:es)?\b", re.I)
+SCANNED_PID_KILL_ARG_OR_OTHER_ENV_TERMS=re.compile(r"\bargv\b|\barg(?:ument)?s?\b|\bOTHER\s*=|\bother[-_\s]?env\b|\bother\s+env\b|\benv(?:ironment)?\s+value\b|\bnon[-_\s]?standalone\s+env\b", re.I)
+SCANNED_PID_KILL_SUBSTRING_MARKER_TERMS=re.compile(r"\bsubstring\b|\bnon[-_\s]?standalone\b|\bprefix\b|\bsuffix\b|\bcontains?\b[^.;\n]{0,80}\b(?:marker|containment[-_\s]?id|SYMPHONY_GRADE_CONTAINMENT_ID)\b", re.I)
+SCANNED_PID_KILL_MARKER_TERMS=re.compile(r"\bmarker\b|\bcontainment[-_\s]?id\b|\bSYMPHONY_GRADE_CONTAINMENT_ID\b", re.I)
+SCANNED_PID_KILL_SURVIVAL_TERMS=re.compile(r"\b(?:stays?|still|remains?)\s+alive\b|\bsurviv(?:e|es|ed|ing)\b|\bprocess_exists\s*(?:==|=)\s*true\b|\bnot\s+(?:signal(?:led|ed)|killed|reaped)\b|\bnever\s+(?:signal(?:led|ed)|killed|reaped)\b|\bleft\s+alone\b", re.I)
+SCANNED_PID_KILL_PID_IDENTITY_TERMS=re.compile(r"\bpid[-_\s]?(?:reuse|reused|recycle|recycled|churn)\b|\breused\s+pid\b|\brecycled[-_\s]?pid\b|\bTOCTOU\b|\bre[-_\s]?(?:read|validate|validated|validates|validation)\b|\bstart[-_\s]?time\b|\bprocess[-_\s]?start(?:ed)?[-_\s]?identity\b|\bpidfd\b|\bkqueue\b", re.I)
+SCANNED_PID_KILL_NO_UNRELATED_KILL_TERMS=re.compile(r"\bno\s+(?:unrelated|innocent|decoy|sibling)\s+(?:process\s+)?(?:is\s+)?(?:killed|signalled|signaled|reaped)\b|\b(?:unrelated|innocent|decoy|sibling)\s+(?:process\s+)?(?:survives?|stays?\s+alive|remains?\s+alive|not\s+killed|not\s+signalled|not\s+signaled)\b|\bnever\s+(?:kills?|signals?|reaps?)\s+(?:an?\s+)?(?:unrelated|innocent|decoy|sibling)\b", re.I)
 RPC_CLEANUP_EVERY_EXIT_CLAIM_TERMS=re.compile(r"\bcleanup\b[^.;,\n]{0,100}\b(?:on|for|across|in|runs?\s+on)\s+(?:every|each|all)\s+(?:exit[-_\s]?)?(?:path|paths|return|returns|outcome|outcomes)\b|\b(?:every|each|all)\s+(?:exit[-_\s]?)?(?:path|paths|return|returns|outcome|outcomes)\b[^.;,\n]{0,100}\bcleanup\b", re.I)
 RPC_CLEANUP_CLEAR_TERMS=re.compile(r"\bthread/goal/clear\b|\bgoal/clear\b|\bgoal[-_\s]?clear\b|\bclear(?:s|ed|ing)?\s+(?:the\s+)?(?:goal|thread\s+goal)\b", re.I)
 RPC_CLEANUP_ARCHIVE_TERMS=re.compile(r"\bthread/archive\b|\bthread[-_\s]?archive\b|\barchive(?:s|d|ing)?\s+(?:the\s+)?thread\b", re.I)
@@ -1129,6 +1141,82 @@ def validate_trusted_containment_binary_invocation_evidence(outcome_acceptance, 
             continue
         if not trusted_binary_invocation_evidence_present(claim_text):
             errors.append(f"trusted_binary_invocation[{row.get('id') or row.get('surface') or 'trust_surface_inventory'}] trusted containment binary (sandbox-exec) lacks absolute-path / non-PATH-invocation evidence (PATH-precedence poisoning unguarded)")
+
+def pattern_contexts(pattern, text, radius=360):
+    text=text or ''
+    return [text[max(0,match.start()-radius):min(len(text),match.end()+radius)] for match in pattern.finditer(text)]
+
+def scanned_pid_kill_claim_in_scope(claim_text, surfaces):
+    surfaces=surfaces or set()
+    if not has_non_negated_scope_term(SCANNED_PID_KILL_SIGNAL_TERMS, claim_text):
+        return False
+    if not has_non_negated_scope_term(SCANNED_PID_KILL_SCAN_TERMS, claim_text):
+        return False
+    if (
+        SCANNED_PID_KILL_DESTRUCTIVE_SURFACES.isdisjoint(surfaces)
+        and not has_non_negated_scope_term(SCANNED_PID_KILL_SELECTOR_TERMS, claim_text)
+    ):
+        return False
+    if (
+        has_non_negated_scope_term(SCANNED_PID_KILL_KNOWN_CHILD_ONLY_TERMS, claim_text)
+        and not re.search(r"\b(?:process[-_\s]?table|full[-_\s]?(?:process[-_\s]?table|table)|whole[-_\s]+process[-_\s]+table|scan(?:s|ned|ning)?|argv|env(?:iron(?:ment)?)?|marker|containment[-_\s]?id|/proc|proc_listallpids|KERN_PROCARGS2)\b", claim_text or '', re.I)
+    ):
+        return False
+    return True
+
+def marker_substring_decoy_survives_present(evidence_text):
+    for context in pattern_contexts(SCANNED_PID_KILL_DECOY_TERMS, evidence_text):
+        if (
+            has_non_negated_scope_term(SCANNED_PID_KILL_ARG_OR_OTHER_ENV_TERMS, context)
+            and has_non_negated_scope_term(SCANNED_PID_KILL_SUBSTRING_MARKER_TERMS, context)
+            and has_non_negated_scope_term(SCANNED_PID_KILL_MARKER_TERMS, context)
+            and has_non_negated_scope_term(SCANNED_PID_KILL_SURVIVAL_TERMS, context)
+        ):
+            return True
+    return False
+
+def pid_identity_stable_present(evidence_text):
+    if not has_non_negated_scope_term(SCANNED_PID_KILL_NO_UNRELATED_KILL_TERMS, evidence_text):
+        return False
+    return any(
+        has_non_negated_scope_term(SCANNED_PID_KILL_NO_UNRELATED_KILL_TERMS, context)
+        or has_non_negated_scope_term(SCANNED_PID_KILL_NO_UNRELATED_KILL_TERMS, evidence_text)
+        for context in pattern_contexts(SCANNED_PID_KILL_PID_IDENTITY_TERMS, evidence_text)
+    )
+
+def scanned_pid_kill_selector_missing_facets(evidence_text):
+    missing=[]
+    if not marker_substring_decoy_survives_present(evidence_text):
+        missing.append('marker_substring_decoy_survives')
+    if not pid_identity_stable_present(evidence_text):
+        missing.append('pid_identity_stable')
+    return missing
+
+def append_scanned_pid_kill_selector_error(item_id, evidence_text, errors):
+    missing=scanned_pid_kill_selector_missing_facets(evidence_text)
+    if missing:
+        errors.append(f"scanned_pid_kill_selector[{item_id}] missing facets: {','.join(missing)} — scan/match-selected SIGTERM/SIGKILL of PID sets must prove innocent substring decoys survive and PID identity is stable (different-token/bare-key or target-gone evidence is insufficient)")
+
+def validate_scanned_pid_kill_selector_evidence(outcome_acceptance, adversarial_acceptance, acceptance_status, rows, inv, errors):
+    for record in merged_claim_records(outcome_acceptance, adversarial_acceptance, acceptance_status, rows):
+        if record.get('severity') not in BLOCKING:
+            continue
+        if not claim_record_is_current_pass(record):
+            continue
+        claim_text=claim_record_text(record)
+        if not scanned_pid_kill_claim_in_scope(claim_text, record.get('surfaces') or set()):
+            continue
+        append_scanned_pid_kill_selector_error(record['id'], claim_record_evidence_text(record), errors)
+    for row in trust_surface_inventory_rows(inv):
+        if row.get('status')!='pass':
+            continue
+        if row_not_applicable_exempt(row) or row_fail_or_unverified(row):
+            continue
+        surfaces=row_surfaces(row)
+        claim_text=text_blob(row)
+        if not scanned_pid_kill_claim_in_scope(claim_text, surfaces):
+            continue
+        append_scanned_pid_kill_selector_error(row.get('id') or row.get('surface') or 'trust_surface_inventory', claim_text, errors)
 
 def validate_rpc_cleanup_acceptance_obligations(required_acceptance, acceptance_status, rows, errors):
     status_meta=acceptance_status_metadata(acceptance_status)
@@ -2908,6 +2996,7 @@ def validate_adv(summary,bs,errors,required_acceptance=None,outcome_acceptance=N
     grade_rows=spec_rows+neg_rows+checks
     validate_security_containment_unavailable_fail_closed_evidence(outcome_acceptance, required_acceptance, acceptance_status, grade_rows, errors)
     validate_trusted_containment_binary_invocation_evidence(outcome_acceptance, required_acceptance, acceptance_status, grade_rows, inv, errors)
+    validate_scanned_pid_kill_selector_evidence(outcome_acceptance, required_acceptance, acceptance_status, grade_rows, inv, errors)
     missing_acceptance=sorted(set(required_acceptance)-covered_acceptance_ids)
     if missing_acceptance: errors.append('adversarial_checks missing shaped adversarial_acceptance IDs: '+','.join(missing_acceptance))
     for k in ('adversarial_p0_count','adversarial_p1_count'):

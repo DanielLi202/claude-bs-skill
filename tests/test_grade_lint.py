@@ -2797,6 +2797,95 @@ CONTAINMENT_UNAVAILABLE_SUFFICIENT_GRADE=CONTAINMENT_UNAVAILABLE_INSUFFICIENT_GR
     'acceptance commands wrapped in sandbox-exec deny-read profile; fail-safe fallback when sandbox absent (adv5)',
     'acceptance commands invoke /usr/bin/sandbox-exec by absolute path; fake sandbox-exec earlier in PATH negative test proves PATH poisoning is ignored; fail-safe fallback when sandbox absent (adv5)'
 )
+SCANNED_PID_KILL_SELECTOR_OUTCOME='''# Outcome — full-table marker selector fixture
+```yaml
+risk_surface:
+  surfaces:
+    process: {present: true}
+    destructive_operation: {present: true}
+```
+```yaml
+adversarial_acceptance:
+  - id: ADV-SCAN
+    severity: P0
+    surface: [process, destructive_operation]
+    text: "Full process-table scan matches argv/env containment marker and SIGTERM/SIGKILLs only selected pids; selector blast-radius must exclude innocent unrelated processes."
+    verification_hint: "Spawn contained and decoy processes, run the selector, and assert exact target kill plus non-target survival."
+```
+'''
+SCANNED_PID_KILL_SELECTOR_INSUFFICIENT_GRADE='''# Grade — insufficient scan selector proof
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0, adversarial_p0_count: 0, adversarial_p1_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: A1, status: pass, severity: P1}
+  - {id: ADV-SCAN, status: pass, severity: P0}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: A1
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/spec.md#a1
+    evidence_ref: tests/a1.rs::covers_a1
+  - acceptance_id: ADV-SCAN
+    status: pass
+    severity_if_fail: P0
+    spec_ref: docs/spec.md#scan
+    evidence_ref: tests/scan.rs::selector_contract
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: A1
+    status: pass
+    severity_if_fail: P1
+    scenario: malformed or stale input does not pass the A1 invariant
+    evidence_ref: tests/a1.rs::rejects_stale_input
+  - acceptance_id: ADV-SCAN
+    status: pass
+    severity_if_fail: P0
+    scenario: different-token and bare-key marker buffers do not match; target-gone evidence only
+    evidence_ref: tests/scan.rs::different_token_and_bare_key_are_not_matches
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: no secrets in scan selector fixture
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: no dependency changes in scan selector fixture
+```
+```yaml
+adversarial_checks:
+  - id: ADV-SCAN
+    acceptance_id: ADV-SCAN
+    status: pass
+    severity_if_fail: P0
+    evidence_kind: subprocess_lifecycle_test
+    evidence_ref: "selector PASS: full process-table argv/env marker scan sends SIGTERM->SIGKILL to matched pids; timeout + process_group + child.wait wait/reap; different-token buffer and bare-key buffer do not match; target process gone"
+```
+```yaml
+trust_surface_inventory:
+  process:
+    trusted_by: "covered by ADV-SCAN"
+    status: pass
+  destructive_operation:
+    trusted_by: "selector covered by ADV-SCAN"
+    status: pass
+  unverified_items: []
+```
+```yaml
+deferred_claims: []
+```
+'''
+SCANNED_PID_KILL_SELECTOR_SUFFICIENT_GRADE=SCANNED_PID_KILL_SELECTOR_INSUFFICIENT_GRADE.replace(
+    'selector PASS: full process-table argv/env marker scan sends SIGTERM->SIGKILL to matched pids; timeout + process_group + child.wait wait/reap; different-token buffer and bare-key buffer do not match; target process gone',
+    'selector PASS: full process-table argv/env marker scan sends SIGTERM->SIGKILL to matched pids; timeout + process_group + child.wait wait/reap; live innocent decoy process argv argument and OTHER=prefix-SYMPHONY_GRADE_CONTAINMENT_ID=abc-suffix other-env value contain the marker as a substring/non-standalone env entry and the decoy stays alive, process_exists==true, not signalled and not killed; PID-reuse TOCTOU pid-churn regression reuses a recycled pid, re-read/revalidate marker before kill with process-start identity/start-time proof, and asserts no unrelated process killed'
+)
 class GradeLintTests(unittest.TestCase):
     def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME,repo_root=None):
         with tempfile.TemporaryDirectory() as td:
@@ -2827,6 +2916,9 @@ class GradeLintTests(unittest.TestCase):
         errors='\n'.join(payload['grade_lint']['errors'])
         self.assertNotIn('security_containment_unavailable_fail_closed', errors)
         self.assertNotIn('trusted_binary_invocation', errors)
+
+    def assert_no_scanned_pid_kill_selector_errors(self, payload):
+        self.assertNotIn('scanned_pid_kill_selector', '\n'.join(payload['grade_lint']['errors']))
 
     def assert_reference_clean(self, grade, outcome):
         proc,p=self.run_lint('code','low',grade,outcome)
@@ -2951,6 +3043,30 @@ class GradeLintTests(unittest.TestCase):
         self.assertIn('security_containment_unavailable_fail_closed[adv5]', errors)
         self.assertIn('trusted_binary_invocation[adv5]', errors)
         self.assertIn('trusted_binary_invocation[external_subprocess]', errors)
+
+    def test_scanned_pid_kill_selector_requires_substring_decoy_and_pid_identity_evidence(self):
+        proc,p=self.run_lint('code','medium',SCANNED_PID_KILL_SELECTOR_INSUFFICIENT_GRADE,SCANNED_PID_KILL_SELECTOR_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn(
+            'scanned_pid_kill_selector[ADV-SCAN] missing facets: marker_substring_decoy_survives,pid_identity_stable',
+            '\n'.join(p['grade_lint']['errors']),
+        )
+
+    def test_scanned_pid_kill_selector_passes_with_substring_decoy_and_pid_identity_evidence(self):
+        proc,p=self.run_lint('code','medium',SCANNED_PID_KILL_SELECTOR_SUFFICIENT_GRADE,SCANNED_PID_KILL_SELECTOR_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+        self.assert_no_scanned_pid_kill_selector_errors(p)
+
+    def test_cycle029_real_corpus_fires_scanned_pid_kill_selector_facet(self):
+        grade,outcome=self.real_cycle_pair('cycle-029')
+        proc,p=self.run_lint_files('code','high',grade,outcome)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn('scanned_pid_kill_selector[adv3]', '\n'.join(p['grade_lint']['errors']))
+
+    def test_cycle028_real_corpus_does_not_fire_scanned_pid_kill_selector_facet(self):
+        grade,outcome=self.real_cycle_pair('cycle-028')
+        _proc,p=self.run_lint_files('code','high',grade,outcome)
+        self.assert_no_scanned_pid_kill_selector_errors(p)
 
     def test_cycle009_dependency_row_process_group_rationale_does_not_trigger_subprocess_lifecycle(self):
         proc,p=self.run_lint('code','low',B001_NO_NEW_DEPS_GRADE,B001_NO_NEW_DEPS_OUTCOME)
