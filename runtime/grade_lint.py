@@ -43,6 +43,17 @@ SUBPROCESS_DESCENDANT_CLAIM_TERMS=re.compile(r"\bno[-_\s]?orphan(?:ed)?\b|\borph
 SUBPROCESS_DESCENDANT_ESCAPE_FIXTURE=re.compile(r"\b(?:detached|new[-_\s]?session|setsid|start_new_session|setpgid|daemonized|background(?:ed)?)\b[^.;\n]{0,160}\b(?:grandchild|descendant|child[-_\s]?of[-_\s]?child|escape|leader\s+exit|parent\s+exit)\b|\b(?:grandchild|descendant|escape)\b[^.;\n]{0,160}\b(?:detached|new[-_\s]?session|setsid|start_new_session|setpgid|daemonized|background(?:ed)?|leader\s+exit|parent\s+exit)\b", re.I)
 SUBPROCESS_DESCENDANT_AUDIT_FACET=re.compile(r"\bdescendant[-_\s]?audit\b|\bprocess[-_\s]?tree[-_\s]?containment\b|\bwalk(?:s|ed|ing)?\s+(?:the\s+)?(?:process[-_\s]?)?tree\b|\b(?:pgrep|ps)\b[^.;\n]{0,80}\b(?:P|ppid|parent|child|descendant)\b|\bassert(?:s|ed|ion)?\b[^.;\n]{0,120}\b(?:no\s+descendant|no\s+grandchild|no\s+orphan|process[-_\s]?tree)\b|\b(?:grandchild|descendant)\b[^.;\n]{0,120}\b(?:reaped|killed|gone|absent|not\s+running|does\s+not\s+remain)\b", re.I)
 SUBPROCESS_LIFECYCLE_EVIDENCE_KIND="subprocess_lifecycle_test"
+SECURITY_CONTAINMENT_CLAIM_TERMS=re.compile(r"\bsandbox(?:-exec)?\b|\bseatbelt\b|\bSBPL\b|\bOS[-_\s]den(?:y|ied|ial)\b|\bunder\s+the\s+sandbox\b|\bsandbox_active\b|\bcontain(?:ment|ed|s)?\b|\bdeny\s+file[-_\s]?read\b|\bfile[-_\s]?read\*\b|\bsecret\s+(?:bytes\s+)?(?:absent|never\s+(?:reach|exfiltrat)|not\s+(?:present|exfiltrat))\b", re.I)
+SECURITY_CONTAINMENT_UNAVAILABLE_TERMS=re.compile(r"\b(?:sandbox(?:-exec)?|containment\s+primitive|primitive|profile|probe)\b[^.;\n]{0,100}\b(?:unavailable|inactive|fallback|degrad(?:e|es|ed|ation)|not\s+available|fails?\s+to\s+apply)\b|\b(?:unavailable|inactive|fallback|degrad(?:e|es|ed|ation)|not\s+available)\b[^.;\n]{0,100}\b(?:sandbox(?:-exec)?|containment\s+primitive|primitive|profile|probe)\b|\bsandbox(?:-exec)?\s+(?:is\s+)?absent\b|\babsent\b[^.;\n]{0,60}\bsandbox(?:-exec)?\b|\bprofile[-_\s]?apply[-_\s]?failure\b|\bsandbox_active\s*[:=]\s*false\b", re.I)
+SECURITY_CONTAINMENT_FORCE_UNAVAILABLE_EVIDENCE=re.compile(r"\bforce(?:s|d)?\b[^.;\n]{0,120}\b(?:sandbox|sandbox-exec|unavailable|inactive|absent|fallback)\b|\b(?:simulate[sd]?|inject(?:ed|s)?|bogus|fake|invalid)\b[^.;\n]{0,120}\b(?:sandbox-exec|sandbox|profile|path)\b|\bsandbox_active\s*[:=]\s*false\b|\bprobe\.active\s*==\s*false\b|\bprofile[-_\s]?apply[-_\s]?failure\b|\bmissing\s+sandbox-exec\b|\bsandbox[-_\s]?absent\b|\bsandbox[-_\s]?unavailable\b", re.I)
+SECURITY_CONTAINMENT_HOSTILE_READ_EVIDENCE=re.compile(r"\b(?:hostile|obfuscat(?:ed|ion)?|indirect|glob|shell[-_\s]?glob|env[-_\s]?indirection|variable[-_\s]?expansion|symlink|relative[-_\s]?traversal|canonical(?:ized)?|crafted)\b[^.;\n]{0,180}\b(?:forbidden[-_\s]?root|read|file[-_\s]?read|cat\b|secret|\.symphony/(?:mem\*|memory-user|patterns-user|patterns-imported))\b|\b(?:forbidden[-_\s]?root|read|file[-_\s]?read|cat\b|secret|\.symphony/(?:mem\*|memory-user|patterns-user|patterns-imported))\b[^.;\n]{0,180}\b(?:hostile|obfuscat(?:ed|ion)?|indirect|glob|shell[-_\s]?glob|env[-_\s]?indirection|variable[-_\s]?expansion|symlink|relative[-_\s]?traversal|canonical(?:ized)?|crafted)\b", re.I)
+SECURITY_CONTAINMENT_FAIL_CLOSED_EVIDENCE=re.compile(r"\bfail(?:s|ed|ing)?[-_\s]?closed\b|\bfail[-_\s]?safe\b|\bnot\s+fail[-_\s]?open\b|\bverdict\s*[:=]?\s*fail\b|\boverall_status\s*[:=]?\s*Fail\b|\bstatus\s*[:=]?\s*fail\b|\bdoes\s+not\s+pass\b|\bnot\s+pass\b|\bproof\s+(?:fails?|refuses?|rejects?)\b|\b(?:refus(?:e|es|ed|al)|reject(?:s|ed|ion)?|blocked|denied)\b", re.I)
+SECURITY_CONTAINMENT_SURFACES={"external_subprocess","file_modes","destructive_operation","input_validation_or_schema","auth_or_secret","process"}
+SECURITY_CONTAINMENT_AGGREGATE_GATE_TERMS=re.compile(r"\bAll\s+tests\s+pass\b|\bzero\s+failures\b|\bincludes\s+new\b[^.;\n]{0,120}\btests?\b|\bcargo\s+nextest\s+run\s+--workspace\b", re.I)
+TRUSTED_CONTAINMENT_BINARY_TERMS=re.compile(r"\bsandbox-exec\b", re.I)
+TRUSTED_CONTAINMENT_SURFACES={"external_subprocess","file_modes","destructive_operation"}
+TRUSTED_CONTAINMENT_BINARY_ABSOLUTE_INVOCATION=re.compile(r"(?:^|[\s`'\"])/(?:usr/)?bin/sandbox-exec(?:\b|[`'\"])", re.I)
+TRUSTED_CONTAINMENT_BINARY_PATH_POISON_EVIDENCE=re.compile(r"\b(?:fake|poison(?:ed|ing)?|shadow(?:ed|ing)?|earlier|prepend(?:ed)?)\b[^.;\n]{0,120}\bPATH\b[^.;\n]{0,160}\bsandbox-exec\b|\bsandbox-exec\b[^.;\n]{0,160}\b(?:fake|poison(?:ed|ing)?|shadow(?:ed|ing)?|earlier|prepend(?:ed)?)\b[^.;\n]{0,120}\bPATH\b", re.I)
 RPC_CLEANUP_EVERY_EXIT_CLAIM_TERMS=re.compile(r"\bcleanup\b[^.;,\n]{0,100}\b(?:on|for|across|in|runs?\s+on)\s+(?:every|each|all)\s+(?:exit[-_\s]?)?(?:path|paths|return|returns|outcome|outcomes)\b|\b(?:every|each|all)\s+(?:exit[-_\s]?)?(?:path|paths|return|returns|outcome|outcomes)\b[^.;,\n]{0,100}\bcleanup\b", re.I)
 RPC_CLEANUP_CLEAR_TERMS=re.compile(r"\bthread/goal/clear\b|\bgoal/clear\b|\bgoal[-_\s]?clear\b|\bclear(?:s|ed|ing)?\s+(?:the\s+)?(?:goal|thread\s+goal)\b", re.I)
 RPC_CLEANUP_ARCHIVE_TERMS=re.compile(r"\bthread/archive\b|\bthread[-_\s]?archive\b|\barchive(?:s|d|ing)?\s+(?:the\s+)?thread\b", re.I)
@@ -946,6 +957,178 @@ def validate_subprocess_lifecycle_acceptance_obligations(required_acceptance, ro
         claim_text=text_blob(meta.get('text',''), grade_claims.get(acceptance_id,{}).get('text',''), related)
         evidence_text=subprocess_lifecycle_evidence_text(related)
         validate_subprocess_lifecycle_evidence(acceptance_id, claim_text, evidence_text, errors, kind_in_scope=subprocess_lifecycle_kind_in_scope(related))
+
+def row_not_applicable_exempt(row):
+    if not isinstance(row,dict):
+        return False
+    if row.get('status')!='not_applicable' and row.get('not_applicable') is not True:
+        return False
+    return any(isinstance(row.get(k),str) and row.get(k).strip() for k in ('rationale','reason','scope_basis_ref','tracked_waiver_ref','maintainer_waiver_ref','user_waiver_ref'))
+
+def row_fail_or_unverified(row):
+    return isinstance(row,dict) and row.get('status') in {'fail','unverified'}
+
+def row_pass(row):
+    return isinstance(row,dict) and row.get('status')=='pass'
+
+def trust_surface_inventory_rows(inv):
+    rows=[]
+    if not isinstance(inv,dict):
+        return rows
+    for key,value in inv.items():
+        if key=='unverified_items':
+            continue
+        if isinstance(value,dict):
+            row=dict(value)
+            row.setdefault('id',key)
+            row.setdefault('surface',key)
+            rows.append(row)
+        elif isinstance(value,list):
+            for i,item in enumerate(value):
+                if isinstance(item,dict):
+                    row=dict(item)
+                    row.setdefault('id',f'{key}[{i}]')
+                    row.setdefault('surface',key)
+                    rows.append(row)
+        elif value not in (None,False):
+            rows.append({'id':key,'surface':key,'trusted_by':value})
+    return rows
+
+def merged_claim_records(outcome_acceptance, adversarial_acceptance, acceptance_status, rows):
+    status_meta=acceptance_status_metadata(acceptance_status)
+    by_acceptance=row_collection_by_acceptance(rows)
+    records=[]
+    seen=set()
+    for source,claims in (('acceptance',outcome_acceptance or {}),('adversarial_acceptance',adversarial_acceptance or {})):
+        for item_id,meta in sorted(claims.items()):
+            seen.add(item_id)
+            related=by_acceptance.get(item_id,[])
+            status_row=status_meta.get(item_id,{}).get('row')
+            severities=[
+                meta.get('severity'),
+                status_meta.get(item_id,{}).get('severity'),
+            ] + [row_blocking_severity(row, outcome_acceptance or {}) for row in related if isinstance(row,dict)]
+            surfaces=set(meta.get('surfaces') or set())
+            for row in related:
+                surfaces |= row_surfaces(row)
+            records.append({
+                'id':item_id,
+                'source':source,
+                'meta':meta,
+                'status_row':status_row if isinstance(status_row,dict) else {},
+                'related':related,
+                'severity':next((severity for severity in severities if severity in BLOCKING), None),
+                'surfaces':surfaces,
+            })
+    for item_id,meta in sorted(status_meta.items()):
+        if item_id in seen:
+            continue
+        related=by_acceptance.get(item_id,[])
+        surfaces=set()
+        for row in related:
+            surfaces |= row_surfaces(row)
+        severities=[meta.get('severity')] + [row_blocking_severity(row, outcome_acceptance or {}) for row in related if isinstance(row,dict)]
+        records.append({
+            'id':item_id,
+            'source':'acceptance_status',
+            'meta':meta,
+            'status_row':meta.get('row') if isinstance(meta.get('row'),dict) else {},
+            'related':related,
+            'severity':next((severity for severity in severities if severity in BLOCKING), None),
+            'surfaces':surfaces,
+        })
+    return records
+
+def claim_record_is_current_pass(record):
+    rows=[record.get('status_row')]+list(record.get('related') or [])
+    if any(row_fail_or_unverified(row) for row in rows):
+        return False
+    pass_rows=[row for row in rows if row_pass(row)]
+    if pass_rows:
+        return True
+    return not any(row_not_applicable_exempt(row) for row in rows if isinstance(row,dict))
+
+def claim_record_text(record):
+    return text_blob(
+        record.get('meta',{}).get('text',''),
+        record.get('status_row'),
+        record.get('related'),
+    )
+
+def claim_record_evidence_text(record):
+    pass_rows=[row for row in record.get('related') or [] if row_pass(row)]
+    return row_evidence_text(pass_rows)
+
+def text_segments(text):
+    return [segment.strip() for segment in re.split(r"(?<=[.;])\s+|[;\n]+", text or '') if segment.strip()]
+
+def security_containment_unavailable_claim_in_scope(record, claim_text):
+    if record.get('severity') not in BLOCKING:
+        return False
+    if not claim_record_is_current_pass(record):
+        return False
+    if record.get('source')=='acceptance' and SECURITY_CONTAINMENT_AGGREGATE_GATE_TERMS.search(record.get('meta',{}).get('text','')):
+        return False
+    surfaces=record.get('surfaces') or set()
+    if surfaces and not (surfaces & SECURITY_CONTAINMENT_SURFACES):
+        return False
+    return (
+        has_non_negated_scope_term(SECURITY_CONTAINMENT_CLAIM_TERMS, claim_text)
+        and has_non_negated_scope_term(SECURITY_CONTAINMENT_UNAVAILABLE_TERMS, claim_text)
+    )
+
+def security_containment_unavailable_fail_closed_evidence_present(evidence_text):
+    for segment in text_segments(evidence_text):
+        if (
+            has_non_negated_scope_term(SECURITY_CONTAINMENT_FORCE_UNAVAILABLE_EVIDENCE, segment)
+            and has_non_negated_scope_term(SECURITY_CONTAINMENT_HOSTILE_READ_EVIDENCE, segment)
+            and has_non_negated_scope_term(SECURITY_CONTAINMENT_FAIL_CLOSED_EVIDENCE, segment)
+        ):
+            return True
+    return False
+
+def validate_security_containment_unavailable_fail_closed_evidence(outcome_acceptance, adversarial_acceptance, acceptance_status, rows, errors):
+    for record in merged_claim_records(outcome_acceptance, adversarial_acceptance, acceptance_status, rows):
+        claim_text=claim_record_text(record)
+        if not security_containment_unavailable_claim_in_scope(record, claim_text):
+            continue
+        if not security_containment_unavailable_fail_closed_evidence_present(claim_record_evidence_text(record)):
+            errors.append(f"security_containment_unavailable_fail_closed[{record['id']}] missing forced-unavailable hostile-read fail-closed proof (active-path proof + normal fallback is not enough)")
+
+def trusted_binary_invocation_evidence_present(evidence_text):
+    return (
+        has_non_negated_scope_term(TRUSTED_CONTAINMENT_BINARY_ABSOLUTE_INVOCATION, evidence_text)
+        or has_non_negated_scope_term(TRUSTED_CONTAINMENT_BINARY_PATH_POISON_EVIDENCE, evidence_text)
+    )
+
+def trusted_binary_claim_in_scope(record, claim_text):
+    if record.get('severity') not in BLOCKING:
+        return False
+    if not claim_record_is_current_pass(record):
+        return False
+    surfaces=record.get('surfaces') or set()
+    if surfaces and not (surfaces & TRUSTED_CONTAINMENT_SURFACES):
+        return False
+    return has_non_negated_scope_term(TRUSTED_CONTAINMENT_BINARY_TERMS, claim_text)
+
+def validate_trusted_containment_binary_invocation_evidence(outcome_acceptance, adversarial_acceptance, acceptance_status, rows, inv, errors):
+    for record in merged_claim_records(outcome_acceptance, adversarial_acceptance, acceptance_status, rows):
+        claim_text=claim_record_text(record)
+        if not trusted_binary_claim_in_scope(record, claim_text):
+            continue
+        if not trusted_binary_invocation_evidence_present(claim_record_evidence_text(record)):
+            errors.append(f"trusted_binary_invocation[{record['id']}] trusted containment binary (sandbox-exec) lacks absolute-path / non-PATH-invocation evidence (PATH-precedence poisoning unguarded)")
+    for row in trust_surface_inventory_rows(inv):
+        if row_not_applicable_exempt(row) or row_fail_or_unverified(row):
+            continue
+        surfaces=row_surfaces(row)
+        if surfaces and not (surfaces & TRUSTED_CONTAINMENT_SURFACES):
+            continue
+        claim_text=text_blob(row)
+        if not has_non_negated_scope_term(TRUSTED_CONTAINMENT_BINARY_TERMS, claim_text):
+            continue
+        if not trusted_binary_invocation_evidence_present(claim_text):
+            errors.append(f"trusted_binary_invocation[{row.get('id') or row.get('surface') or 'trust_surface_inventory'}] trusted containment binary (sandbox-exec) lacks absolute-path / non-PATH-invocation evidence (PATH-precedence poisoning unguarded)")
 
 def validate_rpc_cleanup_acceptance_obligations(required_acceptance, acceptance_status, rows, errors):
     status_meta=acceptance_status_metadata(acceptance_status)
@@ -2678,8 +2861,10 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
         if nni(summary.get('p0_count')) and summary.get('p0_count')<calc['P0']: errors.append('grade_summary.p0_count undercounts blocking code-baseline P0 findings')
         if nni(summary.get('p1_count')) and summary.get('p1_count')<calc['P1']: errors.append('grade_summary.p1_count undercounts blocking code-baseline P1 findings')
 
-def validate_adv(summary,bs,errors,required_acceptance=None):
+def validate_adv(summary,bs,errors,required_acceptance=None,outcome_acceptance=None,acceptance_status=None):
     required_acceptance=required_acceptance or {}
+    outcome_acceptance=outcome_acceptance or {}
+    acceptance_status=acceptance_status or []
     checks=first(bs,'adversarial_checks'); inv=first(bs,'trust_surface_inventory'); deferred=first(bs,'deferred_claims')
     if not isinstance(checks,list): errors.append('medium/high code grade missing parseable adversarial_checks block'); checks=[]
     if not isinstance(inv,dict): errors.append('medium/high code grade missing parseable trust_surface_inventory block'); inv={}
@@ -2716,6 +2901,13 @@ def validate_adv(summary,bs,errors,required_acceptance=None):
                 validate_rpc_cleanup_evidence(row.get('id') or i, combined_text, [row], errors)
                 if st=='pass' and auth_status_mapping_claimed(combined_text) and not auth_status_has_format_tolerance_evidence(row_evidence_text([row])):
                     errors.append(f"auth_status[{row.get('id') or i}] login-status mapping claimed but evidence covers one literal form only; JSON-parsed or format-variant fixtures required")
+    spec_rows=first(bs,'spec_compliance_matrix')
+    if not isinstance(spec_rows,list): spec_rows=[]
+    neg_rows=first(bs,'negative_regression_tests')
+    if not isinstance(neg_rows,list): neg_rows=[]
+    grade_rows=spec_rows+neg_rows+checks
+    validate_security_containment_unavailable_fail_closed_evidence(outcome_acceptance, required_acceptance, acceptance_status, grade_rows, errors)
+    validate_trusted_containment_binary_invocation_evidence(outcome_acceptance, required_acceptance, acceptance_status, grade_rows, inv, errors)
     missing_acceptance=sorted(set(required_acceptance)-covered_acceptance_ids)
     if missing_acceptance: errors.append('adversarial_checks missing shaped adversarial_acceptance IDs: '+','.join(missing_acceptance))
     for k in ('adversarial_p0_count','adversarial_p1_count'):
@@ -2744,12 +2936,13 @@ def lint(task_type,risk_level,grade_file,outcome_file,repo_root=None):
     grade_text=grade_file.read_text(encoding='utf-8') if grade_file.exists() else ''
     outcome_text=outcome_file.read_text(encoding='utf-8') if outcome_file.exists() and (code_gate or gated) else ''
     reference_requests=[]
+    outcome_acceptance=outcome_acceptance_metadata_from_file(obs,outcome_file) if code_gate else {}
     if code_gate:
-        validate_code_baseline(summary,gbs,errors,outcome_acceptance_metadata_from_file(obs,outcome_file),acceptance,obs,markdown_bullet_acceptance_metadata(grade_file),grade_text,outcome_text,repo_root=repo_root,reference_requests=reference_requests)
+        validate_code_baseline(summary,gbs,errors,outcome_acceptance,acceptance,obs,markdown_bullet_acceptance_metadata(grade_file),grade_text,outcome_text,repo_root=repo_root,reference_requests=reference_requests)
     if gated:
         validate_outcome(obs,errors)
         required=adversarial_acceptance_metadata(obs)
-        validate_adv(summary,gbs,errors,required) if isinstance(summary,dict) else errors.append('cannot validate adversarial grade without grade_summary')
+        validate_adv(summary,gbs,errors,required,outcome_acceptance,acceptance) if isinstance(summary,dict) else errors.append('cannot validate adversarial grade without grade_summary')
     ref_in_scope=bool(code_gate and reference_source_in_scope(grade_text,outcome_text,obs,gbs))
     return {'grade_lint':{'status':'fail' if errors else 'pass','task_type':task_type,'risk_level':risk_level,'code_baseline_gate':code_gate,'medium_high_code_gate':gated,'grade_file':str(grade_file),'outcome_file':str(outcome_file),'reference_source_review':{'in_scope':ref_in_scope,'advisory_request_count':len(reference_requests)},'reference_obligation_review_requests':reference_requests,'errors':errors}}
 

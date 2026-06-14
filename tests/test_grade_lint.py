@@ -2698,6 +2698,105 @@ dependency_spec_review:
     rationale: "hostile fixture id shape fixture changes no dependencies"
 ```
 '''
+CONTAINMENT_UNAVAILABLE_OUTCOME='''# Outcome — containment unavailable fixture
+```yaml
+risk_surface:
+  surfaces:
+    external_subprocess: {present: true}
+    file_modes: {present: true}
+    destructive_operation: {present: true}
+    input_validation_or_schema: {present: true}
+```
+```yaml
+adversarial_acceptance:
+  - id: adv5
+    severity: P0
+    surface: [external_subprocess, file_modes, destructive_operation, input_validation_or_schema]
+    text: "Fail-safe not fail-open when sandbox-exec is unavailable: the sandbox containment primitive must not let an obfuscated forbidden-root read pass when the primitive is absent."
+    verification_hint: "Force sandbox-exec unavailable and run a hostile glob/env-indirection forbidden-root read; assert the proof fails closed."
+```
+'''
+CONTAINMENT_UNAVAILABLE_INSUFFICIENT_GRADE='''# Grade — insufficient containment unavailable proof
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0, adversarial_p0_count: 0, adversarial_p1_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: A1, status: pass, severity: P1}
+  - {id: adv5, status: pass, severity: P0}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: A1
+    status: pass
+    severity_if_fail: P1
+    spec_ref: docs/spec.md#a1
+    evidence_ref: tests/a1.rs::covers_a1
+  - acceptance_id: adv5
+    status: pass
+    severity_if_fail: P0
+    spec_ref: docs/agents/grade/AGENT.md
+    evidence_ref: "sandbox_absent_fail_safe PASS; forced-fallback runs a normal command and still refuses a textually-forbidden command, sandbox_active:false"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: A1
+    status: pass
+    severity_if_fail: P1
+    scenario: malformed or stale input does not pass the A1 invariant
+    evidence_ref: tests/a1.rs::rejects_stale_input
+  - acceptance_id: adv5
+    status: pass
+    severity_if_fail: P0
+    scenario: "sandbox forced unavailable -> normal fallback still runs and literal forbidden text is rejected"
+    evidence_kind: malformed_input_test
+    evidence_ref: "sandbox_absent_fail_safe PASS (sandbox_active:false; literal forbidden rejected; normal command runs)"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: no real secrets in containment fixture
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: no dependency changes in containment fixture
+```
+```yaml
+adversarial_checks:
+  - id: adv5
+    acceptance_id: adv5
+    status: pass
+    severity_if_fail: P0
+    evidence_kind: malformed_input_test
+    evidence_ref: "sandbox_absent_fail_safe PASS (sandbox_active:false fallback); bounded timeout, process_group, child.wait wait/reap"
+    note: "Fail-safe not fail-open: with the sandbox forced unavailable, a normal acceptance still runs and a textually-forbidden acceptance string is refused."
+```
+```yaml
+trust_surface_inventory:
+  external_subprocess:
+    trusted_by: "acceptance commands wrapped in sandbox-exec deny-read profile; fail-safe fallback when sandbox absent (adv5)"
+    status: pass
+  unverified_items: []
+```
+```yaml
+deferred_claims: []
+```
+'''
+CONTAINMENT_UNAVAILABLE_SUFFICIENT_GRADE=CONTAINMENT_UNAVAILABLE_INSUFFICIENT_GRADE.replace(
+    'sandbox_absent_fail_safe PASS; forced-fallback runs a normal command and still refuses a textually-forbidden command, sandbox_active:false',
+    'sandbox_absent_fail_safe PASS; forced sandbox-exec unavailable via invalid profile, attempted hostile obfuscated glob forbidden-root read `cat .symphony/mem*/x`, and the proof fails closed/rejects with overall_status Fail; /usr/bin/sandbox-exec is used for invocation when active'
+).replace(
+    'sandbox_absent_fail_safe PASS (sandbox_active:false; literal forbidden rejected; normal command runs)',
+    'sandbox_absent_fail_safe PASS: forced sandbox-exec unavailable, attempted hostile env-indirection forbidden-root read, proof fails closed and does not pass; fake sandbox-exec earlier in PATH negative test proves /usr/bin/sandbox-exec active invocation ignores PATH poisoning'
+).replace(
+    'sandbox_absent_fail_safe PASS (sandbox_active:false fallback); bounded timeout, process_group, child.wait wait/reap',
+    'sandbox_absent_fail_safe PASS: forced sandbox-exec unavailable, attempted hostile obfuscated glob forbidden-root read, proof fails closed/rejects and does not pass; active path invokes /usr/bin/sandbox-exec and fake sandbox-exec earlier in PATH is ignored; bounded timeout, process_group, child.wait wait/reap'
+).replace(
+    'acceptance commands wrapped in sandbox-exec deny-read profile; fail-safe fallback when sandbox absent (adv5)',
+    'acceptance commands invoke /usr/bin/sandbox-exec by absolute path; fake sandbox-exec earlier in PATH negative test proves PATH poisoning is ignored; fail-safe fallback when sandbox absent (adv5)'
+)
 class GradeLintTests(unittest.TestCase):
     def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME,repo_root=None):
         with tempfile.TemporaryDirectory() as td:
@@ -2710,6 +2809,24 @@ class GradeLintTests(unittest.TestCase):
             self.assertTrue(proc.stdout, proc.stderr)
             self.assertTrue(ef.exists())
             return proc,json.loads(proc.stdout)
+
+    def run_lint_files(self,task_type,risk_level,grade_file,outcome_file):
+        with tempfile.TemporaryDirectory() as td:
+            ef=Path(td)/'grade_lint.json'
+            cmd=[sys.executable,str(LINTER),'--task-type',task_type,'--risk-level',risk_level,'--grade-file',str(grade_file),'--outcome-file',str(outcome_file),'--evidence-file',str(ef)]
+            proc=subprocess.run(cmd,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            self.assertTrue(proc.stdout, proc.stderr)
+            self.assertTrue(ef.exists())
+            return proc,json.loads(proc.stdout)
+
+    def real_cycle_pair(self,cycle,grade_round='grade_round_1.md'):
+        root=Path('/Users/lidongyuan/workspace/utils/OpenSymphony-V3/.prompts/dogfood')/cycle
+        return root/grade_round, root/'outcome.md'
+
+    def assert_no_containment_binary_errors(self, payload):
+        errors='\n'.join(payload['grade_lint']['errors'])
+        self.assertNotIn('security_containment_unavailable_fail_closed', errors)
+        self.assertNotIn('trusted_binary_invocation', errors)
 
     def assert_reference_clean(self, grade, outcome):
         proc,p=self.run_lint('code','low',grade,outcome)
@@ -2794,6 +2911,46 @@ class GradeLintTests(unittest.TestCase):
     def test_subprocess_lifecycle_claim_passes_with_all_facets(self):
         proc,p=self.run_lint('code','medium',SUBPROCESS_LIFECYCLE_COMPLETE_GRADE,SUBPROCESS_LIFECYCLE_OUTCOME)
         self.assertEqual(proc.returncode,0,p)
+
+    def test_cycle028_real_corpus_fires_containment_unavailable_and_trusted_binary_facets(self):
+        grade,outcome=self.real_cycle_pair('cycle-028')
+        proc,p=self.run_lint_files('code','high',grade,outcome)
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertIn(
+            'security_containment_unavailable_fail_closed[adv5] missing forced-unavailable hostile-read fail-closed proof (active-path proof + normal fallback is not enough)',
+            errors,
+        )
+        self.assertIn(
+            'trusted_binary_invocation[adv1] trusted containment binary (sandbox-exec) lacks absolute-path / non-PATH-invocation evidence (PATH-precedence poisoning unguarded)',
+            errors,
+        )
+
+    def test_cycle026_real_corpus_does_not_fire_containment_unavailable_or_trusted_binary_facets(self):
+        grade,outcome=self.real_cycle_pair('cycle-026')
+        _proc,p=self.run_lint_files('code','medium',grade,outcome)
+        self.assert_no_containment_binary_errors(p)
+
+    def test_cycle020_real_corpus_grade_rounds_do_not_fire_containment_unavailable_or_trusted_binary_facets(self):
+        outcome=Path('/Users/lidongyuan/workspace/utils/OpenSymphony-V3/.prompts/dogfood/cycle-020/outcome.md')
+        for grade_name in ('grade_round_0.md','grade_round_1.md'):
+            with self.subTest(grade=grade_name):
+                grade=outcome.parent/grade_name
+                _proc,p=self.run_lint_files('code','medium',grade,outcome)
+                self.assert_no_containment_binary_errors(p)
+
+    def test_containment_unavailable_and_trusted_binary_facets_pass_with_forced_hostile_read_and_absolute_invocation(self):
+        proc,p=self.run_lint('code','medium',CONTAINMENT_UNAVAILABLE_SUFFICIENT_GRADE,CONTAINMENT_UNAVAILABLE_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+        self.assert_no_containment_binary_errors(p)
+
+    def test_containment_unavailable_and_trusted_binary_facets_fire_on_normal_fallback_and_path_invocation_only(self):
+        proc,p=self.run_lint('code','medium',CONTAINMENT_UNAVAILABLE_INSUFFICIENT_GRADE,CONTAINMENT_UNAVAILABLE_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertIn('security_containment_unavailable_fail_closed[adv5]', errors)
+        self.assertIn('trusted_binary_invocation[adv5]', errors)
+        self.assertIn('trusted_binary_invocation[external_subprocess]', errors)
 
     def test_cycle009_dependency_row_process_group_rationale_does_not_trigger_subprocess_lifecycle(self):
         proc,p=self.run_lint('code','low',B001_NO_NEW_DEPS_GRADE,B001_NO_NEW_DEPS_OUTCOME)
