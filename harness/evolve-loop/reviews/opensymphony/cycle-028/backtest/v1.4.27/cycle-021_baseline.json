@@ -1,0 +1,27 @@
+{
+  "grade_lint": {
+    "code_baseline_gate": true,
+    "errors": [
+      "spec_compliance_matrix[1] a2 is blocking: fail/P1",
+      "spec_compliance_matrix[8] a9 is blocking: fail/P1",
+      "negative_regression_tests[3] adv4 is blocking: fail/P1",
+      "evolve_metadata_persisted_post_commit: missing evidence facets: post_commit_commit_hash_readback,revert_hint_real_commit",
+      "evolve_critic_prefilter_substance: missing evidence facets: grade_completed_traceability,validation_anchor_blacklist,grade_consistency,per_candidate_structured_verdict",
+      "evolve_write_with_git_and_log_counts: missing evidence facets: memory_artifacts_git_commit,evolve_log_real_counts",
+      "evolve_lightweight_commit_idempotence: missing evidence facets: same_digest_idempotence",
+      "adversarial_checks[3] adv4 is blocking: fail/P1",
+      "trust_surface_inventory.unverified_items[0] is blocking: P1"
+    ],
+    "grade_file": "/Users/lidongyuan/workspace/utils/OpenSymphony-V3/.prompts/dogfood/cycle-021/grade_round_2.md",
+    "medium_high_code_gate": true,
+    "outcome_file": "/Users/lidongyuan/workspace/utils/OpenSymphony-V3/.prompts/dogfood/cycle-021/outcome.md",
+    "reference_obligation_review_requests": [],
+    "reference_source_review": {
+      "advisory_request_count": 0,
+      "in_scope": false
+    },
+    "risk_level": "medium",
+    "status": "fail",
+    "task_type": "code"
+  }
+}

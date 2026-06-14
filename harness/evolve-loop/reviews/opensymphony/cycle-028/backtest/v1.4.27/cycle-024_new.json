@@ -1,0 +1,24 @@
+{
+  "grade_lint": {
+    "code_baseline_gate": true,
+    "errors": [
+      "reference_source_contract_review.reference_obligations_missing: Grade rows cite referenced design/UI/contract sources but outcome.md has no parseable reference_obligations ledger",
+      "frontend_production_wiring_or_unavailable_honesty[a4] fixture/mock-backed production capability PASS lacks acceptable evidence: cite production provider/default wiring, client-to-handler request path, request-body consumption by handler, or outcome-write/merge path; or scope unavailable/fixture-only with missing_upstream B-NNN",
+      "frontend_production_wiring_or_unavailable_honesty[a7] fixture/mock-backed production capability PASS lacks acceptable evidence: cite production provider/default wiring, client-to-handler request path, request-body consumption by handler, or outcome-write/merge path; or scope unavailable/fixture-only with missing_upstream B-NNN",
+      "frontend_production_wiring_or_unavailable_honesty[a8] fixture/mock-backed production capability PASS lacks acceptable evidence: cite production provider/default wiring, client-to-handler request path, request-body consumption by handler, or outcome-write/merge path; or scope unavailable/fixture-only with missing_upstream B-NNN",
+      "frontend_pessimistic_pending_dismissal_guard[a4] missing pending dismissal paths: Escape,overlay/backdrop click,route/surface change",
+      "grade_summary.p1_count undercounts blocking code-baseline P1 findings"
+    ],
+    "grade_file": "/Users/lidongyuan/workspace/utils/OpenSymphony-V3/.prompts/dogfood/cycle-024/grade_round_2.md",
+    "medium_high_code_gate": false,
+    "outcome_file": "/Users/lidongyuan/workspace/utils/OpenSymphony-V3/.prompts/dogfood/cycle-024/outcome.md",
+    "reference_obligation_review_requests": [],
+    "reference_source_review": {
+      "advisory_request_count": 0,
+      "in_scope": true
+    },
+    "risk_level": "low",
+    "status": "fail",
+    "task_type": "code"
+  }
+}
