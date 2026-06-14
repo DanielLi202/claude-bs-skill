@@ -1,0 +1,20 @@
+{
+  "grade_lint": {
+    "code_baseline_gate": true,
+    "errors": [
+      "scanned_pid_kill_selector[adv3] missing facets: marker_substring_decoy_survives,pid_identity_stable — scan/match-selected SIGTERM/SIGKILL of PID sets must prove innocent substring decoys survive and PID identity is stable (different-token/bare-key or target-gone evidence is insufficient)",
+      "scanned_pid_kill_selector[destructive_operation] missing facets: marker_substring_decoy_survives,pid_identity_stable — scan/match-selected SIGTERM/SIGKILL of PID sets must prove innocent substring decoys survive and PID identity is stable (different-token/bare-key or target-gone evidence is insufficient)"
+    ],
+    "grade_file": "/Users/lidongyuan/workspace/utils/OpenSymphony-V3/.prompts/dogfood/cycle-029/grade_round_1.md",
+    "medium_high_code_gate": true,
+    "outcome_file": "/Users/lidongyuan/workspace/utils/OpenSymphony-V3/.prompts/dogfood/cycle-029/outcome.md",
+    "reference_obligation_review_requests": [],
+    "reference_source_review": {
+      "advisory_request_count": 0,
+      "in_scope": false
+    },
+    "risk_level": "high",
+    "status": "fail",
+    "task_type": "code"
+  }
+}
