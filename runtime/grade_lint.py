@@ -213,6 +213,15 @@ FRONTEND_CATCH_FAILURE_EVIDENCE=re.compile(r"\bcatch(?:es|ed|ing)?\b|\brejection
 FRONTEND_CONFLICT_REFETCH_SCOPE=re.compile(r"\b(?:409|revision_conflict)\b[\s\S]{0,220}\brefetch(?:es|ed|ing)?\b|\brefetch(?:es|ed|ing)?\b[\s\S]{0,220}\b(?:409|revision_conflict)\b", re.I)
 FRONTEND_REFETCH_FAILURE_EVIDENCE=re.compile(r"\b(?:refetch|GET)\b[^.;\n]{0,120}\b(?:fail(?:s|ed|ure)?|reject(?:s|ed|ion)|error)\b|\b(?:fail(?:s|ed|ure)?|reject(?:s|ed|ion)|error)\b[^.;\n]{0,120}\b(?:refetch|GET)\b", re.I)
 FRONTEND_PENDING_CLEARED_OR_STATUS_RESET=re.compile(r"\bpending\b[^.;\n]{0,120}\b(?:clear(?:s|ed|ing)?|reset(?:s|ting)?|status\s+reset)\b|\b(?:clear(?:s|ed|ing)?|reset(?:s|ting)?|status\s+reset)\b[^.;\n]{0,120}\bpending\b", re.I)
+REFERENCE_SOURCE_PATHS_RE=re.compile(r"\bdocs/ux/design-brief\.md\b|\bdocs/decisions/ux\.md\b|\bUX[-_\s]?\d+\b|\bdocs/ux/prototype/[^\s`'\"|)]+|\bdocs/architecture/api-contract\.md\b|\bdocs/architecture/schemas/[A-Za-z0-9_.-]+\.md\b|\bdocs/agents/(?:shape|conduct|grade|evolve)/AGENT\.md\b", re.I)
+REFERENCE_SOURCE_CONTRACT_TOKEN_RE=re.compile(r"\bREFERENCE_SOURCE_CONTRACT_REVIEW_V1\b|\breference_obligations\b|\bobligation_id\b", re.I)
+REFERENCE_BEHAVIORAL_UI_EVIDENCE_RE=re.compile(r"\bgetByRole\b|\bgetByLabelText\b|\baccessible[-_\s]?name\b|\buserEvent\b|\bStorybook\b[^.;\n]{0,80}\bplay\(\)|\bplay\(\)\b|\bstate\s+assert(?:ion|s|ed)?\b|\bassert(?:s|ed|ion)?\b[^.;\n]{0,120}\b(?:before|during|after|transition|state|disabled|enabled|visible|hidden)\b", re.I)
+REFERENCE_STATIC_PRESENCE_RE=re.compile(r"\b(?:heading|landmark|testid|data-testid|screenshot|static[-_\s]?DOM|DOM[-_\s]?only|DOM\s+presence|copy\s+(?:present|exists)|text\s+(?:present|exists)|presence[-_\s]?only)\b", re.I)
+REFERENCE_NARROWING_RE=re.compile(r"\b(?:narrow(?:s|ed|ing)?|weaken(?:s|ed|ing)?|exclude(?:s|d|ing)?|omit(?:s|ted|ting)?|out[-_\s]?of[-_\s]?scope|not\s+in\s+scope|defer(?:s|red|ring)?|future\s+work)\b", re.I)
+REFERENCE_WAIVER_UNVERIFIED_RE=re.compile(r"\b(?:waiver|waiver_id|tracked_waiver_ref|maintainer_waiver_ref|user_waiver_ref|UNVERIFIED|unverified|scope_basis_ref)\b", re.I)
+REFERENCE_HOSTILE_FIXTURE_ID_RE=re.compile(r"\b(?:hostile|adversarial|malicious|escape)[-_\s]?(?:fixture|case|probe)[-_:\s]*(?:id|ids)?\b|\bhostile_fixture_ids?\b|\badversarial_fixture_ids?\b", re.I)
+REFERENCE_PRODUCTION_PATH_ANCHOR_RE=re.compile(r"\bproduction[-_\s]?path[-_\s]?anchor\b|\bproduction[-_\s]?(?:provider|default|wiring|path)\b|\bclient[-_\s]to[-_\s]handler\b|\bhandler\b[^.;\n]{0,120}\b(?:consume|consumes|parse|parses|read|reads|use|uses)\b|\brequest[-_\s]?body\b[^.;\n]{0,120}\b(?:handler|route|daemon|backend)\b|\boutcome[-_\s]?(?:write|merge)\b", re.I)
+REFERENCE_NEGATED_REQUIREMENT_RE=re.compile(r"\b(?:no|not|never)\b[^.;\n]{0,140}\b(?:required|in\s+scope|applicable|needed)\b|\bnot_applicable\b", re.I)
 EXACT_VERSION_RE=re.compile(r"^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$")
 class LintError(ValueError): pass
 
@@ -1149,6 +1158,193 @@ def frontend_has_production_wiring_or_honesty(text):
         or has_non_negated_scope_term(FRONTEND_UNAVAILABLE_HONESTY_WITH_BACKLOG, text)
     )
 
+def reference_source_in_scope(grade_text='', outcome_text='', outcome_blocks=None) -> bool:
+    primary=text_blob(
+        primary_outcome_subject_text(outcome_blocks),
+        primary_outcome_header_text(outcome_text),
+        primary_grade_header_text(grade_text),
+    )
+    scope=text_blob(primary, outcome_text, grade_text[:5000])
+    if not has_non_negated_scope_term(REFERENCE_SOURCE_PATHS_RE, scope):
+        return False
+    if frontend_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
+        return True
+    # Agent-contract §6 is the primary gate for agent implementations. B2 only
+    # opts Grade-agent verifier hostile-contract rows into this family; Shape and
+    # Evolve primary tasks stay with their already-scoped deterministic facets.
+    if grade_agent_task_in_scope(grade_text,outcome_text,outcome_blocks):
+        return has_non_negated_scope_term(re.compile(r"\bdocs/agents/grade/AGENT\.md\b", re.I), scope)
+    if shape_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks) or evolve_agent_task_in_scope(grade_text,outcome_text,outcome_blocks):
+        return False
+    if has_non_negated_scope_term(REFERENCE_SOURCE_CONTRACT_TOKEN_RE, scope):
+        return True
+    return has_non_negated_scope_term(REFERENCE_SOURCE_PATHS_RE, primary)
+
+def reference_obligation_rows(outcome_blocks):
+    rows=first(outcome_blocks or [],'reference_obligations')
+    return rows if isinstance(rows,list) else []
+
+def reference_obligation_id(row):
+    if not isinstance(row,dict):
+        return ''
+    for key in ('obligation_id','reference_obligation_id'):
+        value=row.get(key)
+        if isinstance(value,str) and value.strip():
+            return value.strip()
+    values=row.get('obligation_ids') or row.get('reference_obligation_ids')
+    if isinstance(values,list) and values and isinstance(values[0],str):
+        return values[0].strip()
+    return ''
+
+def reference_required_classes(entry):
+    if not isinstance(entry,dict):
+        return []
+    value=entry.get('required_evidence_classes')
+    if isinstance(value,list):
+        return [str(item).strip() for item in value if isinstance(item,str) and item.strip()]
+    return []
+
+def reference_obligation_kind(entry):
+    return entry.get('kind') if isinstance(entry,dict) and isinstance(entry.get('kind'),str) else ''
+
+def reference_entry_has_waiver_or_unverified(entry):
+    if not isinstance(entry,dict):
+        return False
+    status=entry.get('status')
+    if isinstance(status,str) and status.lower()=='unverified':
+        return True
+    if isinstance(entry.get('waiver'),dict) and entry['waiver'].get('reason'):
+        return True
+    return has_non_negated_scope_term(REFERENCE_WAIVER_UNVERIFIED_RE, text_blob(entry))
+
+def reference_citing_rows(bs, required_acceptance, statuses=None):
+    rows=[]
+    for block_name in ('spec_compliance_matrix','negative_regression_tests','adversarial_checks'):
+        block=first(bs,block_name)
+        if not isinstance(block,list):
+            continue
+        for i,row in enumerate(block):
+            if not isinstance(row,dict):
+                continue
+            if statuses is not None and row.get('status') not in statuses:
+                continue
+            severity=row_blocking_severity(row, required_acceptance) or row.get('severity_if_fail')
+            if severity not in BLOCKING:
+                continue
+            row_text=text_blob(row)
+            if not reference_obligation_id(row) and has_non_negated_scope_term(REFERENCE_NEGATED_REQUIREMENT_RE, row_text):
+                continue
+            if has_non_negated_scope_term(REFERENCE_SOURCE_PATHS_RE, row_text) or reference_obligation_id(row):
+                rows.append((block_name,i,row,row_text,severity))
+    return rows
+
+def reference_pass_rows(bs, required_acceptance):
+    return reference_citing_rows(bs, required_acceptance, {'pass'})
+
+def reference_row_has_production_anchor(row_text):
+    return (
+        has_non_negated_scope_term(REFERENCE_PRODUCTION_PATH_ANCHOR_RE, row_text)
+        or has_non_negated_scope_term(FRONTEND_PRODUCTION_WIRING_EVIDENCE, row_text)
+        or has_non_negated_scope_term(FRONTEND_UNAVAILABLE_HONESTY_WITH_BACKLOG, row_text)
+    )
+
+def reference_hostile_fixture_ids(entry, row_text):
+    values=[]
+    if isinstance(entry,dict):
+        for key in ('hostile_fixture_ids','required_hostile_fixture_ids','adversarial_fixture_ids','fixture_ids'):
+            value=entry.get(key)
+            if isinstance(value,list):
+                values.extend(item for item in value if isinstance(item,str) and item.strip())
+            elif isinstance(value,str) and value.strip():
+                values.append(value.strip())
+    if values:
+        return values
+    return ['inline'] if has_non_negated_scope_term(REFERENCE_HOSTILE_FIXTURE_ID_RE, row_text) else []
+
+def validate_reference_source_contract_review(bs, required_acceptance, acceptance_status, spec, neg, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    calc={'P0':0,'P1':0}
+    if not reference_source_in_scope(grade_text,outcome_text,outcome_blocks):
+        return calc, []
+    pass_rows=reference_pass_rows(bs, required_acceptance)
+    citing_rows=reference_citing_rows(bs, required_acceptance, {'pass','fail','unverified'})
+    ledger=reference_obligation_rows(outcome_blocks)
+    requests=[]
+    if citing_rows and not ledger:
+        errors.append('reference_source_contract_review.reference_obligations_missing: Grade rows cite referenced design/UI/contract sources but outcome.md has no parseable reference_obligations ledger')
+        calc['P1']+=1
+        return calc, requests
+
+    entries_by_id={}
+    for i,entry in enumerate(ledger):
+        if not isinstance(entry,dict):
+            errors.append(f'reference_source_contract_review.reference_obligations[{i}] must be an object')
+            calc['P1']+=1
+            continue
+        oid=entry.get('obligation_id')
+        if not isinstance(oid,str) or not oid.strip():
+            errors.append(f'reference_source_contract_review.reference_obligations[{i}].obligation_id is required')
+            calc['P1']+=1
+            continue
+        oid=oid.strip()
+        entries_by_id[oid]=entry
+        if not reference_required_classes(entry):
+            errors.append(f'reference_source_contract_review.reference_obligations[{oid}].required_evidence_classes is required')
+            calc['P1']+=1
+        if (
+            (isinstance(entry.get('status'),str) and entry['status'].lower() in {'excluded','narrowed','not_applicable','out_of_scope'})
+            or has_non_negated_scope_term(REFERENCE_NARROWING_RE, text_blob(entry.get('status'), entry.get('must'), entry.get('rationale'), entry.get('not_sufficient')))
+        ) and not reference_entry_has_waiver_or_unverified(entry):
+            errors.append(f'reference_source_contract_review.silent_narrowing[{oid}] referenced obligation narrowed/excluded without waiver or UNVERIFIED scope_basis_ref')
+            calc['P1']+=1
+
+    pass_rows_by_oid={}
+    for block_name,i,row,row_text,severity in pass_rows:
+        oid=reference_obligation_id(row)
+        if not oid:
+            errors.append(f'reference_source_contract_review.obligation_binding_missing[{block_name}[{i}]] PASS row cites a reference source but lacks obligation_id')
+            calc[severity]+=1
+            continue
+        entry=entries_by_id.get(oid)
+        if not entry:
+            errors.append(f'reference_source_contract_review.obligation_binding_missing[{oid}] PASS row references an obligation_id absent from reference_obligations')
+            calc[severity]+=1
+            continue
+        pass_rows_by_oid.setdefault(oid,[]).append((block_name,i,row,row_text,severity))
+        classes=set(reference_required_classes(entry))
+        kind=reference_obligation_kind(entry)
+        if (
+            kind in {'production_behavior','ui_state_behavior'}
+            or 'production_path_anchor' in classes
+        ):
+            if has_non_negated_scope_term(FRONTEND_FIXTURE_OR_SEAM_TERMS, row_text) and not reference_row_has_production_anchor(row_text):
+                errors.append(f'reference_source_contract_review.production_path_anchor_missing[{oid}] fixture/mock/seam-backed PASS lacks production_path_anchor evidence')
+                calc[severity]+=1
+        if (
+            kind in {'ui_action_state_label','ui_state_behavior'}
+            or 'behavioral_ui_test' in classes
+        ):
+            if has_non_negated_scope_term(REFERENCE_STATIC_PRESENCE_RE, row_text) and not has_non_negated_scope_term(REFERENCE_BEHAVIORAL_UI_EVIDENCE_RE, row_text):
+                errors.append(f'reference_source_contract_review.behavioral_ui_test_missing[{oid}] PASS cites static DOM/heading/landmark/testid/screenshot presence without behavioral UI evidence')
+                calc[severity]+=1
+        if kind=='verifier_hostile_contract' or 'hostile_fixture_manifest' in classes:
+            if not reference_hostile_fixture_ids(entry, row_text):
+                errors.append(f'reference_source_contract_review.hostile_fixture_ids_missing[{oid}] verifier_hostile_contract obligation lacks hostile_fixture_ids')
+                calc[severity]+=1
+
+    for oid,entry in entries_by_id.items():
+        bound_rows=pass_rows_by_oid.get(oid,[])
+        grade_claim=text_blob([row for _block,_i,row,_text,_severity in bound_rows])
+        evidence_summary=text_blob([row_evidence_text([row]) for _block,_i,row,_text,_severity in bound_rows])
+        requests.append({
+            'obligation_id': oid,
+            'source_quote': text_blob(entry.get('source_ref',{}).get('quote') if isinstance(entry.get('source_ref'),dict) else '', entry.get('source_ref',{}).get('quote_hash') if isinstance(entry.get('source_ref'),dict) else ''),
+            'normalized_obligation': entry.get('must') if isinstance(entry.get('must'),str) else text_blob(entry),
+            'grade_claim': grade_claim,
+            'evidence_summary': evidence_summary,
+            'evidence_artifacts': [{'type':'evidence_ref','path': row.get('evidence_ref'),'span': None} for _block,_i,row,_text,_severity in bound_rows if isinstance(row.get('evidence_ref'),str)],
+        })
+    return calc, requests
+
 def validate_frontend_production_wiring_or_unavailable_honesty(bs, required_acceptance, acceptance_status, spec, neg, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
     if not frontend_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
         return
@@ -1947,7 +2143,7 @@ def validate_evolve_lightweight_commit_idempotence(bs, errors, *, grade_text='',
     if missing:
         errors.append('evolve_lightweight_commit_idempotence: missing evidence facets: '+','.join(missing))
 
-def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_status, outcome_blocks=None, grade_claims=None, grade_text='', outcome_text='', repo_root=None):
+def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_status, outcome_blocks=None, grade_claims=None, grade_text='', outcome_text='', repo_root=None, reference_requests=None):
     """All code tasks need replayable spec/security/negative-test evidence."""
     required_acceptance = required_acceptance or acceptance_status_metadata(acceptance_status)
     required_ids=set(required_acceptance)
@@ -2010,6 +2206,10 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
     validate_evolve_critic_prefilter_substance(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_evolve_write_with_git_and_log_counts(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_evolve_lightweight_commit_idempotence(bs, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    ref_calc, ref_requests=validate_reference_source_contract_review(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
+    calc['P0']+=ref_calc['P0']; calc['P1']+=ref_calc['P1']
+    if reference_requests is not None:
+        reference_requests.extend(ref_requests)
     validate_frontend_production_wiring_or_unavailable_honesty(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_frontend_pessimistic_pending_dismissal_guard(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_frontend_sse_reconnect_lifecycle_evidence(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
@@ -2132,13 +2332,24 @@ def lint(task_type,risk_level,grade_file,outcome_file,repo_root=None):
     obs=blocks(outcome_file, include_front_matter=True) if code_gate or gated else []
     grade_text=grade_file.read_text(encoding='utf-8') if grade_file.exists() else ''
     outcome_text=outcome_file.read_text(encoding='utf-8') if outcome_file.exists() and (code_gate or gated) else ''
+    reference_requests=[]
     if code_gate:
-        validate_code_baseline(summary,gbs,errors,outcome_acceptance_metadata_from_file(obs,outcome_file),acceptance,obs,markdown_bullet_acceptance_metadata(grade_file),grade_text,outcome_text,repo_root=repo_root)
+        validate_code_baseline(summary,gbs,errors,outcome_acceptance_metadata_from_file(obs,outcome_file),acceptance,obs,markdown_bullet_acceptance_metadata(grade_file),grade_text,outcome_text,repo_root=repo_root,reference_requests=reference_requests)
     if gated:
         validate_outcome(obs,errors)
         required=adversarial_acceptance_metadata(obs)
         validate_adv(summary,gbs,errors,required) if isinstance(summary,dict) else errors.append('cannot validate adversarial grade without grade_summary')
-    return {'grade_lint':{'status':'fail' if errors else 'pass','task_type':task_type,'risk_level':risk_level,'code_baseline_gate':code_gate,'medium_high_code_gate':gated,'grade_file':str(grade_file),'outcome_file':str(outcome_file),'errors':errors}}
+    ref_in_scope=bool(code_gate and reference_source_in_scope(grade_text,outcome_text,obs))
+    return {'grade_lint':{'status':'fail' if errors else 'pass','task_type':task_type,'risk_level':risk_level,'code_baseline_gate':code_gate,'medium_high_code_gate':gated,'grade_file':str(grade_file),'outcome_file':str(outcome_file),'reference_source_review':{'in_scope':ref_in_scope,'advisory_request_count':len(reference_requests)},'reference_obligation_review_requests':reference_requests,'errors':errors}}
+
+def write_reference_obligation_review_requests(evidence_file, result):
+    review=(result.get('grade_lint') or {}).get('reference_source_review') or {}
+    if not review.get('in_scope'):
+        return
+    requests=(result.get('grade_lint') or {}).get('reference_obligation_review_requests') or []
+    out=Path(evidence_file).resolve().parent/'reference_obligation_review_request.jsonl'
+    out.parent.mkdir(parents=True,exist_ok=True)
+    out.write_text(''.join(json.dumps(row,ensure_ascii=False,sort_keys=True)+'\n' for row in requests),encoding='utf-8')
 def main(argv=None):
     ap=argparse.ArgumentParser(); ap.add_argument('--task-type',required=True,choices=['code','docs','infra','refactor','spec']); ap.add_argument('--risk-level',required=True,choices=['low','medium','high']); ap.add_argument('--grade-file',required=True); ap.add_argument('--outcome-file',required=True); ap.add_argument('--evidence-file'); ap.add_argument('--repo-root')
     a=ap.parse_args(argv)
@@ -2148,5 +2359,6 @@ def main(argv=None):
     payload=json.dumps(result,ensure_ascii=False,indent=2,sort_keys=True)+'\n'
     if a.evidence_file:
         out=Path(a.evidence_file).resolve(); out.parent.mkdir(parents=True,exist_ok=True); out.write_text(payload,encoding='utf-8')
+        write_reference_obligation_review_requests(out,result)
     print(payload,end=''); return 0 if result['grade_lint']['status']=='pass' else 1
 if __name__=='__main__': raise SystemExit(main())

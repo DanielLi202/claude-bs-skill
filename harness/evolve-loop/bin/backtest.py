@@ -16,6 +16,8 @@ Methodology (the anti-over-fire gate for heuristic validators):
 Usage:
   backtest.py --skill-repo P --corpus-root P --baseline-ref v1.4.11 \
               --target-cycle cycle-018 --out <evidence-dir>
+  backtest.py ... --target-cycle cycle-020 --target-cycle cycle-022
+  backtest.py ... --target-cycle cycle-020,cycle-022,cycle-023
 Exit: 0 report written + must-fire satisfied (misfires, if any, listed in report)
       1 must-fire NOT satisfied | 2 usage/env error
 """
@@ -56,7 +58,8 @@ def main():
     ap.add_argument("--skill-repo", required=True)
     ap.add_argument("--corpus-root", required=True)
     ap.add_argument("--baseline-ref", required=True)
-    ap.add_argument("--target-cycle", required=True)
+    ap.add_argument("--target-cycle", required=True, action="append",
+                    help="target cycle; may be repeated or comma-separated")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
 
@@ -74,8 +77,14 @@ def main():
     baseline_lint.write_text(show.stdout)
     new_lint = skill / "runtime" / "grade_lint.py"
 
-    report = {"baseline_ref": a.baseline_ref, "target_cycle": a.target_cycle,
-              "cycles": [], "must_fire": False, "misfire_candidates": []}
+    target_cycles = []
+    for raw in a.target_cycle:
+        target_cycles.extend(item.strip() for item in raw.split(",") if item.strip())
+    target_cycle_set = set(target_cycles)
+    report = {"baseline_ref": a.baseline_ref, "target_cycle": target_cycles[0] if len(target_cycles) == 1 else None,
+              "target_cycles": target_cycles, "cycles": [],
+              "must_fire": False, "must_fire_by_cycle": {name: False for name in target_cycles},
+              "misfire_candidates": []}
 
     for cdir in sorted(corpus.glob("cycle-*/")):
         cy = cdir / "cycle.yaml"
@@ -103,10 +112,12 @@ def main():
                "baseline_error_count": len(base_errors), "new_error_count": len(new_errors),
                "delta_errors": delta}
         report["cycles"].append(row)
-        if name == a.target_cycle and delta:
-            report["must_fire"] = True
-        if name != a.target_cycle and delta:
+        if name in target_cycle_set and delta:
+            report["must_fire_by_cycle"][name] = True
+        if name not in target_cycle_set and delta:
             report["misfire_candidates"].append(row)
+
+    report["must_fire"] = bool(report["must_fire_by_cycle"]) and all(report["must_fire_by_cycle"].values())
 
     (out / "backtest_report.yaml").write_text(
         yaml.safe_dump(report, sort_keys=False, allow_unicode=True))
@@ -114,7 +125,8 @@ def main():
 
     tested = [c["cycle"] for c in report["cycles"]]
     print(f"backtest: {len(tested)} code cycles tested {tested}")
-    print(f"must_fire({a.target_cycle}): {report['must_fire']}")
+    for name, ok in report["must_fire_by_cycle"].items():
+        print(f"must_fire({name}): {ok}")
     print(f"misfire_candidates: {len(report['misfire_candidates'])}")
     if not report["must_fire"]:
         print("FAIL: new rules do not fire on the target cycle's final grade — "

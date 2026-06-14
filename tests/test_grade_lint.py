@@ -2220,6 +2220,101 @@ If-Match wrapper evidence (real cycle-022 grade_round_3 rows):
 - "evidence/grade/r2_a5_ifmatch.log (filter exit 0) re-confirmed by r3_vitest.log full suite — stage commands always send If-Match; missing revision rejects with client_missing_revision; optional commands per contract"
 - "evidence/grade/r2_a7_policy.log + r3_vitest.log — commandPolicy asserts the full api-contract §4.0 matrix incl. approve:fail confirm-required, cancel:vendor-working confirm-required, off-switch per-scope rows, If-Match required exactly on execute/approve/re-shape/cancel"
 '''
+REFERENCE_VALID_OUTCOME='''---
+title: "UI-MX Reference source contract"
+goal: "Frontend React action-state behavior from docs/ux/design-brief.md §10.11."
+acceptance:
+  - id: RS-A1
+    severity: P1
+    statement: "The referenced action button exposes its label and disabled/enabled state behavior."
+---
+# Outcome
+```yaml
+reference_obligations:
+  - obligation_id: "UX-101-ACTION-STATE"
+    source_ref: {path: "docs/ux/design-brief.md", section: "§10.11", quote_hash: "sha256:test"}
+    kind: "ui_action_state_label"
+    must: "Action button label and state behavior are demonstrated."
+    required_evidence_classes: ["behavioral_ui_test"]
+    not_sufficient: ["heading_present", "static_dom_snapshot_only"]
+    waiver: null
+```
+'''
+REFERENCE_VALID_GRADE='''# Grade — reference source valid fixture
+```yaml
+grade_summary: {p0_count: 0, p1_count: 0, p2_count: 0}
+```
+```yaml
+acceptance_status:
+  - {id: RS-A1, status: pass, severity: P1}
+```
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: RS-A1
+    obligation_id: UX-101-ACTION-STATE
+    status: pass
+    severity_if_fail: P1
+    spec_refs: ["docs/ux/design-brief.md §10.11"]
+    evidence_ref: "src/action.test.tsx: getByRole('button', {name:/Next/}) + userEvent.click asserts disabled then enabled state assertion"
+```
+```yaml
+negative_regression_tests:
+  - acceptance_id: RS-A1
+    status: pass
+    severity_if_fail: P1
+    scenario: "accessible-name action button does not proceed while disabled"
+    evidence_ref: "src/action.test.tsx: userEvent.click disabled button keeps state unchanged"
+```
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: "reference fixture has no secrets"
+```
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: "reference fixture changes no dependencies"
+```
+'''
+REFERENCE_MISSING_BINDING_AND_CLASSES_OUTCOME=REFERENCE_VALID_OUTCOME.replace('required_evidence_classes: ["behavioral_ui_test"]\n    ', '')
+REFERENCE_MISSING_BINDING_GRADE=REFERENCE_VALID_GRADE.replace('    obligation_id: UX-101-ACTION-STATE\n', '')
+REFERENCE_PRODUCTION_OUTCOME=REFERENCE_VALID_OUTCOME.replace('''kind: "ui_action_state_label"
+    must: "Action button label and state behavior are demonstrated."
+    required_evidence_classes: ["behavioral_ui_test"]''', '''kind: "production_behavior"
+    must: "The referenced production behavior is exercised through the production path."
+    required_evidence_classes: ["production_path_anchor"]''')
+REFERENCE_FIXTURE_ONLY_GRADE=REFERENCE_VALID_GRADE.replace(
+    "src/action.test.tsx: getByRole('button', {name:/Next/}) + userEvent.click asserts disabled then enabled state assertion",
+    "mocked fixture provider renders the production behavior through a provider seam only"
+)
+REFERENCE_PRODUCTION_ANCHOR_GRADE=REFERENCE_FIXTURE_ONLY_GRADE.replace(
+    "provider seam only",
+    "provider seam plus production_path_anchor: client-to-handler request path and handler consumes request body"
+)
+REFERENCE_STATIC_ONLY_GRADE=REFERENCE_VALID_GRADE.replace(
+    "src/action.test.tsx: getByRole('button', {name:/Next/}) + userEvent.click asserts disabled then enabled state assertion",
+    "heading and landmark present in a static DOM screenshot; data-testid exists"
+)
+REFERENCE_NARROWED_OUTCOME=REFERENCE_VALID_OUTCOME.replace('waiver: null', 'status: excluded\n    rationale: "narrowed out of current scope"')
+REFERENCE_NARROWED_WAIVED_OUTCOME=REFERENCE_VALID_OUTCOME.replace('waiver: null', 'status: UNVERIFIED\n    scope_basis_ref: "scope note"')
+REFERENCE_HOSTILE_OUTCOME=CYCLE020_GRADE_AGENT_ESCAPE_OUTCOME + '''
+```yaml
+reference_obligations:
+  - obligation_id: "GRADE-HOSTILE-01"
+    source_ref: {path: "docs/agents/grade/AGENT.md", section: "capabilities.forbidden", quote_hash: "sha256:test"}
+    kind: "verifier_hostile_contract"
+    must: "Grade verifier rejects hostile command/path escape fixtures."
+    required_evidence_classes: ["hostile_fixture_manifest"]
+    waiver: null
+```
+'''
+REFERENCE_HOSTILE_GRADE=CYCLE020_GRADE_AGENT_ESCAPE_GRADE.replace(
+    'spec_ref: "docs/agents/grade/AGENT.md"',
+    'spec_ref: "docs/agents/grade/AGENT.md"\n    obligation_id: GRADE-HOSTILE-01',
+    1,
+)
+REFERENCE_HOSTILE_IDS_OUTCOME=REFERENCE_HOSTILE_OUTCOME.replace('waiver: null', 'hostile_fixture_ids: ["cmd-write-forbidden-root", "artifact-path-traversal"]\n    waiver: null')
 class GradeLintTests(unittest.TestCase):
     def run_lint(self,task_type='code',risk_level='medium',grade=BASIC,outcome=OUTCOME,repo_root=None):
         with tempfile.TemporaryDirectory() as td:
@@ -2486,7 +2581,10 @@ class GradeLintTests(unittest.TestCase):
 
     def test_cycle023_satisfied_evidence_fixture_passes_new_frontend_facets(self):
         proc,p=self.run_lint('code','low',CYCLE023_UI_M1_SATISFIED_GRADE,CYCLE023_UI_M1_OUTCOME_EXCERPT)
-        self.assertEqual(proc.returncode,0,p)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertNotIn('frontend_terminal_state_enum_coverage', errors)
+        self.assertNotIn('frontend_da30_retry_snapshot_retention', errors)
+        self.assertNotIn('frontend_ui_source_affordance_evidence', errors)
 
     def test_cycle018_and_cycle022_excerpts_do_not_fire_cycle023_frontend_facets(self):
         new_prefixes=(
@@ -2603,6 +2701,67 @@ class GradeLintTests(unittest.TestCase):
                 errors='\n'.join(p['grade_lint']['errors'])
                 for prefix in new_prefixes:
                     self.assertNotIn(prefix, errors)
+
+    def test_reference_source_missing_ledger_must_fire_on_real_cycle023_text(self):
+        proc,p=self.run_lint('code','low',CYCLE023_UI_M1_GRADE_EXCERPT,CYCLE023_UI_M1_OUTCOME_EXCERPT)
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertIn('reference_source_contract_review.reference_obligations_missing', errors)
+
+    def test_reference_source_missing_ledger_must_not_fire_on_non_reference_cycle018(self):
+        proc,p=self.run_lint('code','low',CYCLE018_ADAPTER_NON_SHAPE_GRADE,CYCLE018_ADAPTER_NON_SHAPE_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+        self.assertNotIn('reference_source_contract_review', '\n'.join(p['grade_lint']['errors']))
+
+    def test_reference_source_binding_and_required_classes_must_fire_and_clean_pair(self):
+        proc,p=self.run_lint('code','low',REFERENCE_MISSING_BINDING_GRADE,REFERENCE_MISSING_BINDING_AND_CLASSES_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertIn('reference_source_contract_review.reference_obligations[UX-101-ACTION-STATE].required_evidence_classes is required', errors)
+        self.assertIn('reference_source_contract_review.obligation_binding_missing[spec_compliance_matrix[0]]', errors)
+        proc,p=self.run_lint('code','low',REFERENCE_VALID_GRADE,REFERENCE_VALID_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_reference_source_fixture_only_production_anchor_must_fire_and_clean_pair(self):
+        proc,p=self.run_lint('code','low',REFERENCE_FIXTURE_ONLY_GRADE,REFERENCE_PRODUCTION_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn('reference_source_contract_review.production_path_anchor_missing[UX-101-ACTION-STATE]', '\n'.join(p['grade_lint']['errors']))
+        proc,p=self.run_lint('code','low',REFERENCE_PRODUCTION_ANCHOR_GRADE,REFERENCE_PRODUCTION_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_reference_source_static_presence_ui_must_fire_and_behavioral_clean_pair(self):
+        proc,p=self.run_lint('code','low',REFERENCE_STATIC_ONLY_GRADE,REFERENCE_VALID_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn('reference_source_contract_review.behavioral_ui_test_missing[UX-101-ACTION-STATE]', '\n'.join(p['grade_lint']['errors']))
+        proc,p=self.run_lint('code','low',REFERENCE_VALID_GRADE,REFERENCE_VALID_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_reference_source_silent_narrowing_must_fire_and_unverified_clean_pair(self):
+        proc,p=self.run_lint('code','low',REFERENCE_VALID_GRADE,REFERENCE_NARROWED_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn('reference_source_contract_review.silent_narrowing[UX-101-ACTION-STATE]', '\n'.join(p['grade_lint']['errors']))
+        proc,p=self.run_lint('code','low',REFERENCE_VALID_GRADE,REFERENCE_NARROWED_WAIVED_OUTCOME)
+        self.assertEqual(proc.returncode,0,p)
+
+    def test_reference_source_hostile_fixture_ids_must_fire_on_cycle020_text_and_clean_pair(self):
+        proc,p=self.run_lint('code','low',REFERENCE_HOSTILE_GRADE,REFERENCE_HOSTILE_OUTCOME)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn('reference_source_contract_review.hostile_fixture_ids_missing[GRADE-HOSTILE-01]', '\n'.join(p['grade_lint']['errors']))
+        proc,p=self.run_lint('code','low',REFERENCE_HOSTILE_GRADE,REFERENCE_HOSTILE_IDS_OUTCOME)
+        self.assertNotIn('reference_source_contract_review.hostile_fixture_ids_missing', '\n'.join(p['grade_lint']['errors']))
+
+    def test_reference_source_advisory_request_artifact_emitted_never_verdict_gated(self):
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td); gf=root/'grade.md'; of=root/'outcome.md'; ef=root/'evidence'/'grade_lint_round_0.json'
+            gf.write_text(textwrap.dedent(REFERENCE_VALID_GRADE)); of.write_text(textwrap.dedent(REFERENCE_VALID_OUTCOME))
+            proc=subprocess.run([sys.executable,str(LINTER),'--task-type','code','--risk-level','low','--grade-file',str(gf),'--outcome-file',str(of),'--evidence-file',str(ef)],text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+            self.assertEqual(proc.returncode,0,proc.stdout+proc.stderr)
+            request=ef.parent/'reference_obligation_review_request.jsonl'
+            verdict=ef.parent/'reference_obligation_review_verdict.jsonl'
+            self.assertTrue(request.exists())
+            rows=[json.loads(line) for line in request.read_text().splitlines()]
+            self.assertEqual([row['obligation_id'] for row in rows], ['UX-101-ACTION-STATE'])
+            self.assertFalse(verdict.exists())
 
     def write_frontend_dependency_repo(self, root, *, drift):
         (root/'docs'/'architecture').mkdir(parents=True)
