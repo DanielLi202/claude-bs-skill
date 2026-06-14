@@ -33,5 +33,29 @@ escalated_to_human:
     text to cite absolute-path invocation, but cannot verify the code does it.
   addresses:
   - F2
+- id: C5
+  from: cycle-028 r2 (re-classified by orchestrator)
+  title: MCP-wedge mitigation for staged codex runs — proposed mechanism verified
+    ineffective
+  determinism: needs_human
+  target: bs-skill/harness/evolve-loop/bin/run-codex-staged.sh
+  change: 'r2 proposed passing `-c mcp_servers={}` to codex exec so review stages
+    cannot wedge on an unauthenticated configured MCP (a remote tavily MCP needing
+    TAVILY_API_KEY, absent in the headless loop context, blocked the first cycle-028
+    r1 codex run at 0% CPU for 68min). ORCHESTRATOR VERIFIED THIS IS INEFFECTIVE:
+    with `-c mcp_servers={}` the `Auth(AuthorizationRequired)` error still appears
+    (codex merges the empty table rather than clearing the [mcp_servers.*] sub-tables)
+    — so it does not actually disable MCP. The clean `--ignore-user-config` flag disables
+    MCP but drops ALL user config (model/effort side-effect risk). The wedge is rare+transient
+    (non-fatal; r1b and r2 both produced full reviews despite the error; ~1-in-10
+    runs). NEEDS: the correct per-run MCP disable that preserves the account model
+    + reasoning effort, OR a run-codex-staged.sh stall-detector improvement that catches
+    a log-FROZEN wedge even when intermittent CPU ticks keep last_progress fresh (the
+    actual failure mode — the existing all-quiet stall threshold did not fire). Deferred
+    from deterministic implementation because shipping an ineffective/risky change
+    to the loop''s critical wrapper mid-run is worse than none; current mitigation
+    = the orchestrator''s check-in wakes catch a wedge.'
+  addresses:
+  - harness
 closed: false
 updated_at: '2026-06-14T12:58:00Z'
