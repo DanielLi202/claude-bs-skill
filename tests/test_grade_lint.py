@@ -2069,6 +2069,169 @@ dependency_spec_review:
     rationale: "no dependency changes in this fixture"
 ```
 '''
+CYCLE027_SSE_MOCK_ONLY_OUTCOME_EXCERPT='''---
+schema_version: "1.2"
+title: "UI-M5 Conduct monitor — 5-panel harness inspector + reconnect + progress invalidation"
+goal: "Conduct monitor: 5-panel harness inspector + folded chip + reconnect/degraded + progress-invalidation fetch (no SSE text)"
+output_contract:
+  artifacts:
+    - type: file_set
+      paths:
+        - "apps/symphony-ui/src/conduct/ConductMonitor.tsx"
+        - "apps/symphony-ui/src/conduct/conduct.test.tsx"
+        - "apps/symphony-ui/src/lib/api/client.ts"
+acceptance:
+  - id: a3
+    title: "Progress text is fetched via GET, never read from the SSE payload (DA-31)"
+    severity: P1
+    requirement: >
+      On a state_changed{what:"progress"} invalidation, the monitor obtains the
+      latest daemon_progress progress_text via SymphonyClient.runEvents(runId,
+      {type:'daemon_progress'}) which issues GET /api/v1/runs/{id}/events
+      ?type=daemon_progress (api-contract §3.4.2; events.md §3.6). The monitor MUST
+      NOT read progress_text (or any delta) from the SSE state_changed payload — the
+      SSE payload is invalidation-only and carries only {revision, changed, what}
+      (api-contract §3.4 invariant). The rendered progress line shows the latest
+      progress_text only.
+    verification_hint: >
+      Behavioral test: (1) assert the client method issues a GET to the exact path
+      '/api/v1/runs/<id>/events' with query type=daemon_progress (assert on the
+      transport request, the production request path — not a mock-only fixture).
+      (2) Property facet: feed the monitor an SSE-shaped payload that contains a
+      'progress_text' field and assert the rendered text comes ONLY from the GET
+      response, never from the SSE payload (i.e. a SSE payload with a bogus
+      progress_text does not appear in the DOM). (3) Parse a daemon_progress event
+      with progress_text and assert it renders.
+  - id: a4
+    title: "Reconnect/degraded SWR wiring never clears the snapshot (DA-30)"
+    severity: P1
+    requirement: >
+      The monitor surface reflects the existing connectionStore SSE lifecycle:
+      while reconnecting it shows the reconnect badge and keeps the last-known
+      Conduct snapshot rendered (never blanked to a spinner/empty), and at 60s+
+      disconnect the degraded banner is shown while the snapshot stays visible
+      (DA-30 SWR; api-contract §3.4.3; reuse ReconnectBadge/DegradedBanner). Write
+      affordances (Cancel) are scoped-disabled while disconnected per DA-30 (no
+      stale-revision writes).
+    verification_hint: >
+      Behavioral test driving connectionStore through connected → reconnecting →
+      degraded: assert the monitor still renders the prior run/plan content in each
+      non-connected state (snapshot retained, not an initial-load skeleton/empty),
+      assert the reconnect badge appears in 'reconnecting' and the degraded banner
+      appears in 'degraded', and assert the Cancel affordance is disabled while
+      disconnected. Cover the full DA-30 retain-snapshot facet, not just the
+      connected happy path.
+---
+# Outcome
+Existing code reused: `src/lib/sse/connection.ts` (already treats
+`what:"progress"` as a valid `state_changed` invalidation, line ~208).
+No re-implementation of the SSE reconnect lifecycle — reuse the existing
+`subscribeToInvalidations` + `connectionStore`; the monitor consumes that state.
+
+```yaml
+reference_obligations:
+  - obligation_id: "DA31-PROGRESS-TEXT-VIA-GET-NOT-SSE-01"
+    source_ref:
+      path: "docs/architecture/api-contract.md"
+      section: "§3.4 / §3.4.2"
+      quote_hash: "sha256:api-contract-3.4.2-progress-get-not-sse"
+    kind: "api_contract"
+    must: >
+      progress_text is fetched via GET /api/v1/runs/{id}/events?type=daemon_progress;
+      SSE state_changed payload is invalidation-only ({revision,changed,what}) and
+      MUST NOT carry progress_text. Monitor renders text from the GET response only.
+    required_evidence_classes: ["behavioral_ui_test", "production_path_anchor", "enum_or_property_coverage"]
+    not_sufficient: ["mock_fixture_only", "static_dom_snapshot_only"]
+    status: null
+  - obligation_id: "DA30-SWR-RECONNECT-RETAIN-SNAPSHOT-01"
+    source_ref:
+      path: "docs/architecture/api-contract.md"
+      section: "§3.4.3"
+      quote_hash: "sha256:api-contract-3.4.3-swr-reconnect-da30"
+    kind: "ui_state_behavior"
+    must: >
+      On disconnect/reconnect the monitor never clears the last-known snapshot;
+      reconnect badge in 'reconnecting'; degraded banner at 60s+; write
+      affordances scoped-disabled while disconnected (DA-30 SWR-on-reconnect).
+    required_evidence_classes: ["behavioral_ui_test", "production_path_anchor"]
+    not_sufficient: ["mock_fixture_only", "static_dom_snapshot_only"]
+    status: null
+```
+'''
+CYCLE027_SSE_MOCK_ONLY_GRADE_EXCERPT='''# Grade round 1 — B-027 UI-M5 Conduct monitor (fix round)
+
+**Task**: B-027 (type=code, risk_level=low). **Cycle**: cycle-027. **Round**: 1
+(fix round for the round-0 F1/F2 findings).
+
+- **F1 (P1, a3) RESOLVED**: `apps/symphony-ui/src/lib/api/client.ts` `runEvents()`
+  now delegates to `coerceRunEvents(response.data)` which handles array → as-is,
+  string → `parseNdjsonEvents`, single non-null object → `[object]`, else `[]`;
+  `parseNdjsonEvents(body: unknown)` guards non-string input. The single-line
+  `?type=daemon_progress` body no longer crashes. Test "fetches daemon progress
+  through the production GET path and ignores progress text shaped like an SSE
+  delta" passes (production GET path `/api/v1/runs/run%2F1/events?type=daemon_progress`
+  asserted; the SSE `state_changed` bogus `progress_text` is NOT rendered).
+
+```yaml
+grade_summary:
+  p0_count: 0
+  p1_count: 0
+  p2_count: 0
+```
+
+```yaml
+acceptance_status:
+  - id: a3
+    status: pass
+    severity: P1
+  - id: a4
+    status: pass
+    severity: P1
+```
+
+```yaml
+spec_compliance_matrix:
+  - acceptance_id: a3
+    obligation_id: "DA31-PROGRESS-TEXT-VIA-GET-NOT-SSE-01"
+    spec_refs: ["docs/architecture/api-contract.md#§3.4.2", "docs/architecture/schemas/events.md#§3.6"]
+    severity_if_fail: P1
+    status: pass
+    evidence_ref: "conduct.test.tsx: runEvents issues the production GET '/api/v1/runs/run%2F1/events?type=daemon_progress' (assert on the transport request) and returns RunEvent[]; latestProgressText ignores the SSE state_changed payload and the DOM does not render the bogus SSE text; coerceRunEvents handles single-line NDJSON (F1 fixed)"
+  - acceptance_id: a4
+    obligation_id: "DA30-SWR-RECONNECT-RETAIN-SNAPSHOT-01"
+    spec_refs: ["docs/architecture/api-contract.md#§3.4.3"]
+    severity_if_fail: P1
+    status: pass
+    evidence_ref: "conduct.test.tsx 'retains the prior conduct snapshot while reconnecting and degraded…' green; reconnect lifecycle reused from src/lib/sse/connection.ts (unchanged)"
+```
+
+```yaml
+negative_regression_tests:
+  - acceptance_id: a3
+    scenario: "Property facet: an SSE-shaped state_changed payload carrying a bogus progress_text must NOT render; only the GET response text renders; single-line NDJSON body must not crash"
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: "conduct.test.tsx asserts latestProgressText ignores the state_changed payload + DOM not.toHaveTextContent('SSE bogus progress must not render'); runEvents single-object body returns [event] (coerceRunEvents), no TypeError"
+  - acceptance_id: a4
+    scenario: "Disconnect → reconnecting → degraded keeps the prior snapshot retained and writesDisabled (Cancel disabled); the reused src/lib/sse/connection.ts closes the old source (.close()), creates a new EventSource, rejects stale old events via the generation token, and does a full GET /api/v1/state refresh after the new connection"
+    status: pass
+    severity_if_fail: P1
+    evidence_ref: "conduct.test.tsx asserts 'Patch handler' snapshot retained in reconnecting+degraded and Cancel disabled (snapshot retained and writes disabled while disconnected); connection.ts lifecycle (old source close + new source creation + stale old events rejected + full GET /api/v1/state refresh) proven by the pre-existing src/lib/api/substrate.test.tsx (cycle-022)"
+```
+
+```yaml
+secret_leakage_audit:
+  status: not_applicable
+  rationale: "B-027 is a read-only UI monitor; runEvents builds only a path+query (runId, type, since_seq), no secrets."
+```
+
+```yaml
+dependency_spec_review:
+  - status: not_applicable
+    severity_if_fail: P2
+    rationale: "No new third-party dependency introduced"
+```
+'''
 FRONTEND_NEGATED_CYCLE024_FACET_OUTCOME='''---
 schema_version: "1.2"
 title: "UI-M2 negated fixture-honesty row"
@@ -2895,6 +3058,51 @@ class GradeLintTests(unittest.TestCase):
     def test_negative_failure_branch_coverage_cycle024_post_resubmit_real_clean(self):
         _proc,p=self.run_lint('code','low',CYCLE024_UI_M2_GRADE_EXCERPT,CYCLE024_UI_M2_OUTCOME_EXCERPT)
         self.assertNotIn('negative_failure_branch_coverage', '\n'.join(p['grade_lint']['errors']))
+
+    def test_cycle027_frontend_sse_production_subscription_anchor_real_escape_must_fire(self):
+        proc,p=self.run_lint('code','low',CYCLE027_SSE_MOCK_ONLY_GRADE_EXCERPT,CYCLE027_SSE_MOCK_ONLY_OUTCOME_EXCERPT)
+        self.assertEqual(proc.returncode,1)
+        errors='\n'.join(p['grade_lint']['errors'])
+        self.assertIn(
+            'frontend_sse_production_subscription_anchor[a3] SSE/progress-invalidation PASS cites only test/mock evidence (conduct.test.tsx, hand-built SSE object)',
+            errors,
+        )
+        self.assertIn(
+            'frontend_sse_production_subscription_anchor[a4] SSE/reconnect lifecycle PASS cites only test/mock evidence (conduct.test.tsx, connection.ts definition)',
+            errors,
+        )
+
+    def test_frontend_sse_production_subscription_anchor_accepts_non_test_production_caller(self):
+        grade=CYCLE027_SSE_MOCK_ONLY_GRADE_EXCERPT.replace(
+            'conduct.test.tsx: runEvents issues the production GET',
+            'src/shell/AppShell.tsx calls subscribeToInvalidations() and runEvents issues the production GET',
+        ).replace(
+            "conduct.test.tsx 'retains the prior conduct snapshot while reconnecting and degraded…' green; reconnect lifecycle reused from src/lib/sse/connection.ts (unchanged)",
+            "src/shell/AppShell.tsx mounts the SSE invalidation controller by calling subscribeToInvalidations(); conduct.test.tsx retains the prior conduct snapshot while reconnecting and degraded",
+        )
+        _proc,p=self.run_lint('code','low',grade,CYCLE027_SSE_MOCK_ONLY_OUTCOME_EXCERPT)
+        self.assertNotIn('frontend_sse_production_subscription_anchor', '\n'.join(p['grade_lint']['errors']))
+
+    def test_cycle026_no_sse_obligation_does_not_fire_subscription_anchor(self):
+        _proc,p=self.run_lint('code','low',CYCLE026_NEGATIVE_FAILURE_GRADE_EXCERPT,CYCLE026_NEGATIVE_FAILURE_OUTCOME_EXCERPT)
+        self.assertNotIn('frontend_sse_production_subscription_anchor', '\n'.join(p['grade_lint']['errors']))
+
+    def test_cycle027_stream_decode_malformed_negative_coverage_real_escape_must_fire(self):
+        proc,p=self.run_lint('code','low',CYCLE027_SSE_MOCK_ONLY_GRADE_EXCERPT,CYCLE027_SSE_MOCK_ONLY_OUTCOME_EXCERPT)
+        self.assertEqual(proc.returncode,1)
+        self.assertIn(
+            'stream_decode_malformed_negative_coverage[a3] NDJSON/parser claim lacks malformed/non-JSON negative evidence (preserve-valid / no-throw)',
+            '\n'.join(p['grade_lint']['errors']),
+        )
+
+    def test_cycle022_and_cycle026_do_not_fire_stream_decode_malformed_negative_coverage(self):
+        for grade,outcome in (
+            (CYCLE022_FRONTEND_ESCAPE_GRADE, CYCLE022_FRONTEND_ESCAPE_OUTCOME),
+            (CYCLE026_NEGATIVE_FAILURE_GRADE_EXCERPT, CYCLE026_NEGATIVE_FAILURE_OUTCOME_EXCERPT),
+        ):
+            with self.subTest(outcome=outcome[:40]):
+                _proc,p=self.run_lint('code','low',grade,outcome)
+                self.assertNotIn('stream_decode_malformed_negative_coverage', '\n'.join(p['grade_lint']['errors']))
 
     def test_cycle025_ui_m3_real_excerpts_fire_schema_tags_command_facets(self):
         proc,p=self.run_lint('code','low',CYCLE025_UI_M3_GRADE_EXCERPT,CYCLE025_UI_M3_OUTCOME_EXCERPT)

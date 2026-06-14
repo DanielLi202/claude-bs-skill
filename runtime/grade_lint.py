@@ -153,6 +153,19 @@ EVOLVE_RECENT_RUNS_GIT_COMMIT_RE=re.compile(r"\b(?:Recent\s+Runs|recent-runs|MEM
 EVOLVE_RECENT_RUNS_IDEMPOTENCE_RE=re.compile(r"\b(?:idempotent|idempotence|replay|re-run|rerun|same\s+digest|duplicate)\b[\s\S]{0,180}\b(?:Recent\s+Runs|recent-runs|MEMORY\.md|line|digest)\b[\s\S]{0,120}\b(?:no\s+duplicate|dedup|does\s+not\s+duplicate|single\s+line|one\s+line|unchanged)\b|\b(?:Recent\s+Runs|recent-runs|MEMORY\.md|line|digest)\b[\s\S]{0,180}\b(?:same\s+digest|replay|rerun|idempotent|idempotence)\b[\s\S]{0,120}\b(?:no\s+duplicate|dedup|does\s+not\s+duplicate|single\s+line|one\s+line|unchanged)\b", re.I)
 FRONTEND_PRIMARY_TASK_TOKENS=re.compile(r"\bUI[-_\s]?M0\b|\bfrontend\b|\bwebview\b|\bTauri\b|\bReact\b|\bVite\b|\bTypeScript\b|\bEventSource\b|\buseSyncExternalStore\b|\bZustand\b|apps/[A-Za-z0-9_.-]*-ui(?:/|\b)|(?:^|[^\w.-])package\.json\b|(?:^|[^\w.-])pnpm-lock\.yaml\b|vite\.config\.(?:ts|js|mts|mjs)\b|src/[^\s`'\"|]+\.tsx\b|\.tsx\b", re.I)
 FRONTEND_SSE_SCOPE_TERMS=re.compile(r"\bSSE\b|\bEventSource\b|\bheartbeat\b|\bconnected[-_\s]?event\b", re.I)
+FRONTEND_SSE_PRODUCTION_SUBSCRIPTION_SCOPE=re.compile(r"\bstate_changed\b|\bprogress[-_\s]?invalidation\b|\bsubscribeToInvalidations\b|\bEventSource\b|\bdaemon_progress\b|\bDA[-_\s]?3[01]\b|\breconnect(?:s|ed|ing)?\b|\bdegraded\b|\bSWR\b|\bstale[-_\s]?while[-_\s]?revalidate\b", re.I)
+FRONTEND_SSE_PROGRESS_SUBSCRIPTION_SCOPE=re.compile(r"\bstate_changed\b|\bprogress[-_\s]?invalidation\b|\bdaemon_progress\b|\bDA[-_\s]?31\b|\bprogress_text\b", re.I)
+FRONTEND_SSE_PRODUCTION_SOURCE_PATH=re.compile(r"\b(?:apps/[^\s`'\"(),]+/src|src)/[^\s`'\"(),]+?\.(?:tsx?|jsx?)\b", re.I)
+FRONTEND_SSE_TEST_SOURCE_PATH=re.compile(r"\.(?:test|spec)\.(?:tsx?|jsx?)\b|(?:^|/)(?:__tests__|tests?)/", re.I)
+FRONTEND_SSE_BARE_TEST_SOURCE_PATH=re.compile(r"\b[A-Za-z0-9_.-]+\.(?:test|spec)\.(?:tsx?|jsx?)\b", re.I)
+FRONTEND_SSE_DEFINITION_SOURCE_PATH=re.compile(r"(?:^|/)src/lib/sse/connection\.ts\b", re.I)
+FRONTEND_SSE_PRODUCTION_SUBSCRIPTION_CALL=re.compile(r"\bsubscribeToInvalidations\s*\(|\bmount(?:s|ed|ing)?\b[^.;\n]{0,120}\b(?:SSE|invalidation|subscriber|subscription|controller)\b|\b(?:SSE|invalidation|state_changed)\b[^.;\n]{0,120}\b(?:production\s+controller|real\s+controller|through\s+the\s+production)\b|\bproduction[-_\s]?(?:SSE|invalidation|subscription|subscriber|controller)\b", re.I)
+FRONTEND_SSE_APP_SHELL_SUBSCRIPTION_CALL=re.compile(r"\b(?:AppShell|app[-_\s]?shell|shell[-_\s]?bootstrap|main\.tsx|root\s+component)\b[^.;\n]{0,180}\b(?:subscribeToInvalidations\s*\(|mount(?:s|ed|ing)?\b[^.;\n]{0,80}\b(?:SSE|invalidation|subscriber|subscription|controller))\b|\b(?:subscribeToInvalidations\s*\(|mount(?:s|ed|ing)?\b[^.;\n]{0,80}\b(?:SSE|invalidation|subscriber|subscription|controller))\b[^.;\n]{0,180}\b(?:AppShell|app[-_\s]?shell|shell[-_\s]?bootstrap|main\.tsx|root\s+component)\b", re.I)
+FRONTEND_SSE_HAND_BUILT_EVENT_EVIDENCE=re.compile(r"\bSSE[-_\s]?shaped\b|\bstate_changed\b[^.;\n]{0,120}\b(?:payload|object|event)\b|\b(?:bogus|fake|fixture|mock|hand[-_\s]?built)\b[^.;\n]{0,120}\b(?:SSE|state_changed|progress_text)", re.I)
+FRONTEND_SSE_DIRECT_STORE_MUTATION_EVIDENCE=re.compile(r"\bconnectionStore\.(?:connected|reconnecting|degraded)\s*\(|\bdriv(?:e|ing|es)\s+connectionStore\b", re.I)
+STREAM_DECODE_SCOPE_TERMS=re.compile(r"\bJSON\.parse\b|\bparseNdjson(?:Events)?\b|\bcoerceRunEvents\b|\bnewline[-_\s]?delimited\s+JSON\b|\bstream\s+JSON\b|\bNDJSON\b[^.;\n]{0,140}\b(?:body|line|pars(?:e|ing|er)|coerce|runEvents)\b|\b(?:body|line|pars(?:e|ing|er)|coerce|runEvents)\b[^.;\n]{0,140}\bNDJSON\b|\brunEvents\b[^.;\n]{0,140}\b(?:body|events?|pars(?:e|ing|er)|NDJSON)|\b(?:body|events?|pars(?:e|ing|er)|NDJSON)\b[^.;\n]{0,140}\brunEvents\b", re.I)
+STREAM_DECODE_MALFORMED_TERMS=re.compile(r"\bmalformed\b|\bnon[-_\s]?JSON\b|\bcorrupt(?:ed)?\b|\bbad\s+json\b|\bjunk\s+line\b|\binvalid\s+line\b|\binvalid\s+JSON\b", re.I)
+STREAM_DECODE_ROBUSTNESS_TERMS=re.compile(r"\bno[-_\s]?throw\b|\bdoes\s+not\s+throw\b|\bdoesn't\s+throw\b|\bnot\s+throw\b|\bignore(?:s|d|ing)?\b|\bskip(?:s|ped|ping)?\b|\bdrop(?:s|ped|ping)?\b|\bpreserve(?:s|d|ing)?\s+valid\b|\bvalid[-_\s]?sibling(?:s)?\b|\btolerat(?:e|es|ed|ing)\b", re.I)
 FRONTEND_SSE_OLD_SOURCE_CLOSE=re.compile(r"\b(?:old|previous|prior|stale|existing)\b[^.;\n]{0,80}\b(?:EventSource|source|connection)\b[^.;\n]{0,80}\b(?:close|dispose|abort|cleanup)|\b(?:close|dispose|abort|cleanup)\b[^.;\n]{0,80}\b(?:old|previous|prior|stale|existing)\b[^.;\n]{0,80}\b(?:EventSource|source|connection)\b|\.close\(\)", re.I)
 FRONTEND_SSE_NEW_SOURCE_CREATION=re.compile(r"\b(?:new|second|fresh|recreated?|re-open(?:ed)?|create(?:d)?\s+again|factory\s+(?:called|invoked)\s+again|called\s+(?:twice|2x))\b[^.;\n]{0,100}\b(?:EventSource|source|connection|factory)\b|\b(?:EventSource|source|connection|factory)\b[^.;\n]{0,100}\b(?:new|second|fresh|recreated?|again|called\s+(?:twice|2x))\b", re.I)
 FRONTEND_SSE_STALE_OLD_EVENTS_REJECTED=re.compile(r"\b(?:stale|old|previous|prior)\b[^.;\n]{0,80}\b(?:events?|messages?|connected)\b[^.;\n]{0,120}\b(?:ignored|rejected|cannot|can't|must\s+not|not\s+accepted|does\s+not\s+satisfy|cannot\s+satisfy)\b|\b(?:ignored|rejected|not\s+accepted)\b[^.;\n]{0,80}\b(?:stale|old|previous|prior)\b[^.;\n]{0,80}\b(?:events?|messages?|connected)\b", re.I)
@@ -771,6 +784,13 @@ def negative_failure_branch_severity(acceptance_id, required_acceptance, status_
             return severity
     return None
 
+def acceptance_blocking_severity(acceptance_id, required_acceptance, status_meta, rows):
+    severities=[
+        required_acceptance.get(acceptance_id,{}).get('severity'),
+        status_meta.get(acceptance_id,{}).get('severity'),
+    ] + [row_blocking_severity(row, required_acceptance) for row in rows if isinstance(row,dict)]
+    return next((severity for severity in severities if severity in BLOCKING), None)
+
 def validate_negative_failure_branch_coverage(required_acceptance, acceptance_status, spec, neg, errors):
     status_meta=acceptance_status_metadata(acceptance_status)
     spec_by_acceptance=row_collection_by_acceptance(spec)
@@ -804,6 +824,37 @@ def validate_negative_failure_branch_coverage(required_acceptance, acceptance_st
         ]
         if missing:
             errors.append(f"negative_failure_branch_coverage[{acceptance_id}] missing branches: {'; '.join(missing)}")
+
+def stream_decode_malformed_evidence_present(evidence_text):
+    return (
+        has_non_negated_scope_term(STREAM_DECODE_MALFORMED_TERMS, evidence_text)
+        and has_non_negated_scope_term(STREAM_DECODE_ROBUSTNESS_TERMS, evidence_text)
+    )
+
+def validate_stream_decode_malformed_negative_coverage(required_acceptance, acceptance_status, spec, neg, errors):
+    status_meta=acceptance_status_metadata(acceptance_status)
+    spec_by_acceptance=row_collection_by_acceptance(spec)
+    neg_by_acceptance=row_collection_by_acceptance(neg)
+    ids=set(required_acceptance) | set(status_meta) | set(spec_by_acceptance) | set(neg_by_acceptance)
+    for acceptance_id in sorted(ids):
+        spec_rows=spec_by_acceptance.get(acceptance_id,[])
+        neg_rows=neg_by_acceptance.get(acceptance_id,[])
+        rows=spec_rows+neg_rows
+        if acceptance_blocking_severity(acceptance_id, required_acceptance, status_meta, rows) not in BLOCKING:
+            continue
+        if rows_have_negative_failure_exemption(rows):
+            continue
+        claim_text=text_blob(
+            required_acceptance.get(acceptance_id,{}).get('text',''),
+            status_meta.get(acceptance_id,{}).get('text',''),
+            rows,
+        )
+        if not has_non_negated_scope_term(STREAM_DECODE_SCOPE_TERMS, claim_text):
+            continue
+        pass_rows=[row for row in rows if isinstance(row,dict) and row.get('status')=='pass']
+        evidence_text=row_evidence_text(pass_rows)
+        if not stream_decode_malformed_evidence_present(evidence_text):
+            errors.append(f"stream_decode_malformed_negative_coverage[{acceptance_id}] NDJSON/parser claim lacks malformed/non-JSON negative evidence (preserve-valid / no-throw)")
 
 def subprocess_lifecycle_evidence_text(rows):
     evidence_fields=('evidence_ref','evidence_refs','method','evidence_method','audit_method','evidence_summary','summary','note','details','rationale')
@@ -1521,6 +1572,93 @@ def reference_row_has_behavioral_ui_evidence(row_text):
             and has_non_negated_scope_term(REFERENCE_BEHAVIORAL_UI_STATE_ASSERT_RE, row_text)
         )
     )
+
+def frontend_sse_obligation_requires_production_anchor(entry):
+    if reference_entry_has_waiver_or_unverified(entry):
+        return False
+    return (
+        'production_path_anchor' in set(reference_required_classes(entry))
+        and has_non_negated_scope_term(FRONTEND_SSE_PRODUCTION_SUBSCRIPTION_SCOPE, text_blob(entry))
+    )
+
+def frontend_sse_has_production_subscription_anchor(evidence_text):
+    text=evidence_text or ''
+    for match in FRONTEND_SSE_PRODUCTION_SOURCE_PATH.finditer(text):
+        path=match.group(0)
+        if FRONTEND_SSE_TEST_SOURCE_PATH.search(path) or FRONTEND_SSE_DEFINITION_SOURCE_PATH.search(path):
+            continue
+        context=text[max(0,match.start()-220):match.end()+260]
+        if has_non_negated_scope_term(FRONTEND_SSE_PRODUCTION_SUBSCRIPTION_CALL, context):
+            return True
+    return has_non_negated_scope_term(FRONTEND_SSE_APP_SHELL_SUBSCRIPTION_CALL, text)
+
+def frontend_sse_anchor_failure_summary(evidence_text):
+    text=evidence_text or ''
+    parts=[]
+    first_test=next((match.group(0).rsplit('/',1)[-1] for match in FRONTEND_SSE_BARE_TEST_SOURCE_PATH.finditer(text)), None)
+    if first_test:
+        parts.append(first_test)
+    for match in FRONTEND_SSE_PRODUCTION_SOURCE_PATH.finditer(text):
+        path=match.group(0)
+        if FRONTEND_SSE_TEST_SOURCE_PATH.search(path):
+            continue
+        if FRONTEND_SSE_DEFINITION_SOURCE_PATH.search(path):
+            if 'connection.ts definition' not in parts:
+                parts.append('connection.ts definition')
+    if has_non_negated_scope_term(FRONTEND_SSE_HAND_BUILT_EVENT_EVIDENCE, text):
+        parts.append('hand-built SSE object')
+    if has_non_negated_scope_term(FRONTEND_SSE_DIRECT_STORE_MUTATION_EVIDENCE, text):
+        parts.append('direct connectionStore mutation')
+    return ', '.join(parts[:3]) if parts else 'no production caller evidence'
+
+def frontend_sse_subscription_label(text):
+    if has_non_negated_scope_term(FRONTEND_SSE_PROGRESS_SUBSCRIPTION_SCOPE, text):
+        return 'SSE/progress-invalidation'
+    return 'SSE/reconnect lifecycle'
+
+def validate_frontend_sse_production_subscription_anchor(bs, required_acceptance, acceptance_status, spec, neg, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
+    if not frontend_primary_deliverable_in_scope(grade_text,outcome_text,outcome_blocks):
+        return
+    ledger={reference_obligation_id(entry): entry for entry in reference_obligation_rows(outcome_blocks) if reference_obligation_id(entry)}
+    if not ledger:
+        return
+    status_meta=acceptance_status_metadata(acceptance_status)
+    spec_by_acceptance=row_collection_by_acceptance(spec)
+    neg_by_acceptance=row_collection_by_acceptance(neg)
+    ids=set(required_acceptance) | set(status_meta) | set(spec_by_acceptance) | set(neg_by_acceptance)
+    for acceptance_id in sorted(ids):
+        spec_rows=spec_by_acceptance.get(acceptance_id,[])
+        neg_rows=neg_by_acceptance.get(acceptance_id,[])
+        rows=spec_rows+neg_rows
+        pass_rows=[row for row in rows if isinstance(row,dict) and row.get('status')=='pass']
+        if not pass_rows:
+            continue
+        if acceptance_blocking_severity(acceptance_id, required_acceptance, status_meta, pass_rows) not in BLOCKING:
+            continue
+        if rows_have_negative_failure_exemption(rows):
+            continue
+        bound_entries=[]
+        for row in pass_rows:
+            oid=reference_obligation_id(row)
+            entry=ledger.get(oid)
+            if entry and frontend_sse_obligation_requires_production_anchor(entry):
+                bound_entries.append(entry)
+        if not bound_entries:
+            continue
+        claim_text=text_blob(
+            required_acceptance.get(acceptance_id,{}).get('text',''),
+            status_meta.get(acceptance_id,{}).get('text',''),
+            bound_entries,
+            pass_rows,
+        )
+        if not has_non_negated_scope_term(FRONTEND_SSE_PRODUCTION_SUBSCRIPTION_SCOPE, claim_text):
+            continue
+        evidence_text=row_evidence_text(pass_rows)
+        if frontend_sse_has_production_subscription_anchor(evidence_text):
+            continue
+        label=frontend_sse_subscription_label(claim_text)
+        summary=frontend_sse_anchor_failure_summary(evidence_text)
+        errors.append(f"frontend_sse_production_subscription_anchor[{acceptance_id}] {label} PASS cites only test/mock evidence ({summary}) — no non-test production subscribeToInvalidations caller anchor")
 
 def validate_reference_source_contract_review(bs, required_acceptance, acceptance_status, spec, neg, errors, *, grade_text='', outcome_text='', outcome_blocks=None):
     calc={'P0':0,'P1':0}
@@ -2464,6 +2602,7 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
     prop_calc=validate_property_obligations(required_acceptance, neg, errors)
     calc['P0']+=prop_calc['P0']; calc['P1']+=prop_calc['P1']
     validate_negative_failure_branch_coverage(required_acceptance, acceptance_status, spec, neg, errors)
+    validate_stream_decode_malformed_negative_coverage(required_acceptance, acceptance_status, spec, neg, errors)
     validate_shape_forbidden_read_isolation_audit(spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_outcome_capsule_v12_structural_schema(outcome_blocks, errors, grade_text=grade_text, outcome_text=outcome_text)
     validate_shape_protocol_evidence(bs, outcome_blocks, errors, grade_text=grade_text, outcome_text=outcome_text)
@@ -2481,6 +2620,7 @@ def validate_code_baseline(summary, bs, errors, required_acceptance, acceptance_
     calc['P0']+=ref_calc['P0']; calc['P1']+=ref_calc['P1']
     if reference_requests is not None:
         reference_requests.extend(ref_requests)
+    validate_frontend_sse_production_subscription_anchor(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_frontend_production_wiring_or_unavailable_honesty(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_frontend_pessimistic_pending_dismissal_guard(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
     validate_frontend_sse_reconnect_lifecycle_evidence(bs, required_acceptance, acceptance_status, spec, neg, errors, grade_text=grade_text, outcome_text=outcome_text, outcome_blocks=outcome_blocks)
