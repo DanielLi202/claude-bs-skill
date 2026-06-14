@@ -2,7 +2,22 @@ cycle: cycle-029
 r1: done
 r2: done
 skill_release: v1.4.28
-remediation: null
+remediation:
+  status: merged
+  pr: 46
+  merge_commit: 2a66526
+  branch: remediate/cycle-029
+  addresses:
+  - F1
+  - F2
+  verification: real-host nextest -p symphony-grade 50/50 + fmt/clippy clean; v1.4.28
+    grade_lint canary status:pass 0 errors; independent codex r1-verify = remediation
+    sound, F1/F2 closed, F7 preserved, 0 new defects
+  grade_doc: remediation_grade.md
+  r1_verify: r1-verify.md
+  dogfood_amendment: 18ac14e
+  deterministic_counterpart: bs-skill v1.4.28 validate_scanned_pid_kill_selector_evidence
+  source_truth_residual: escalated_to_human C2
 escalated_to_human:
 - id: C2
   from: cycle-029 r2
@@ -25,5 +40,5 @@ escalated_to_human:
   addresses:
   - F1
   - F2
-closed: false
-updated_at: '2026-06-14T15:38:07Z'
+closed: true
+updated_at: '2026-06-14T16:06:16Z'
