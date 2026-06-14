@@ -2,7 +2,7 @@ cycle: cycle-027
 r1: done
 r2: done
 skill_release: v1.4.26
-remediation: null
+remediation: 2ced434
 escalated_to_human:
 - id: C3
   from: cycle-027 r2
@@ -22,4 +22,4 @@ escalated_to_human:
   addresses:
   - F1
 closed: false
-updated_at: '2026-06-14T09:41:32Z'
+updated_at: '2026-06-14T10:04:56Z'
