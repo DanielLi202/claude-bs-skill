@@ -57,5 +57,5 @@ escalated_to_human:
     = the orchestrator''s check-in wakes catch a wedge.'
   addresses:
   - harness
-closed: false
-updated_at: '2026-06-14T13:50:49Z'
+closed: true
+updated_at: '2026-06-14T13:51:13Z'
