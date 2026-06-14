@@ -1,8 +1,37 @@
 cycle: cycle-028
 r1: done
-r2: null
+r2: done
 skill_release: null
 remediation: null
-escalated_to_human: []
+escalated_to_human:
+- id: C2
+  from: cycle-028 r2
+  title: Human semantic check for fail-closed security-containment proof tests
+  determinism: needs_human
+  target: bs-skill/prompts/grade/role.md + prompts/grade/critic.md
+  change: For P0/P1 security-containment proof tests, Grade/critic must inspect the
+    source/test branch semantics and FAIL if the test can return success before exercising
+    the hostile action under the asserted primitive, or if the unavailable/inactive
+    primitive path does not make the proof fail/refuse. Green nextest on an active
+    host is NOT sufficient. Irreducible residual of cycle-028 F1 (the proof test fail-OPENs
+    when sandbox-exec is inactive) — the deterministic C1 evidence-shape rule (v1.4.27)
+    requires the grade text to ASSERT forced-unavailable fail-closed proof, but cannot
+    verify the Rust test actually does it.
+  addresses:
+  - F1
+- id: C4
+  from: cycle-028 r2
+  title: Human code-aware check for PATH-resolved trusted containment binaries
+  determinism: needs_human
+  target: bs-skill/prompts/grade/role.md + prompts/grade/critic.md
+  change: When a Grade passes a security property that depends on a trusted local
+    binary, the trust-boundary review must inspect production AND probe call sites
+    for PATH resolution vs the discovered absolute path, and require a PATH-precedence/fake-binary
+    negative or direct source evidence. grade_lint cannot prove this from text. Irreducible
+    residual of cycle-028 F2 (sandbox_exec_path() finds the absolute binary but Command::new("sandbox-exec")
+    invokes via PATH) — the deterministic C3 evidence-shape rule requires the grade
+    text to cite absolute-path invocation, but cannot verify the code does it.
+  addresses:
+  - F2
 closed: false
-updated_at: '2026-06-14T12:48:19Z'
+updated_at: '2026-06-14T12:58:00Z'
