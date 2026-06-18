@@ -21,7 +21,13 @@ GITIGNORE_HELPER = SCRIPT.with_name("bs-evolve-gitignore.py")
 LOOP_STATE = SCRIPT.with_name("loop-state.py")
 FIXTURE_ROOT = SKILL_REPO / "tests" / "grade_lint_fixtures"
 FLEET = SKILL_REPO / ".bs-evolve" / "fleet.yaml"
-PRODUCTISH = re.compile(r"/Users/|decision[-_ ]?\w+|\b[A-Z]+-\d{3}\b", re.I)
+PRODUCTISH = re.compile(
+    r"/(?:Users|private|tmp|var|opt|home)/"
+    r"|decision[-_ ]?\w+"
+    r"|\bT-\d{8,}(?:-\d+)?-[A-Za-z0-9_.-]+\b"
+    r"|\b[A-Z]{1,8}-\d+[A-Za-z0-9'_.-]*\b",
+    re.I,
+)
 
 
 def run(cmd: list[str], *, cwd: pathlib.Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -47,9 +53,12 @@ def find_corpus(target: pathlib.Path) -> list[pathlib.Path]:
 
 def anonymize(text: str, *, target: pathlib.Path, slug: str) -> str:
     dynamic = {target.name, slug, target.stem}
-    dynamic.update(part for part in target.parts[-3:] if part and part not in {"/", "Users", "workspace", "utils"})
+    generic_path_parts = {"/", "Users", "workspace", "utils", "private", "tmp", "var", "opt", "home"}
+    dynamic.update(part for part in target.parts[-3:] if part and part not in generic_path_parts)
     replacements = [
-        (r"/Users/[^\s`'\"]+", "/abs/path/redacted"),
+        (r"/(?:Users|private|tmp|var|opt|home)/[^\s`'\"]+", "ABS_PATH_REDACTED"),
+        (r"\bT-\d{8,}(?:-\d+)?-[A-Za-z0-9_.-]+\b", "TASK_REDACTED"),
+        (r"\b[A-Z]{1,8}-\d+[A-Za-z0-9'_.-]*\b", "TASK_REDACTED"),
         (r"\b[A-Z]+-\d{3}\b", "TASK_REDACTED"),
         (r"decision[-_ ]?[A-Za-z0-9_.-]+", "JUDGMENT_REDACTED"),
     ]

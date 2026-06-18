@@ -26,7 +26,14 @@ def make_repo(base: Path, name: str = "target") -> Path:
     run(["git", "config", "user.name", "Test User"], cwd=repo)
     dog = repo / ".prompts" / "dogfood" / "cycle-001"
     dog.mkdir(parents=True)
-    (dog / "grade_round_1.md").write_text("spec_compliance_matrix:\n- id: a1\n  status: PASS\n  evidence_ref: ProjectZephyr package manager registry check passed under /Users/example/ProjectZephyr with TASK-123 and decision-abc redacted\n", encoding="utf-8")
+    (dog / "grade_round_1.md").write_text(
+        "spec_compliance_matrix:\n"
+        "- id: T-20260526-180000-c001shp1\n"
+        "  status: PASS\n"
+        "  evidence_ref: ProjectZephyr package manager registry check passed under "
+        "/Users/example/ProjectZephyr with TASK-123, DA-6, UX-36, and decision-abc redacted\n",
+        encoding="utf-8",
+    )
     run(["git", "add", ".prompts/dogfood/cycle-001/grade_round_1.md"], cwd=repo)
     run(["git", "commit", "-m", "seed corpus"], cwd=repo)
     return repo
@@ -56,7 +63,14 @@ class BsEvolveA4InitTests(unittest.TestCase):
             text = (new[0] / "grade.md").read_text(encoding="utf-8")
             self.assertEqual(meta["task_type"], "code")
             self.assertEqual(meta["risk_level"], "low")
-            self.assertNotRegex(text, r"ProjectZephyr|/Users/|[A-Z]+-\d{3}|decision[-_ ]")
+            self.assertNotRegex(
+                text,
+                r"ProjectZephyr"
+                r"|/(?:Users|private|tmp|var|opt|home)/"
+                r"|decision[-_ ]"
+                r"|\bT-\d{8,}(?:-\d+)?-[A-Za-z0-9_.-]+\b"
+                r"|\b[A-Z]{1,8}-\d+[A-Za-z0-9'_.-]*\b",
+            )
             self.assertEqual(run(["git", "check-ignore", "-q", ".bs-evolve/fleet.yaml"], cwd=ROOT, check=False).returncode, 0)
             shutil.rmtree(new[0])
 
