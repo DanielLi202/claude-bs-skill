@@ -137,7 +137,7 @@ implementation, backtest, and remediation stage:
 ```bash
 bash "$HARNESS/bin/run-codex-staged.sh" --stage "<iter>-<stage>" --stall-sec 1200 \
   --prompt "<prompt-file>" --log "<log-file>" --cwd "<repo-or-worktree>" [--expect-writes] \
-  [-- --sandbox read-only|--sandbox workspace-write --full-auto]
+  [-- --sandbox workspace-write --expect-writes|--sandbox workspace-write --full-auto]
 ```
 
 After launching background work, immediately do the cheap completion/staleness check
@@ -168,7 +168,7 @@ If `ONCE=1`, stop after this stage without scheduling a wake.
 
 ## Stage 2 — r1 independent delivery review
 
-Run a read-only review of the delivered target delta via `run-codex-staged.sh` under the supervision skeleton above. Write `$REVIEWS/<cycle>/r1.md`,
+Run a semantically read-only review of the delivered target delta via `run-codex-staged.sh` under the supervision skeleton above, but invoke Codex with workspace-write because the stage must write review artifacts. Write `$REVIEWS/<cycle>/r1.md`,
 validate the fenced `r1_verdict`, update closure, and commit/push the target repo.
 
 ```bash
@@ -181,7 +181,7 @@ If `ONCE=1`, stop after this stage without scheduling a wake.
 
 ## Stage 3 — r2 process review to deterministic plan
 
-Run a read-only process review via `run-codex-staged.sh` under the supervision skeleton above. Require each `proposed_changes[]` item to carry
+Run a semantically read-only process review via `run-codex-staged.sh` under the supervision skeleton above, but invoke Codex with workspace-write because the stage must write review artifacts. Require each `proposed_changes[]` item to carry
 `determinism: deterministic | needs_human`. Write `$REVIEWS/<cycle>/r2.md`, copy
 `needs_human` entries into closure, and commit/push the target repo.
 

@@ -66,6 +66,10 @@ SCANNED_PID_KILL_MARKER_TERMS=re.compile(r"\bmarker\b|\bcontainment[-_\s]?id\b|\
 SCANNED_PID_KILL_SURVIVAL_TERMS=re.compile(r"\b(?:stays?|still|remains?)\s+alive\b|\bsurviv(?:e|es|ed|ing)\b|\bprocess_exists\s*(?:==|=)\s*true\b|\bnot\s+(?:signal(?:led|ed)|killed|reaped)\b|\bnever\s+(?:signal(?:led|ed)|killed|reaped)\b|\bleft\s+alone\b", re.I)
 SCANNED_PID_KILL_PID_IDENTITY_TERMS=re.compile(r"\bpid[-_\s]?(?:reuse|reused|recycle|recycled|churn)\b|\breused\s+pid\b|\brecycled[-_\s]?pid\b|\bTOCTOU\b|\bre[-_\s]?(?:read|validate|validated|validates|validation)\b|\bstart[-_\s]?time\b|\bprocess[-_\s]?start(?:ed)?[-_\s]?identity\b|\bpidfd\b|\bkqueue\b", re.I)
 SCANNED_PID_KILL_NO_UNRELATED_KILL_TERMS=re.compile(r"\bno\s+(?:unrelated|innocent|decoy|sibling)\s+(?:process\s+)?(?:is\s+)?(?:killed|signalled|signaled|reaped)\b|\b(?:unrelated|innocent|decoy|sibling)\s+(?:process\s+)?(?:survives?|stays?\s+alive|remains?\s+alive|not\s+killed|not\s+signalled|not\s+signaled)\b|\bnever\s+(?:kills?|signals?|reaps?)\s+(?:an?\s+)?(?:unrelated|innocent|decoy|sibling)\b", re.I)
+VENDOR_ACTIVE_RUNS_ACTIVE_RUNS_TERMS=re.compile(r"\bactive_runs(?:\.json)?\b|\bActiveRunRecord\b", re.I)
+VENDOR_ACTIVE_RUNS_REAPER_TERMS=re.compile(r"\breap_containment_id\b|\bvendor_containment_id\b|\breap_orphaned_active_runs\b|\breap_all_active_runs\b|\breap_active_run\b", re.I)
+VENDOR_ACTIVE_RUNS_OBSERVER_TERMS=re.compile(r"\bActiveRunRecord\b|\bActiveRunSpawnObserver\b|\bVendorSpawn\b|\bhandoff_with_observer\b|\brun_vendor_stream\b", re.I)
+VENDOR_ACTIVE_RUNS_MULTI_ADAPTER_TERMS=re.compile(r"\ball\b[^.;\n]{0,80}\bvendor\b[^.;\n]{0,80}\b(?:path|adapter|arm)\b|\beach\b[^.;\n]{0,80}\bvendor\b|\bevery\b[^.;\n]{0,80}\bvendor\b|\b(?:codex|claude[-_\s]?code)\b[^.;\n]{0,80}\b(?:both|all)\b|\ball\b[^.;\n]{0,80}\bconfigured\b[^.;\n]{0,80}\bvendor\b|\bper[-_\s]?adapter\b|\bmulti[-_\s]?adapter\b|\ball\b[^.;\n]{0,80}\b(?:vendor\s+(?:path|adapter)s?|adapters?)\b[^.;\n]{0,80}\bpropagate\b", re.I)
 RPC_CLEANUP_EVERY_EXIT_CLAIM_TERMS=re.compile(r"\bcleanup\b[^.;,\n]{0,100}\b(?:on|for|across|in|runs?\s+on)\s+(?:every|each|all)\s+(?:exit[-_\s]?)?(?:path|paths|return|returns|outcome|outcomes)\b|\b(?:every|each|all)\s+(?:exit[-_\s]?)?(?:path|paths|return|returns|outcome|outcomes)\b[^.;,\n]{0,100}\bcleanup\b", re.I)
 RPC_CLEANUP_CLEAR_TERMS=re.compile(r"\bthread/goal/clear\b|\bgoal/clear\b|\bgoal[-_\s]?clear\b|\bclear(?:s|ed|ing)?\s+(?:the\s+)?(?:goal|thread\s+goal)\b", re.I)
 RPC_CLEANUP_ARCHIVE_TERMS=re.compile(r"\bthread/archive\b|\bthread[-_\s]?archive\b|\barchive(?:s|d|ing)?\s+(?:the\s+)?thread\b", re.I)
@@ -1217,6 +1221,29 @@ def validate_scanned_pid_kill_selector_evidence(outcome_acceptance, adversarial_
         if not scanned_pid_kill_claim_in_scope(claim_text, surfaces):
             continue
         append_scanned_pid_kill_selector_error(row.get('id') or row.get('surface') or 'trust_surface_inventory', claim_text, errors)
+
+def validate_vendor_active_runs_coverage(outcome_acceptance, adversarial_acceptance, acceptance_status, rows, errors):
+    for record in merged_claim_records(outcome_acceptance, adversarial_acceptance, acceptance_status, rows):
+        if record.get('severity') not in BLOCKING:
+            continue
+        if not claim_record_is_current_pass(record):
+            continue
+        claim_text=claim_record_text(record)
+        evidence_text=claim_record_evidence_text(record)
+        combined=(claim_text or '')+' '+(evidence_text or '')
+        if not has_non_negated_scope_term(VENDOR_ACTIVE_RUNS_ACTIVE_RUNS_TERMS, combined):
+            continue
+        if not has_non_negated_scope_term(VENDOR_ACTIVE_RUNS_REAPER_TERMS, combined):
+            continue
+        if not VENDOR_ACTIVE_RUNS_MULTI_ADAPTER_TERMS.search(combined):
+            errors.append(
+                f"vendor_active_runs_coverage[{record['id']}] — orphan-reaper / cancel / "
+                f"daemon-stop reaper acceptance evidence cites active_runs.json reaper terms "
+                f"(reap_containment_id, daemon_orphan, vendor_containment_id, etc.) but does "
+                f"not prove every configured vendor adapter propagates the spawn observer to "
+                f"active_runs.json; each vendor match arm must be verified "
+                f"(e.g. 'all vendor paths', 'per-adapter', 'codex and claude-code both')"
+            )
 
 def validate_rpc_cleanup_acceptance_obligations(required_acceptance, acceptance_status, rows, errors):
     status_meta=acceptance_status_metadata(acceptance_status)
@@ -2997,6 +3024,7 @@ def validate_adv(summary,bs,errors,required_acceptance=None,outcome_acceptance=N
     validate_security_containment_unavailable_fail_closed_evidence(outcome_acceptance, required_acceptance, acceptance_status, grade_rows, errors)
     validate_trusted_containment_binary_invocation_evidence(outcome_acceptance, required_acceptance, acceptance_status, grade_rows, inv, errors)
     validate_scanned_pid_kill_selector_evidence(outcome_acceptance, required_acceptance, acceptance_status, grade_rows, inv, errors)
+    validate_vendor_active_runs_coverage(outcome_acceptance, required_acceptance, acceptance_status, grade_rows, errors)
     missing_acceptance=sorted(set(required_acceptance)-covered_acceptance_ids)
     if missing_acceptance: errors.append('adversarial_checks missing shaped adversarial_acceptance IDs: '+','.join(missing_acceptance))
     for k in ('adversarial_p0_count','adversarial_p1_count'):
