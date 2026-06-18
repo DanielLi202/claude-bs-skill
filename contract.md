@@ -260,12 +260,13 @@ The goal-completion nudge (`--goal-completion-nudge`, default off) addresses rec
 | lib/binding.py | 5533753bcc94da082bfbc0fe7054973a7c3d3dfcac9142184dc8402cb44321c6 |
 | harness/evolve-loop/bin/adopt-cycle.py | 4694cb28359356a01770365c03669a52c15408dc59a17b0601aa370608971041 |
 | harness/evolve-loop/bin/backtest.py | 399ffb9fe775d5f21c33e8842f8de494351c7b9dc9f2c03207d9726d62b5258b |
-| harness/evolve-loop/bin/bs-evolve-config.py | d193f637a4669d7ff9684af693d2cce54ec87c960a9fb2742d6b6c003c0a329d |
+| harness/evolve-loop/bin/bs-evolve-config.py | a84014780b9e39ae2b723b86a78074ee821f3e4e7a23bb707908eda7f76a08d9 |
 | harness/evolve-loop/bin/bs-evolve-gitignore.py | 112a4c3bbfd7e9c18ccd57d459068d8a56c7426c64265066ffb75637062bc15f |
 | harness/evolve-loop/bin/bs-evolve-init.py | 5113937c18985ce6cbde22ffdd8b29b194e419fe707f54d1ba9214acae2e84d9 |
 | harness/evolve-loop/bin/closure.py | 450d1a81969da377bab65dbbfb346022067f572ddaa1bcc3257acf6dbcae931e |
 | harness/evolve-loop/bin/loop-guard.sh | 5a1bea2b87fff99b776464cd5994ddfb6b9f6c07fe718348ca4bcdd86470b29e |
 | harness/evolve-loop/bin/loop-state.py | 4dcc8e1ec115a018d839534ad345038725f8d756a5846ae2ff6a06b798667edc |
+| harness/evolve-loop/bin/migrate-inplace.sh | 30540b7dd9dcd8319a4276948ef2c90174d55f2cb769442cfcbb3fd7dc90da50 |
 | harness/evolve-loop/bin/release.sh | 2c4ecd9207bed73dbfb9dd1c1962cd348c0f0c06d0a78a043da5b0d2a125b434 |
 | harness/evolve-loop/bin/rollback.sh | 0badbcc7c737437c6e09a2d7b14c1d2e42d21c1ae111970de161b5ed6a620577 |
 | harness/evolve-loop/bin/run-codex-staged.sh | 854e2eb8b081cbd8f5a28a1c66cb5a77eb8c02cea8f4fda3c4020359bce861e9 |

@@ -79,6 +79,13 @@ def load_config(path: pathlib.Path) -> dict[str, Any]:
     harness = str((pathlib.Path(skill_repo) / "harness" / "evolve-loop").resolve())
     wake_prompt = str(raw.get("wake_prompt") or f"读取 {path.resolve()} 并执行 /bs-evolve --config {path.resolve()}")
 
+    if "adopt_min_cycle" in raw:
+        adopt_min_cycle = int(raw["adopt_min_cycle"])
+    elif "migrated_through_cycle" in raw:
+        adopt_min_cycle = int(raw["migrated_through_cycle"]) + 1
+    else:
+        adopt_min_cycle = 0
+
     return {
         "BS_LOOP_SKILL_REPO": skill_repo,
         "BS_LOOP_TARGET_REPO": target_repo,
@@ -90,7 +97,7 @@ def load_config(path: pathlib.Path) -> dict[str, Any]:
         "BS_LOOP_WAKE_PROMPT": wake_prompt,
         "BS_LOOP_MODE": mode,
         "BS_LOOP_MAX_ITERATIONS": str(int(raw.get("max_iterations", 5))),
-        "BS_LOOP_ADOPT_MIN_CYCLE": str(int(raw.get("adopt_min_cycle", 0))),
+        "BS_LOOP_ADOPT_MIN_CYCLE": str(adopt_min_cycle),
     }
 
 
