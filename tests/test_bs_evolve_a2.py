@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 import tempfile
@@ -15,16 +16,38 @@ REVIEWS_ROOT = ROOT / "harness" / "evolve-loop" / "reviews"
 COMMAND = ROOT / "commands" / "bs-evolve.md"
 
 
+
+def review_ledger_offenders(paths: list[str]) -> list[str]:
+    offenders: list[str] = []
+    for path in paths:
+        parts = Path(path).parts
+        if len(parts) >= 4 and parts[-1] == "closure.yaml" and re.fullmatch(r"cycle-\d{3}", parts[-2] or ""):
+            offenders.append(path)
+        if "reviews" in parts:
+            idx = parts.index("reviews")
+            if len(parts) > idx + 1 and parts[idx + 1] not in {".gitkeep"}:
+                offenders.append(path)
+    return sorted(set(offenders))
+
 def run(cmd, cwd=None, check=True):
     return subprocess.run(cmd, cwd=cwd, check=check, text=True, capture_output=True)
 
 
 class BsEvolveA2StateMigrationTests(unittest.TestCase):
     def test_skill_reviews_root_contains_no_project_or_cycle_ledgers(self):
-        tracked = run(["git", "-C", str(ROOT), "ls-files", "harness/evolve-loop/reviews"]).stdout.splitlines()
-        self.assertEqual(tracked, ["harness/evolve-loop/reviews/.gitkeep"])
+        tracked_reviews = run(["git", "-C", str(ROOT), "ls-files", "harness/evolve-loop/reviews"]).stdout.splitlines()
+        self.assertEqual(tracked_reviews, ["harness/evolve-loop/reviews/.gitkeep"])
+        all_tracked = run(["git", "-C", str(ROOT), "ls-files"]).stdout.splitlines()
+        self.assertEqual(review_ledger_offenders(all_tracked), [])
         all_paths = [p.relative_to(REVIEWS_ROOT).as_posix() for p in REVIEWS_ROOT.rglob("*")]
         self.assertEqual(all_paths, [".gitkeep"])
+
+    def test_reviews_guard_would_fail_for_ledgers_outside_legacy_root(self):
+        offenders = review_ledger_offenders([
+            "some/other/reviews/foo/cycle-001/closure.yaml",
+            "unrelated/file.txt",
+        ])
+        self.assertEqual(offenders, ["some/other/reviews/foo/cycle-001/closure.yaml"])
 
     def test_config_paths_must_resolve_inside_target_repo(self):
         with tempfile.TemporaryDirectory() as td:
