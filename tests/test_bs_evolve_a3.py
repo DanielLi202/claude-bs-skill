@@ -49,6 +49,7 @@ class BsEvolveA3ManifestTests(unittest.TestCase):
             "harness/evolve-loop/bin/bs-evolve-init.py",
             "harness/evolve-loop/bin/closure.py",
             "harness/evolve-loop/bin/loop-state.py",
+            "harness/evolve-loop/bin/migrate-inplace.sh",
             "harness/evolve-loop/bin/verify-manifest.sh",
         }
         self.assertTrue(required.issubset(rows.keys()))

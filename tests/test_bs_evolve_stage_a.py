@@ -20,6 +20,8 @@ class BsEvolveStageAGuards(unittest.TestCase):
         offenders: list[str] = []
         for root in roots:
             for path in root.rglob("*"):
+                if path.name == "migrate-inplace.sh":
+                    continue  # the in-place migrator intentionally names legacy .prompts paths
                 if path.is_file() and "__pycache__" not in path.parts:
                     text = path.read_text(encoding="utf-8", errors="ignore")
                     for token in forbidden:
