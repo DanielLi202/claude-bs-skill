@@ -31,6 +31,7 @@ CYCLE_RE = re.compile(r"^cycle-(\d+)$")
 SNIPPET_BEGIN = "# >>> bs-evolve local state >>>"
 SNIPPET_END = "# <<< bs-evolve local state <<<"
 GITIGNORE_PATTERNS = [
+    ".prompts/loop/STOP",
     ".bs-evolve/config.yaml",
     ".bs-evolve/state.json",
     ".bs-evolve/RUNNING.lock*",

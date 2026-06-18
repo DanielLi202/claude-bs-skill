@@ -177,6 +177,8 @@ class BsEvolveInplaceMigrationTests(unittest.TestCase):
 
             self.assertTrue((target / ".prompts" / "loop" / "STOP").exists())
             self.assertTrue((target / ".prompts" / "loop").is_dir())
+            self.assertEqual(run(["git", "check-ignore", "-q", ".prompts/loop/STOP"], cwd=target, check=False).returncode, 0)
+            self.assertNotIn(".prompts/loop/STOP", run(["git", "status", "--short"], cwd=target).stdout)
             state = json.loads((target / ".bs-evolve" / "state.json").read_text(encoding="utf-8"))
             self.assertEqual(state["stop_reason"], "backlog_exhausted")
             self.assertIn(".bs-evolve", state["history"][1])
