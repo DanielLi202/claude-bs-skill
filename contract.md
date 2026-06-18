@@ -253,14 +253,14 @@ The goal-completion nudge (`--goal-completion-nudge`, default off) addresses rec
 | runtime/grade_verify.py | cd7baca6f0102d8920408bfd03d18711f76ad003d353cded54c74935c223407f |
 | runtime/sync_status_marker.py | 4e0371d55d855dd18b6fd403e5c57a27099de412d99349efcd469e2595a3555a |
 | commands/bs.md | 60970c90e67577704fcb5c00aae919cad7202a98dfa8f46e8c1bfc0824275c37 |
-| commands/bs-evolve.md | b49c34e403a0358c9c83bf254a39a8950a4765170d12a83e40ff2e88b4589e80 |
+| commands/bs-evolve.md | bffd74b7c8b90ca549d8555d099280fe6c8518c6ddbf9a482ef45e2076c79238 |
 | commands/bs-evolve-init.md | 4716284fbbf6e832891202093f911f597572c22920d6afd6a3fcc9c4bc0e4415 |
 | runtime/validate_events.py | 65b29d5c8a8535c7306368435c2d6665d5ea0f6170689c36615f44d62a587682 |
 | lib/events.py | c01d756672df1661bc444a55ac6f1c0905fac2ad1c8d85ebbd4f51f03b10ce46 |
 | lib/binding.py | 5533753bcc94da082bfbc0fe7054973a7c3d3dfcac9142184dc8402cb44321c6 |
 | harness/evolve-loop/bin/adopt-cycle.py | 4694cb28359356a01770365c03669a52c15408dc59a17b0601aa370608971041 |
 | harness/evolve-loop/bin/backtest.py | 399ffb9fe775d5f21c33e8842f8de494351c7b9dc9f2c03207d9726d62b5258b |
-| harness/evolve-loop/bin/bs-evolve-config.py | 2972290987bdfbb64b4ca5df5ce8cf05ac6f2bf31bde113f10582de4c5ee47e9 |
+| harness/evolve-loop/bin/bs-evolve-config.py | d193f637a4669d7ff9684af693d2cce54ec87c960a9fb2742d6b6c003c0a329d |
 | harness/evolve-loop/bin/bs-evolve-gitignore.py | 112a4c3bbfd7e9c18ccd57d459068d8a56c7426c64265066ffb75637062bc15f |
 | harness/evolve-loop/bin/bs-evolve-init.py | 5113937c18985ce6cbde22ffdd8b29b194e419fe707f54d1ba9214acae2e84d9 |
 | harness/evolve-loop/bin/closure.py | 450d1a81969da377bab65dbbfb346022067f572ddaa1bcc3257acf6dbcae931e |

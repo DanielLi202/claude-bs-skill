@@ -138,43 +138,20 @@ def state_call(cfg: dict[str, Any], *args: str) -> str:
     ).strip()
 
 
-def once_smoke(cfg: dict[str, Any]) -> None:
-    """Exercise the --once contract without running external agents.
-
-    It advances exactly one local iteration marker and records that no wake was
-    scheduled. Crucially, it never mutates state.mode, so `mode: auto` remains auto.
-    """
-    init_state_if_needed(cfg)
-    before_mode = state_get(cfg, "mode")
-    before_iter_raw = state_get(cfg, "iteration") or "0"
-    advanced_to = int(state_call(cfg, "begin-iteration"))
-    after_mode = state_get(cfg, "mode")
-    state_call(cfg, "append-history", json.dumps({"event": "once_smoke", "scheduled_wakeup": False}))
-    print(json.dumps({
-        "advanced_stages": advanced_to - int(before_iter_raw),
-        "scheduled_wakeup": False,
-        "mode_before": before_mode,
-        "mode_after": after_mode,
-    }, sort_keys=True))
-
-
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True, type=pathlib.Path)
     ap.add_argument("--emit-env", action="store_true")
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--once-smoke", action="store_true")
     args = ap.parse_args()
     try:
         cfg = load_config(args.config)
         if args.emit_env:
             emit_env(cfg)
-        elif args.once_smoke:
-            once_smoke(cfg)
         elif args.json:
             print(json.dumps(cfg, indent=2, sort_keys=True))
         else:
-            ap.error("choose --emit-env, --json, or --once-smoke")
+            ap.error("choose --emit-env or --json")
     except ConfigError as exc:
         print(f"bs-evolve config error: {exc}", file=sys.stderr)
         return 2

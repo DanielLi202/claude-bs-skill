@@ -64,12 +64,9 @@ Required exported names: `BS_LOOP_SKILL_REPO`, `BS_LOOP_TARGET_REPO`,
 - do not write `dry-run` or otherwise mutate persistent `state.mode`;
 - after the one stage finishes, release any held project lock and end.
 
-Self-check fixture:
+Self-check boundary:
 
-```bash
-python3 "$BS_LOOP_SKILL_REPO/harness/evolve-loop/bin/bs-evolve-config.py" --config "$CONFIG" --once-smoke
-# expected: {"advanced_stages": 1, "scheduled_wakeup": false, "mode_before": "auto", "mode_after": "auto"}
-```
+Unit tests cover the state-only part of this contract by running the same persistent state operations used by a one-shot turn and asserting `mode: auto` remains `auto`. The wake-arm half is prompt-level/live-only: only the Stage A exit smoke (`/loop /bs-evolve --config <target>`) can prove that no Stage-7 wake is armed after `--once`; do not replace that live check with a simulated helper.
 
 ## Hard invariants
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import subprocess
 import sys
 import tempfile
@@ -10,6 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 COMMAND = ROOT / "commands" / "bs-evolve.md"
 HELPER = ROOT / "harness" / "evolve-loop" / "bin" / "bs-evolve-config.py"
+LOOP_STATE = ROOT / "harness" / "evolve-loop" / "bin" / "loop-state.py"
 
 
 class BsEvolveA1ContractTests(unittest.TestCase):
@@ -88,34 +88,38 @@ class BsEvolveA1ContractTests(unittest.TestCase):
             self.assertIn("export BS_LOOP_MAX_ITERATIONS=9", out)
             self.assertIn(str((base / "target").resolve()), out)
 
-    def test_once_smoke_advances_one_stage_without_scheduling_or_changing_auto_mode(self):
+    def test_once_state_step_preserves_auto_mode_without_fake_wake_assertion(self):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
-            config_dir = base / "target" / ".bs-evolve"
-            config_dir.mkdir(parents=True)
-            config = config_dir / "config.yaml"
-            config.write_text(
-                "\n".join([
-                    "schema_version: 1",
-                    "project_slug: demo",
-                    "target_repo: ..",
-                    "state_dir: .",
-                    "reviews_root: ./reviews",
-                    "corpus_dir: ./corpus",
-                    "mode: auto",
-                ]),
-                encoding="utf-8",
-            )
-            out = subprocess.check_output([sys.executable, str(HELPER), "--config", str(config), "--once-smoke"], text=True)
-            payload = json.loads(out)
-            self.assertEqual(payload["advanced_stages"], 1)
-            self.assertFalse(payload["scheduled_wakeup"])
-            self.assertEqual(payload["mode_before"], "auto")
-            self.assertEqual(payload["mode_after"], "auto")
-            state = json.loads((base / "target" / ".bs-evolve" / "state.json").read_text(encoding="utf-8"))
-            self.assertEqual(state["mode"], "auto")
-            self.assertEqual(state["iteration"], 1)
-            self.assertEqual(state["history"][-1], {"event": "once_smoke", "scheduled_wakeup": False})
+            state_dir = base / "target" / ".bs-evolve"
+            state_dir.mkdir(parents=True)
+            subprocess.run([
+                sys.executable,
+                str(LOOP_STATE),
+                "--state-dir",
+                str(state_dir),
+                "init",
+                "--target",
+                str(base / "target"),
+                "--skill",
+                str(ROOT),
+                "--mode",
+                "auto",
+                "--max",
+                "5",
+            ], check=True, text=True, capture_output=True)
+            before = subprocess.check_output([sys.executable, str(LOOP_STATE), "--state-dir", str(state_dir), "get", "mode"], text=True).strip()
+            advanced = subprocess.check_output([sys.executable, str(LOOP_STATE), "--state-dir", str(state_dir), "begin-iteration"], text=True).strip()
+            after = subprocess.check_output([sys.executable, str(LOOP_STATE), "--state-dir", str(state_dir), "get", "mode"], text=True).strip()
+            self.assertEqual(before, "auto")
+            self.assertEqual(advanced, "1")
+            self.assertEqual(after, "auto")
+
+    def test_once_wake_arm_claim_is_live_only_not_simulated(self):
+        text = COMMAND.read_text(encoding="utf-8")
+        self.assertIn("wake-arm half is prompt-level/live-only", text)
+        self.assertNotIn("--once-smoke", text)
+        self.assertNotIn("scheduled_wakeup", text)
 
 
 if __name__ == "__main__":
