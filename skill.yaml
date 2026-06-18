@@ -19,3 +19,8 @@ commands:
     description: "Diagnose binding, contract hash, and backlog health"
   - name: bs-refresh-contract
     description: "Refresh the local contract and binding hash explicitly"
+  - name: bs-evolve
+    description: "Run one bs self-evolution loop iteration from target config"
+  - name: bs-evolve-init
+    description: "Initialize a target repository for bs self-evolution"
+
