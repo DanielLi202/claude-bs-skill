@@ -190,6 +190,13 @@ Run a semantically read-only process review via `run-codex-staged.sh` under the 
 
 If `ONCE=1`, stop after this stage without scheduling a wake.
 
+## Stage 3 read isolation
+
+r2 and any other review that reads skill rules must use the cycle binding source
+commit, not current `origin/main` or a content hash. Use `skill-read-ref.py --ref
+<binding-source-commit> --path <file>` or equivalent `git show <ref>:<path>` so a
+concurrent Stage 4 release cannot change the rule set under a long-running review.
+
 ## Stage 4 — skill release for deterministic r2 items
 
 Implement deterministic r2 items in a private skill worktree via `run-codex-staged.sh` under the supervision skeleton above. Stage B wraps every
@@ -198,9 +205,18 @@ skill-repo write in `$BS_LOOP_SKILL_REPO/.bs-evolve/SKILL.lock` using
 with it, and release with compare-token semantics. Release commits and tags are
 skill-repo writes only.
 
+Immediately after acquiring `SKILL.lock` and before backtest, run
+`release-plan.py --skill "$BS_LOOP_SKILL_REPO" --out "$REVIEWS/<cycle>/release_plan.yaml"`
+to freeze `baseline_ref`, `baseline_sha`, and `candidate_version` from the fresh
+maximum release tag. Backtest must use that `baseline_ref`; `release.sh` receives
+`--plan-file` and rejects stale-anchor evidence. Candidate implementation happens
+in a private skill worktree, then `release.sh` pushes candidate `HEAD` explicitly
+to `origin/main`, pushes the tag, and fast-forwards the local canonical checkout
+to the tag. It never deletes a pushed tag and never reaches into target repos.
+
 Backtest and release evidence are stored under the target-owned `$REVIEWS/<cycle>/` and
-committed to the target repo after release. Do not call target-specific scripts from the
-release path.
+committed to the target repo after release. Target pin-sync is deferred to each
+target Step 0 rather than called from the release path.
 
 If `ONCE=1`, stop after this stage without scheduling a wake.
 

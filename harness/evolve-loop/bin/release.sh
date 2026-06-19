@@ -1,35 +1,28 @@
 #!/usr/bin/env bash
-# bs-evolve-loop release plumbing — Stage 4 (deterministic half), v2.
+# bs-evolve-loop release plumbing — Stage 4 skill-only transaction.
 #
-# v2 model: codex implements r2 items as PER-ITEM COMMITS on bs-skill main (fine-
-# grained revert), the LAST commit being the version bump + manifest relock. This
-# script then GATES and performs tag+push+pin-sync. A dirty tree is also accepted
-# (v1 compat): it is committed as one release commit before tagging.
+# Model A: while holding SKILL.lock, Stage 4 computes release-plan (fresh max
+# release tag + candidate) before backtest, implements in a private worktree,
+# gates, then atomically pushes candidate HEAD to origin/main and pushes the tag.
+# Target pin-sync is deliberately NOT done here; each target heals itself at Step 0.
 #
-# Gates (all must pass before anything is pushed):
-#   G1 version strings == --version everywhere they are pinned
-#   G2 full unittest suite green (python3 -m unittest discover -s tests)
-#   G3 runtime manifest relocked (verify-manifest.sh)
-#   G4 backtest evidence: report exists, must_fire: true, and EVERY misfire
-#      candidate is adjudicated + fresh-context verified (no 'agree: false').
-#      Skippable ONLY with --no-backtest "<reason>" (e.g. release touches no
-#      grade_lint rules), and the reason is echoed into the tag message.
-#
-# Usage: release.sh --skill P --target P --version vX.Y.Z [--summary "text"]
+# Usage: release.sh --skill P --version vX.Y.Z [--summary "text"]
+#                   [--plan-file PATH]
 #                   [--backtest-report PATH --adj-verify PATH | --no-backtest "reason"]
 #                   [--anchor SHA] [--dry]
-# Exit:  0 released | 2 gate failed (nothing pushed; per-item commits left intact —
-#        caller decides revert) | 3 tag/push skill failed | 4 target sync/push failed | 5 usage
+# Back-compat: --target is accepted but ignored.
+# Exit: 0 released/dry-ok | 2 gate failed | 3 tag/push failed | 5 usage
 set -euo pipefail
 
 SKILL=""; TARGET=""; VERSION=""; SUMMARY="bs-evolve-loop auto release"
-BTREPORT=""; ADJVERIFY=""; NOBACKTEST=""; ANCHOR=""; DRY=0
+BTREPORT=""; ADJVERIFY=""; NOBACKTEST=""; ANCHOR=""; PLAN=""; DRY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --skill) SKILL="$2"; shift 2 ;;
-    --target) TARGET="$2"; shift 2 ;;
+    --target) TARGET="$2"; shift 2 ;; # accepted for old callers; never used
     --version) VERSION="$2"; shift 2 ;;
     --summary) SUMMARY="$2"; shift 2 ;;
+    --plan-file) PLAN="$2"; shift 2 ;;
     --backtest-report) BTREPORT="$2"; shift 2 ;;
     --adj-verify) ADJVERIFY="$2"; shift 2 ;;
     --no-backtest) NOBACKTEST="$2"; shift 2 ;;
@@ -38,7 +31,7 @@ while [ $# -gt 0 ]; do
     *) echo "bad arg $1" >&2; exit 5 ;;
   esac
 done
-[ -n "$SKILL" ] && [ -n "$TARGET" ] && [ -n "$VERSION" ] || { echo "need --skill --target --version" >&2; exit 5; }
+[ -n "$SKILL" ] && [ -n "$VERSION" ] || { echo "need --skill --version" >&2; exit 5; }
 HARNESS="$(cd "$(dirname "$0")/.." && pwd)"
 NUM="${VERSION#v}"
 say() { echo "[release] $*"; }
@@ -57,10 +50,36 @@ else
   say "dirty-tree model (will create one release commit)"
 fi
 
-# ---- G1 version strings ----
+# ---- optional B2 release plan consistency ----
+if [ -n "$PLAN" ]; then
+  say "B2: release plan consistency"
+  [ -f "$PLAN" ] || { say "B2 FAIL: --plan-file missing"; exit 2; }
+  python3 - "$PLAN" "$VERSION" <<'PY'
+import pathlib, sys, yaml
+plan = yaml.safe_load(pathlib.Path(sys.argv[1]).read_text()) or {}
+if plan.get("candidate_version") != sys.argv[2]:
+    print(f"candidate mismatch: plan={plan.get('candidate_version')} arg={sys.argv[2]}")
+    sys.exit(1)
+if not plan.get("baseline_ref") or not plan.get("baseline_sha"):
+    print("plan missing baseline_ref/baseline_sha")
+    sys.exit(1)
+PY
+fi
+
+# ---- G1 version strings (anchored; do not accept contract_version alone) ----
 say "G1: version strings == $NUM"
-grep -q "version: \"$NUM\"" skill.yaml || { say "G1 FAIL: skill.yaml version != $NUM"; exit 2; }
-grep -q "$VERSION" contract.md        || { say "G1 FAIL: contract.md missing $VERSION"; exit 2; }
+python3 - "$NUM" <<'PY'
+import pathlib, re, sys, yaml
+num = sys.argv[1]
+skill = yaml.safe_load(pathlib.Path('skill.yaml').read_text()) or {}
+if str(skill.get('version')) != num:
+    print('skill.yaml top-level version mismatch')
+    sys.exit(1)
+text = pathlib.Path('contract.md').read_text()
+if f"v{num}" not in text:
+    print('contract.md missing release version')
+    sys.exit(1)
+PY
 
 # ---- G2 unittest ----
 say "G2: unittest suite"
@@ -76,11 +95,16 @@ if [ -n "$NOBACKTEST" ]; then
 else
   say "G4: backtest evidence"
   [ -f "$BTREPORT" ] || { say "G4 FAIL: --backtest-report missing (or pass --no-backtest with a reason)"; exit 2; }
-  G4=$(python3 - "$BTREPORT" "${ADJVERIFY:-}" <<'PY'
+  G4=$(python3 - "$BTREPORT" "${ADJVERIFY:-}" "${PLAN:-}" <<'PY'
 import sys, yaml, pathlib
-rep = yaml.safe_load(pathlib.Path(sys.argv[1]).read_text())
+rep = yaml.safe_load(pathlib.Path(sys.argv[1]).read_text()) or {}
 if not rep.get("must_fire"):
     print("must_fire false"); sys.exit(1)
+plan_file = sys.argv[3]
+if plan_file:
+    plan = yaml.safe_load(pathlib.Path(plan_file).read_text()) or {}
+    if rep.get("baseline_ref") != plan.get("baseline_ref"):
+        print(f"baseline_ref mismatch: report={rep.get('baseline_ref')} plan={plan.get('baseline_ref')}"); sys.exit(1)
 mis = rep.get("misfire_candidates") or []
 if mis:
     av = sys.argv[2]
@@ -97,7 +121,7 @@ PY
   say "G4 ok: must_fire + adjudications verified"
 fi
 
-if [ "$DRY" -eq 1 ]; then say "DRY: all gates pass; would tag/push $VERSION + sync pin"; exit 0; fi
+if [ "$DRY" -eq 1 ]; then say "DRY: all gates pass; would tag/push $VERSION on skill only"; exit 0; fi
 
 # ---- commit (dirty model only) + tag ----
 if [ "$DIRTY" -eq 1 ]; then
@@ -106,16 +130,11 @@ if [ "$DIRTY" -eq 1 ]; then
 fi
 git tag -a "$VERSION" -m "$SUMMARY${NOBACKTEST:+ [no-backtest: $NOBACKTEST]}" || { say "tag exists"; exit 3; }
 
-# ---- push skill, then sync + push target pin ----
-git push origin main       || { say "push skill main FAILED"; exit 3; }
+# ---- atomic skill push; no target reach-in ----
+git push origin "HEAD:refs/heads/main" || { say "push skill main FAILED"; exit 3; }
 git push origin "$VERSION" || { say "push tag FAILED"; exit 3; }
-cd "$TARGET"
-python3 scripts/sync-bs-binding.py --commit || { say "pin sync exit $? (0 ok|2 range|3 verify|4 env)"; exit 4; }
-git push origin main || { say "push target main FAILED"; exit 4; }
-
-# ---- health: three-way contract sha ----
-inst_sha="$(shasum -a 256 "$SKILL/contract.md" | awk '{print $1}')"
-pin_sha="$(tr -d '[:space:]' < "$TARGET/.bootstrap/contract.sha256")"
-[ "$inst_sha" = "$pin_sha" ] || { say "post-release sha skew"; exit 4; }
-say "released $VERSION; pin synced; health OK"
+git fetch origin main --tags >/dev/null 2>&1 || true
+git merge --ff-only "$VERSION" >/dev/null || { say "local canonical not fast-forwardable to $VERSION"; exit 3; }
+[ "$(git rev-parse HEAD)" = "$(git rev-parse "$VERSION")" ] || { say "local canonical != tag"; exit 3; }
+say "released $VERSION on skill; target pin-sync deferred to target Step 0"
 exit 0

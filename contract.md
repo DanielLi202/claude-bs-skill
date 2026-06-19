@@ -253,7 +253,7 @@ The goal-completion nudge (`--goal-completion-nudge`, default off) addresses rec
 | runtime/grade_verify.py | cd7baca6f0102d8920408bfd03d18711f76ad003d353cded54c74935c223407f |
 | runtime/sync_status_marker.py | 4e0371d55d855dd18b6fd403e5c57a27099de412d99349efcd469e2595a3555a |
 | commands/bs.md | 60970c90e67577704fcb5c00aae919cad7202a98dfa8f46e8c1bfc0824275c37 |
-| commands/bs-evolve.md | b0db6acf28913aa9e7784da6d9f3581662c6296365e1d5cc09819b83faf4bf8b |
+| commands/bs-evolve.md | 71495260b173b69a9579edf2ef3743aab45ac09d0c41cfb4144e4987fd794eb6 |
 | commands/bs-evolve-init.md | 4716284fbbf6e832891202093f911f597572c22920d6afd6a3fcc9c4bc0e4415 |
 | runtime/validate_events.py | 65b29d5c8a8535c7306368435c2d6665d5ea0f6170689c36615f44d62a587682 |
 | lib/events.py | c01d756672df1661bc444a55ac6f1c0905fac2ad1c8d85ebbd4f51f03b10ce46 |
@@ -267,8 +267,10 @@ The goal-completion nudge (`--goal-completion-nudge`, default off) addresses rec
 | harness/evolve-loop/bin/evolve-lock.py | 5ddc81b902766b77d915c41a1219e9962636316d4e0ebedf8c6770782058e6fd |
 | harness/evolve-loop/bin/loop-guard.sh | b83bf72c63e2fed2944ec8caa557fb7ea4487d29c60affa37ffd8f7e08a5b397 |
 | harness/evolve-loop/bin/loop-state.py | 4dcc8e1ec115a018d839534ad345038725f8d756a5846ae2ff6a06b798667edc |
+| harness/evolve-loop/bin/release-plan.py | f694e9a32f2782a93db8c7b9a03ece003d2d4827b90bddf7b8cf4bcfdea95d37 |
+| harness/evolve-loop/bin/skill-read-ref.py | 255f45ebc2f6fd18ad74d0af2d19774dac275b47c5c65a4a914ea0db5222ed52 |
 | harness/evolve-loop/bin/migrate-inplace.sh | f058f9e309141a2ce7c0cdc72aa7e155bae9a6c1bb43a24a3210e44a15de2aaa |
-| harness/evolve-loop/bin/release.sh | 2c4ecd9207bed73dbfb9dd1c1962cd348c0f0c06d0a78a043da5b0d2a125b434 |
+| harness/evolve-loop/bin/release.sh | 6823191c06191c4dff13688f4030b34f636c52f61fd45869a132b54779e92f48 |
 | harness/evolve-loop/bin/rollback.sh | 0badbcc7c737437c6e09a2d7b14c1d2e42d21c1ae111970de161b5ed6a620577 |
 | harness/evolve-loop/bin/run-codex-staged.sh | 854e2eb8b081cbd8f5a28a1c66cb5a77eb8c02cea8f4fda3c4020359bce861e9 |
 | harness/evolve-loop/bin/verify-manifest.sh | 38024f4d72815d789992c53724f243bcc504739f9050452df83715f00de2ce11 |
