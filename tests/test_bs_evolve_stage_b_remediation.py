@@ -92,5 +92,26 @@ class StageBRemediationF1(unittest.TestCase):
             self.assertIn("local canonical != tag", bad.stdout + bad.stderr)
 
 
+class StageBRemediationF2(unittest.TestCase):
+    REAL_CORPUS_TESTS = [
+        "tests.test_grade_lint.GradeLintTests.test_cycle028_real_corpus_fires_containment_unavailable_and_trusted_binary_facets",
+        "tests.test_grade_lint.GradeLintTests.test_cycle026_real_corpus_does_not_fire_containment_unavailable_or_trusted_binary_facets",
+        "tests.test_grade_lint.GradeLintTests.test_cycle020_real_corpus_grade_rounds_do_not_fire_containment_unavailable_or_trusted_binary_facets",
+        "tests.test_grade_lint.GradeLintTests.test_cycle029_real_corpus_fires_scanned_pid_kill_selector_facet",
+        "tests.test_grade_lint.GradeLintTests.test_cycle028_real_corpus_does_not_fire_scanned_pid_kill_selector_facet",
+    ]
+
+    def test_missing_opensymphony_real_corpus_skips_instead_of_failing_or_fake_passing(self):
+        with tempfile.TemporaryDirectory() as td:
+            missing = Path(td) / "missing-dogfood-root"
+            env = os.environ.copy()
+            env["BS_EVOLVE_REAL_CORPUS_ROOT"] = str(missing)
+            proc = run([sys.executable, "-m", "unittest", *self.REAL_CORPUS_TESTS], cwd=ROOT, env=env)
+            output = proc.stdout + proc.stderr
+            self.assertEqual(proc.returncode, 0, output)
+            self.assertIn("OK (skipped=6)", output)
+            self.assertNotIn("FAILED", output)
+
+
 if __name__ == "__main__":
     unittest.main()

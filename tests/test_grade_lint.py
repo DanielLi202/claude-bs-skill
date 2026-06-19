@@ -1,6 +1,8 @@
 from pathlib import Path
-import importlib.util, json, subprocess, sys, tempfile, textwrap, unittest
-LINTER=Path(__file__).resolve().parents[1]/'runtime'/'grade_lint.py'
+import importlib.util, json, os, subprocess, sys, tempfile, textwrap, unittest
+ROOT=Path(__file__).resolve().parents[1]
+LINTER=ROOT/'runtime'/'grade_lint.py'
+REAL_CORPUS_ROOT=Path(os.environ.get('BS_EVOLVE_REAL_CORPUS_ROOT','/Users/lidongyuan/workspace/utils/OpenSymphony-V3/.prompts/dogfood'))
 GRADE_LINT_SPEC=importlib.util.spec_from_file_location('grade_lint_runtime', LINTER)
 GRADE_LINT=importlib.util.module_from_spec(GRADE_LINT_SPEC)
 GRADE_LINT_SPEC.loader.exec_module(GRADE_LINT)
@@ -2909,8 +2911,12 @@ class GradeLintTests(unittest.TestCase):
             return proc,json.loads(proc.stdout)
 
     def real_cycle_pair(self,cycle,grade_round='grade_round_1.md'):
-        root=Path('/Users/lidongyuan/workspace/utils/OpenSymphony-V3/.prompts/dogfood')/cycle
-        return root/grade_round, root/'outcome.md'
+        root=REAL_CORPUS_ROOT/cycle
+        grade=root/grade_round
+        outcome=root/'outcome.md'
+        if not grade.exists() or not outcome.exists():
+            self.skipTest(f'real corpus fixture missing: {grade} / {outcome}')
+        return grade,outcome
 
     def assert_no_containment_binary_errors(self, payload):
         errors='\n'.join(payload['grade_lint']['errors'])
@@ -3024,10 +3030,9 @@ class GradeLintTests(unittest.TestCase):
         self.assert_no_containment_binary_errors(p)
 
     def test_cycle020_real_corpus_grade_rounds_do_not_fire_containment_unavailable_or_trusted_binary_facets(self):
-        outcome=Path('/Users/lidongyuan/workspace/utils/OpenSymphony-V3/.prompts/dogfood/cycle-020/outcome.md')
         for grade_name in ('grade_round_0.md','grade_round_1.md'):
             with self.subTest(grade=grade_name):
-                grade=outcome.parent/grade_name
+                grade,outcome=self.real_cycle_pair('cycle-020', grade_name)
                 _proc,p=self.run_lint_files('code','medium',grade,outcome)
                 self.assert_no_containment_binary_errors(p)
 
