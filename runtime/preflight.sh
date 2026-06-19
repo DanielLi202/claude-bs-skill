@@ -282,7 +282,7 @@ def goal_obj(result):
 proc=None; thread_id=None
 try:
     proc=subprocess.Popen(["codex","app-server","--listen","stdio://"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
-    send(proc,1,"initialize",{"clientInfo":{"name":"bs-preflight","version":"1.4.29"},"capabilities":{"experimentalApi":True}}); read(proc,1)
+    send(proc,1,"initialize",{"clientInfo":{"name":"bs-preflight","version":"1.5.0"},"capabilities":{"experimentalApi":True}}); read(proc,1)
     send(proc,2,"thread/start",{"cwd":os.getcwd(),"approvalPolicy":"never","sandbox":"workspace-write","ephemeral":False}); thread_id=read(proc,2)["thread"]["id"]
     send(proc,3,"thread/goal/set",{"threadId":thread_id,"objective":objective,"status":"active","tokenBudget":None}); read(proc,3)
     send(proc,4,"thread/goal/get",{"threadId":thread_id}); got=goal_obj(read(proc,4))
