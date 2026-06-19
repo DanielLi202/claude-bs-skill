@@ -62,7 +62,7 @@ Required exported names: `BS_LOOP_SKILL_REPO`, `BS_LOOP_TARGET_REPO`,
 - advance exactly one pending stage or one new-stage decision;
 - do not emit or arm `ScheduleWakeup`;
 - do not write `dry-run` or otherwise mutate persistent `state.mode`;
-- after the one stage finishes, release any held project lock and end.
+- after the one stage finishes, release any held project lock with its owner token and end.
 
 Self-check boundary:
 
@@ -91,17 +91,23 @@ Unit tests cover the state-only part of this contract by running the same persis
 5. `loop-state.py --state-dir "$BS_LOOP_STATE_DIR" should-stop`; on stop reason,
    report and end.
 6. Acquire the per-project lock: `loop-guard.sh acquire "$BS_LOOP_STATE_DIR"`.
-   Exit 11 means another stage is live; run the same lock-held retry supervision
-   as the old loop, but against target-side state:
-   - no inflight files + stale lock ⇒ take over after removing the stale lock;
-   - inflight file with dead pgid and no completion marker ⇒ reap leftovers, delete
-     the inflight file, take over, and re-run/salvage by gates;
+   The command creates `RUNNING.lock` atomically with a persisted owner token and
+   prints JSON containing `token`; store that token in turn-local state and pass it
+   to every `heartbeat` and `release`. Exit 11 means another stage is live; run
+   the same lock-held retry supervision as the old loop, but against target-side
+   state:
+   - no inflight files + stale lock ⇒ the lock helper may atomically take over;
+   - stale lock + any unresolved inflight record/live pgid ⇒ fail closed as
+     locked/waiting; do **not** start a second stage;
    - live pgid with suspect markers or age >90 minutes ⇒ inspect log tail and, for
      write stages, `git diff --stat`; converging work re-arms a check-in wake,
      looping work is reaped and retried once with evidence;
    - otherwise re-arm `ScheduleWakeup(delaySeconds: 1800, reason: "lock-held retry probe", prompt: WAKE_PROMPT)`
      and end, unless `ONCE=1`, in which case report locked/waiting and end without
      scheduling.
+   During long stages, periodically run
+   `loop-guard.sh heartbeat "$BS_LOOP_STATE_DIR" "$RUNNING_LOCK_TOKEN"`; a token
+   mismatch is blocking because another owner took over or the lock state is corrupt.
 7. Closure scan uses target-owned reviews:
    `closure.py --reviews-root "$REVIEWS" newest-open`.
 8. If no open closure exists, adopt the latest eligible target corpus cycle with the
@@ -186,9 +192,11 @@ If `ONCE=1`, stop after this stage without scheduling a wake.
 
 ## Stage 4 — skill release for deterministic r2 items
 
-Implement deterministic r2 items in a private skill worktree via `run-codex-staged.sh` under the supervision skeleton above. Stage B will wrap all
-skill writes in `SKILL.lock`; Stage A has no multi-project concurrency and may run as a
-single-project bootstrap. Release commits and tags are skill-repo writes only.
+Implement deterministic r2 items in a private skill worktree via `run-codex-staged.sh` under the supervision skeleton above. Stage B wraps every
+skill-repo write in `$BS_LOOP_SKILL_REPO/.bs-evolve/SKILL.lock` using
+`evolve-lock.py acquire --lock-file ...`; persist the printed owner token, heartbeat
+with it, and release with compare-token semantics. Release commits and tags are
+skill-repo writes only.
 
 Backtest and release evidence are stored under the target-owned `$REVIEWS/<cycle>/` and
 committed to the target repo after release. Do not call target-specific scripts from the
@@ -229,7 +237,7 @@ Order is mandatory:
 4. Release the project lock before terminal wake:
 
 ```bash
-bash "$HARNESS/bin/loop-guard.sh" release "$BS_LOOP_STATE_DIR"
+bash "$HARNESS/bin/loop-guard.sh" release "$BS_LOOP_STATE_DIR" "$RUNNING_LOCK_TOKEN"
 ```
 
 5. As the final action, and only when `ONCE` is not set, arm the next iteration:
