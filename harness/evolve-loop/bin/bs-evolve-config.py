@@ -48,8 +48,30 @@ def _resolve(base: pathlib.Path, value: str) -> str:
     return str(p.resolve())
 
 
+def discover_config_from_cwd(cwd: pathlib.Path) -> pathlib.Path:
+    proc = subprocess.run(
+        ["git", "-C", str(cwd), "rev-parse", "--show-toplevel"],
+        text=True,
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        raise ConfigError(
+            "current directory is not inside a git repository; run /bs-evolve "
+            "from an initialized target repo or pass --config <path>"
+        )
+    target = pathlib.Path(proc.stdout.strip()).resolve()
+    config = target / ".bs-evolve" / "config.yaml"
+    if not config.exists():
+        raise ConfigError(f"{target} 未初始化（无 .bs-evolve/config.yaml）；先运行一次 /bs-evolve-init")
+    return config
+
+
 def load_config(path: pathlib.Path) -> dict[str, Any]:
-    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    path = path.expanduser().resolve()
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except FileNotFoundError as exc:
+        raise ConfigError(f"config not found: {path}") from exc
     if not isinstance(raw, dict):
         raise ConfigError("config must be a YAML mapping")
     missing = [k for k in REQUIRED if not raw.get(k)]
@@ -147,12 +169,13 @@ def state_call(cfg: dict[str, Any], *args: str) -> str:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--config", required=True, type=pathlib.Path)
+    ap.add_argument("--config", type=pathlib.Path)
     ap.add_argument("--emit-env", action="store_true")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
     try:
-        cfg = load_config(args.config)
+        config_path = args.config.expanduser().resolve() if args.config else discover_config_from_cwd(pathlib.Path.cwd())
+        cfg = load_config(config_path)
         if args.emit_env:
             emit_env(cfg)
         elif args.json:
