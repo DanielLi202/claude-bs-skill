@@ -31,13 +31,28 @@ def dirty(target: pathlib.Path) -> bool:
 def update_bootstrap_yaml(path: pathlib.Path, digest: str) -> None:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) if path.exists() else {}
     if not isinstance(data, dict):
-        raise SystemExit("pin-sync failed: .bootstrap.yaml must be a mapping")
+        raise ValueError(".bootstrap.yaml must be a mapping")
     contract = data.setdefault("contract", {})
     if not isinstance(contract, dict):
-        raise SystemExit("pin-sync failed: .bootstrap.yaml contract must be a mapping")
+        raise ValueError(".bootstrap.yaml contract must be a mapping")
     contract["source_sha256"] = digest
     contract.setdefault("sha256_path", ".bootstrap/contract.sha256")
     path.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+
+def snapshot(path: pathlib.Path) -> tuple[bool, bytes]:
+    if path.exists():
+        return True, path.read_bytes()
+    return False, b""
+
+
+def restore_snapshot(path: pathlib.Path, state: tuple[bool, bytes]) -> None:
+    existed, content = state
+    if existed:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    elif path.exists():
+        path.unlink()
 
 
 def main() -> int:
@@ -69,12 +84,16 @@ def main() -> int:
     if dirty(target):
         print("pin-sync failed: target tree dirty before pin refresh", file=sys.stderr)
         return 3
-    pin.parent.mkdir(parents=True, exist_ok=True)
-    pin.write_text(new + "\n", encoding="utf-8")
-    update_bootstrap_yaml(boot_yaml, new)
+    pin_state = snapshot(pin)
+    boot_state = snapshot(boot_yaml)
     try:
+        pin.parent.mkdir(parents=True, exist_ok=True)
+        pin.write_text(new + "\n", encoding="utf-8")
+        update_bootstrap_yaml(boot_yaml, new)
         binding.validate(target, yaml.safe_load(boot_yaml.read_text(encoding="utf-8")) or {}, contract)
     except Exception as exc:
+        restore_snapshot(pin, pin_state)
+        restore_snapshot(boot_yaml, boot_state)
         print(f"pin-sync failed: binding validation failed: {exc}", file=sys.stderr)
         return 4
     if args.commit:

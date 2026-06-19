@@ -12,6 +12,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE = ROOT / "harness" / "evolve-loop" / "bin" / "release.sh"
+PIN_SYNC = ROOT / "harness" / "evolve-loop" / "bin" / "pin-sync.py"
 
 
 def run(cmd, cwd=None, check=False, env=None):
@@ -107,6 +108,41 @@ def add_near_miss_fixture(skill: Path) -> None:
 def write_backtest_report(path: Path, *, misfire: bool = False) -> None:
     mis = "\nmisfire_candidates:\n  - id: c1\n" if misfire else "\nmisfire_candidates: []\n"
     path.write_text("must_fire: true" + mis, encoding="utf-8")
+
+
+def write_malformed_bootstrap(target: Path, digest: str) -> None:
+    (target / ".bootstrap").mkdir(exist_ok=True)
+    (target / ".bootstrap" / "backlog.yaml").write_text("tasks: []\n", encoding="utf-8")
+    (target / ".bootstrap" / "ledger.yaml").write_text("cycles: []\n", encoding="utf-8")
+    (target / ".bootstrap" / "cycles").mkdir(exist_ok=True)
+    (target / ".bootstrap" / "contract.sha256").write_text(digest + "\n", encoding="utf-8")
+    (target / ".bootstrap.yaml").write_text(
+        "schema_version: 1\n"
+        "contract:\n"
+        "  source_url: file://skill\n"
+        "  source_tag: v0.0.0\n"
+        "  source_commit: '" + ("0" * 40) + "'\n"
+        "  source_sha256: " + digest + "\n"
+        "  sha256_path: .bootstrap/contract.sha256\n"
+        "backlog: .bootstrap/backlog.yaml\n"
+        "ledger: .bootstrap/ledger.yaml\n"
+        "cycle_dir_root: .bootstrap/cycles\n"
+        "red_lines: []\n"
+        "verify_command: 'true'\n",
+        encoding="utf-8",
+    )
+
+
+def make_pin_sync_copy(base: Path, *, mutator) -> Path:
+    skill_root = base / "mut_skill"
+    bin_dir = skill_root / "harness" / "evolve-loop" / "bin"
+    bin_dir.mkdir(parents=True)
+    shutil.copytree(ROOT / "lib", skill_root / "lib", ignore=shutil.ignore_patterns("__pycache__"))
+    text = mutator(PIN_SYNC.read_text(encoding="utf-8"))
+    dst = bin_dir / "pin-sync.py"
+    dst.write_text(text, encoding="utf-8")
+    dst.chmod(0o755)
+    return dst
 
 
 def make_mutated_harness(base: Path) -> Path:
@@ -207,6 +243,50 @@ class StageBRemediationF5(unittest.TestCase):
             proc = run(["bash", str(RELEASE), "--skill", str(skill), "--version", "v1.0.1", "--anchor", anchor, "--backtest-report", str(report), "--dry"])
             self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
             self.assertIn("G4 FAIL: structured adjudication gate failed", proc.stdout + proc.stderr)
+
+
+class StageBRemediationF4(unittest.TestCase):
+    def test_pin_sync_validation_failure_restores_written_pin_files_and_mutation_leaves_dirty(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            skill = base / "skill"
+            skill.mkdir()
+            (skill / "contract.md").write_text("contract v2\n", encoding="utf-8")
+            new_digest = hashlib.sha256((skill / "contract.md").read_bytes()).hexdigest()
+            old_digest = "0" * 64
+
+            target = base / "target"
+            init_repo(target)
+            write_malformed_bootstrap(target, old_digest)
+            before_boot = (target / ".bootstrap.yaml").read_text(encoding="utf-8")
+            before_pin = (target / ".bootstrap" / "contract.sha256").read_text(encoding="utf-8")
+            run(["git", "add", "."], cwd=target, check=True)
+            run(["git", "commit", "-m", "malformed bootstrap"], cwd=target, check=True)
+
+            proc = run([sys.executable, str(PIN_SYNC), "--target", str(target), "--skill", str(skill), "--commit"])
+            self.assertEqual(proc.returncode, 4, proc.stdout + proc.stderr)
+            self.assertIn("missing contract.compatible_range", proc.stderr)
+            self.assertEqual((target / ".bootstrap.yaml").read_text(encoding="utf-8"), before_boot)
+            self.assertEqual((target / ".bootstrap" / "contract.sha256").read_text(encoding="utf-8"), before_pin)
+            self.assertEqual(run(["git", "status", "--porcelain"], cwd=target, check=True).stdout, "")
+
+            def disable_restore(text: str) -> str:
+                self.assertIn("restore_snapshot(pin, pin_state)", text)
+                self.assertIn("restore_snapshot(boot_yaml, boot_state)", text)
+                return text.replace("        restore_snapshot(pin, pin_state)\n        restore_snapshot(boot_yaml, boot_state)\n", "")
+
+            mutant_target = base / "mutant-target"
+            init_repo(mutant_target)
+            write_malformed_bootstrap(mutant_target, old_digest)
+            run(["git", "add", "."], cwd=mutant_target, check=True)
+            run(["git", "commit", "-m", "malformed bootstrap"], cwd=mutant_target, check=True)
+            mutant_pin_sync = make_pin_sync_copy(base / "mutant", mutator=disable_restore)
+            mutant = run([sys.executable, str(mutant_pin_sync), "--target", str(mutant_target), "--skill", str(skill), "--commit"])
+            self.assertEqual(mutant.returncode, 4, mutant.stdout + mutant.stderr)
+            dirty = run(["git", "status", "--porcelain"], cwd=mutant_target, check=True).stdout
+            self.assertIn("M .bootstrap.yaml", dirty)
+            self.assertIn("M .bootstrap/contract.sha256", dirty)
+            self.assertEqual((mutant_target / ".bootstrap" / "contract.sha256").read_text(encoding="utf-8").strip(), new_digest)
 
 
 class StageBRemediationF2(unittest.TestCase):

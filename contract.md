@@ -275,7 +275,7 @@ The goal-completion nudge (`--goal-completion-nudge`, default off) addresses rec
 | harness/evolve-loop/bin/retry-jitter.py | 0dd5dcb49bdeb74f1357bf0f1a428dc275fcb1b9ca25e0d6010135d108b1845a |
 | harness/evolve-loop/bin/skill-read-ref.py | 255f45ebc2f6fd18ad74d0af2d19774dac275b47c5c65a4a914ea0db5222ed52 |
 | harness/evolve-loop/bin/migrate-inplace.sh | f058f9e309141a2ce7c0cdc72aa7e155bae9a6c1bb43a24a3210e44a15de2aaa |
-| harness/evolve-loop/bin/pin-sync.py | d330365df486faf47c844aca905011ba73bf2088bf4df8d616c7360ecc36fe9f |
+| harness/evolve-loop/bin/pin-sync.py | e2e4decc097dd9c26f0e7d75f2a482515057972301b9864c1b35381e253f6ff5 |
 | harness/evolve-loop/bin/release.sh | 609ab60ffdba8ffe679f417f2ecc43b1216305f1d01b01722517aa0b8ed8a86e |
 | harness/evolve-loop/bin/rollback.sh | 1e478a7ebd04777a70685cca28b978df1565fb9aea50c5421bfcaaf3b2f94bec |
 | harness/evolve-loop/bin/run-codex-staged.sh | 854e2eb8b081cbd8f5a28a1c66cb5a77eb8c02cea8f4fda3c4020359bce861e9 |
