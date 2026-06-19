@@ -71,14 +71,44 @@ def check_g4(report_path: pathlib.Path, adj_path: pathlib.Path | None, plan_path
     return 0
 
 
-def changed_files(skill: pathlib.Path, anchor: str) -> list[str]:
+def infer_release_base(skill: pathlib.Path) -> str | None:
+    proc = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(skill),
+            "tag",
+            "--merged",
+            "HEAD",
+            "--list",
+            "v[0-9]*.[0-9]*.[0-9]*",
+            "--sort=-v:refname",
+        ],
+        text=True,
+        capture_output=True,
+    )
+    if proc.returncode == 0:
+        for line in proc.stdout.splitlines():
+            tag = line.strip()
+            if tag:
+                return tag
+    proc = subprocess.run(["git", "-C", str(skill), "rev-parse", "--verify", "HEAD~1"], text=True, capture_output=True)
+    if proc.returncode == 0:
+        return "HEAD~1"
+    return None
+
+
+def changed_files(skill: pathlib.Path, anchor: str | None) -> list[str]:
     names: set[str] = set()
-    commands = [
-        ["git", "-C", str(skill), "diff", "--name-only", f"{anchor}..HEAD"],
+    commands = []
+    base = anchor or infer_release_base(skill)
+    if base:
+        commands.append(["git", "-C", str(skill), "diff", "--name-only", f"{base}..HEAD"])
+    commands.extend([
         ["git", "-C", str(skill), "diff", "--name-only"],
         ["git", "-C", str(skill), "diff", "--cached", "--name-only"],
         ["git", "-C", str(skill), "ls-files", "--others", "--exclude-standard"],
-    ]
+    ])
     for cmd in commands:
         proc = subprocess.run(cmd, text=True, capture_output=True)
         if proc.returncode != 0:
@@ -107,9 +137,6 @@ def check_no_backtest(skill: pathlib.Path, anchor: str | None, reason: str) -> i
 
 
 def check_near_miss(skill: pathlib.Path, anchor: str | None) -> int:
-    if not anchor:
-        print("near-miss check requires --anchor")
-        return 1
     paths = changed_files(skill, anchor)
     rule_changed = any(path in {"runtime/grade_lint.py", "tests/test_grade_lint.py"} for path in paths)
     fixture_changed = any(path.startswith("tests/grade_lint_fixtures/") and path.endswith("metadata.yaml") for path in paths)

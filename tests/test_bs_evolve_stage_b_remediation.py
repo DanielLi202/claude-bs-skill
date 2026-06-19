@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -58,6 +59,56 @@ def make_release_fixture(base: Path) -> tuple[Path, Path, str]:
     return skill, bare, anchor
 
 
+
+def make_harness_copy(base: Path, *, release_mutator=None, gates_mutator=None) -> Path:
+    root = base / "harness" / "evolve-loop" / "bin"
+    root.mkdir(parents=True)
+    for name in ["release.sh", "verify-manifest.sh", "grade-fixture-walker.py", "release-gates.py"]:
+        src = ROOT / "harness" / "evolve-loop" / "bin" / name
+        text = src.read_text(encoding="utf-8")
+        if name == "release.sh" and release_mutator:
+            text = release_mutator(text)
+        if name == "release-gates.py" and gates_mutator:
+            text = gates_mutator(text)
+        dst = root / name
+        dst.write_text(text, encoding="utf-8")
+        dst.chmod(0o755)
+    return root / "release.sh"
+
+
+def update_runtime_manifest(skill: Path) -> None:
+    digest = hashlib.sha256((skill / "runtime" / "grade_lint.py").read_bytes()).hexdigest()
+    contract = skill / "contract.md"
+    text = contract.read_text(encoding="utf-8")
+    text = re.sub(r"\| runtime/grade_lint\.py \| [0-9a-f]{64} \|", f"| runtime/grade_lint.py | {digest} |", text)
+    contract.write_text(text, encoding="utf-8")
+
+
+def add_rule_change(skill: Path) -> None:
+    lint = skill / "runtime" / "grade_lint.py"
+    lint.write_text(
+        lint.read_text(encoding="utf-8") + "\n# rule change touches grade_lint surface\n",
+        encoding="utf-8",
+    )
+    update_runtime_manifest(skill)
+    run(["git", "add", "runtime/grade_lint.py", "contract.md"], cwd=skill, check=True)
+    run(["git", "commit", "-m", "rule change"], cwd=skill, check=True)
+
+
+def add_near_miss_fixture(skill: Path) -> None:
+    fx = skill / "tests" / "grade_lint_fixtures" / "near-miss"
+    fx.mkdir(parents=True)
+    (fx / "metadata.yaml").write_text("task_type: code\nrisk_level: low\nexpect: must_not_fire\n", encoding="utf-8")
+    (fx / "grade.md").write_text("anonymous clean near miss\n", encoding="utf-8")
+    run(["git", "add", "tests/grade_lint_fixtures/near-miss"], cwd=skill, check=True)
+    run(["git", "commit", "-m", "near miss fixture"], cwd=skill, check=True)
+
+
+def write_backtest_report(path: Path, *, misfire: bool = False) -> None:
+    mis = "\nmisfire_candidates:\n  - id: c1\n" if misfire else "\nmisfire_candidates: []\n"
+    path.write_text("must_fire: true" + mis, encoding="utf-8")
+
+
 def make_mutated_harness(base: Path) -> Path:
     root = base / "mut_harness" / "evolve-loop" / "bin"
     root.mkdir(parents=True)
@@ -90,6 +141,40 @@ class StageBRemediationF1(unittest.TestCase):
             bad = run(["bash", str(bad_release), "--skill", str(bad_skill), "--version", "v1.0.1", "--anchor", bad_anchor, "--no-backtest", "contract prose only"])
             self.assertNotEqual(bad.returncode, 0, bad.stdout + bad.stderr)
             self.assertIn("local canonical != tag", bad.stdout + bad.stderr)
+
+
+class StageBRemediationF3F5(unittest.TestCase):
+    def test_no_anchor_rules_release_requires_near_miss_fixture_and_mutation_bypasses(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            skill, _bare, _anchor = make_release_fixture(base / "missing")
+            add_rule_change(skill)
+            report = base / "backtest.yaml"
+            write_backtest_report(report)
+
+            missing = run(["bash", str(RELEASE), "--skill", str(skill), "--version", "v1.0.1", "--backtest-report", str(report), "--dry"])
+            self.assertNotEqual(missing.returncode, 0, missing.stdout + missing.stderr)
+            self.assertIn("G4 FAIL: near-miss fixture missing", missing.stdout + missing.stderr)
+
+            add_near_miss_fixture(skill)
+            with_fixture = run(["bash", str(RELEASE), "--skill", str(skill), "--version", "v1.0.1", "--backtest-report", str(report), "--dry"])
+            self.assertEqual(with_fixture.returncode, 0, with_fixture.stdout + with_fixture.stderr)
+            self.assertIn("DRY: all gates pass", with_fixture.stdout + with_fixture.stderr)
+
+            def skip_no_anchor_near_miss(text: str) -> str:
+                old = '  nm_args=(near-miss --skill "$SKILL")\n  [ -n "$ANCHOR" ] && nm_args+=(--anchor "$ANCHOR")\n  python3 "$HARNESS/bin/release-gates.py" "${nm_args[@]}" >/dev/null || { say "G4 FAIL: near-miss fixture missing"; exit 2; }\n'
+                new = '  if [ -n "$ANCHOR" ]; then\n    python3 "$HARNESS/bin/release-gates.py" near-miss --skill "$SKILL" --anchor "$ANCHOR" >/dev/null || { say "G4 FAIL: near-miss fixture missing"; exit 2; }\n  fi\n'
+                self.assertIn(old, text)
+                return text.replace(old, new)
+
+            mutant_release = make_harness_copy(base / "mutant", release_mutator=skip_no_anchor_near_miss)
+            mutant_skill, _mut_bare, _mut_anchor = make_release_fixture(base / "mutant-skill")
+            add_rule_change(mutant_skill)
+            mutant_report = base / "mutant-backtest.yaml"
+            write_backtest_report(mutant_report)
+            mutant = run(["bash", str(mutant_release), "--skill", str(mutant_skill), "--version", "v1.0.1", "--backtest-report", str(mutant_report), "--dry"])
+            self.assertEqual(mutant.returncode, 0, mutant.stdout + mutant.stderr)
+
 
 
 class StageBRemediationF2(unittest.TestCase):

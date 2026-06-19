@@ -103,9 +103,9 @@ else
   [ -n "$ADJVERIFY" ] && g4_args+=(--adj-verify "$ADJVERIFY")
   [ -n "$PLAN" ] && g4_args+=(--plan-file "$PLAN")
   python3 "$HARNESS/bin/release-gates.py" "${g4_args[@]}" >/dev/null || { say "G4 FAIL: structured adjudication gate failed"; exit 2; }
-  if [ -n "$ANCHOR" ]; then
-    python3 "$HARNESS/bin/release-gates.py" near-miss --skill "$SKILL" --anchor "$ANCHOR" >/dev/null || { say "G4 FAIL: near-miss fixture missing"; exit 2; }
-  fi
+  nm_args=(near-miss --skill "$SKILL")
+  [ -n "$ANCHOR" ] && nm_args+=(--anchor "$ANCHOR")
+  python3 "$HARNESS/bin/release-gates.py" "${nm_args[@]}" >/dev/null || { say "G4 FAIL: near-miss fixture missing"; exit 2; }
   say "G4 ok: must_fire + structured adjudications verified"
 fi
 
