@@ -74,10 +74,35 @@ class BsEvolveB2B3Tests(unittest.TestCase):
         self.assertNotIn(".bootstrap/contract.sha256", text)
 
     def test_release_g1_anchors_top_level_skill_version_not_contract_version(self):
-        text = RELEASE.read_text(encoding="utf-8")
-        self.assertIn("skill.get('version')", text)
-        self.assertNotIn('grep -q "version: "$NUM""', text)
-        self.assertIn("contract.md missing release version", text)
+        with tempfile.TemporaryDirectory() as td:
+            repo = Path(td) / "skill"
+            init_repo(repo)
+            (repo / "skill.yaml").write_text('name: bs\nversion: "1.0.0"\ncontract_version: "1.0.0"\n', encoding="utf-8")
+            (repo / "contract.md").write_text("# Contract\n\nrelease v1.0.0\n", encoding="utf-8")
+            run(["git", "add", "skill.yaml", "contract.md"], cwd=repo)
+            run(["git", "commit", "-m", "base"], cwd=repo)
+            anchor = run(["git", "rev-parse", "HEAD"], cwd=repo).stdout.strip()
+            (repo / "skill.yaml").write_text('name: bs\nversion: "1.0.0"\ncontract_version: "1.0.1"\n', encoding="utf-8")
+            (repo / "contract.md").write_text("# Contract\n\nrelease v1.0.1\n", encoding="utf-8")
+            run(["git", "commit", "-am", "contract-version-only"], cwd=repo)
+            proc = run(
+                [
+                    "bash",
+                    str(RELEASE),
+                    "--skill",
+                    str(repo),
+                    "--version",
+                    "v1.0.1",
+                    "--anchor",
+                    anchor,
+                    "--no-backtest",
+                    "contract prose only",
+                    "--dry",
+                ],
+                check=False,
+            )
+            self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            self.assertIn("skill.yaml top-level version mismatch", proc.stdout + proc.stderr)
 
     def test_command_documents_b2_b3_protocols(self):
         text = COMMAND.read_text(encoding="utf-8")

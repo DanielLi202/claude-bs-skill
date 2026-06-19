@@ -177,6 +177,38 @@ class StageBRemediationF3F5(unittest.TestCase):
 
 
 
+class StageBRemediationF5(unittest.TestCase):
+    def test_g1_uses_top_level_skill_version_behavior_and_mutation_bypasses(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            skill, _bare, anchor = make_release_fixture(base / "g1")
+            (skill / "skill.yaml").write_text('name: bs\nversion: "1.0.0"\ncontract_version: "1.0.1"\n', encoding="utf-8")
+            run(["git", "add", "skill.yaml"], cwd=skill, check=True)
+            run(["git", "commit", "-m", "contract-version-only mismatch"], cwd=skill, check=True)
+            proc = run(["bash", str(RELEASE), "--skill", str(skill), "--version", "v1.0.1", "--anchor", anchor, "--no-backtest", "contract prose only", "--dry"])
+            self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            self.assertIn("skill.yaml top-level version mismatch", proc.stdout + proc.stderr)
+
+            def disable_g1_version_check(text: str) -> str:
+                old = "if str(skill.get('version')) != num:\n    print('skill.yaml top-level version mismatch')\n    sys.exit(1)"
+                self.assertIn(old, text)
+                return text.replace(old, "if False and str(skill.get('version')) != num:\n    print('skill.yaml top-level version mismatch')\n    sys.exit(1)")
+
+            mutant_release = make_harness_copy(base / "g1-mutant", release_mutator=disable_g1_version_check)
+            mutant = run(["bash", str(mutant_release), "--skill", str(skill), "--version", "v1.0.1", "--anchor", anchor, "--no-backtest", "contract prose only", "--dry"])
+            self.assertEqual(mutant.returncode, 0, mutant.stdout + mutant.stderr)
+
+    def test_g4_misfires_without_adjudication_file_are_rejected_by_release(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            skill, _bare, anchor = make_release_fixture(base / "g4")
+            report = base / "misfire-report.yaml"
+            write_backtest_report(report, misfire=True)
+            proc = run(["bash", str(RELEASE), "--skill", str(skill), "--version", "v1.0.1", "--anchor", anchor, "--backtest-report", str(report), "--dry"])
+            self.assertNotEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            self.assertIn("G4 FAIL: structured adjudication gate failed", proc.stdout + proc.stderr)
+
+
 class StageBRemediationF2(unittest.TestCase):
     REAL_CORPUS_TESTS = [
         "tests.test_grade_lint.GradeLintTests.test_cycle028_real_corpus_fires_containment_unavailable_and_trusted_binary_facets",
