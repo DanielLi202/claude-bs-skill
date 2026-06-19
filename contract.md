@@ -262,7 +262,7 @@ The goal-completion nudge (`--goal-completion-nudge`, default off) addresses rec
 | harness/evolve-loop/bin/backtest.py | 399ffb9fe775d5f21c33e8842f8de494351c7b9dc9f2c03207d9726d62b5258b |
 | harness/evolve-loop/bin/bs-evolve-config.py | a84014780b9e39ae2b723b86a78074ee821f3e4e7a23bb707908eda7f76a08d9 |
 | harness/evolve-loop/bin/bs-evolve-gitignore.py | 112a4c3bbfd7e9c18ccd57d459068d8a56c7426c64265066ffb75637062bc15f |
-| harness/evolve-loop/bin/bs-evolve-init.py | 18c98ee42705645dd7fb25527621a21d687e45b55150cd8f6ed5c38f3b41f7f5 |
+| harness/evolve-loop/bin/bs-evolve-init.py | b1b7b5da392260eb381fa637965176ab8f5b8d7d4be1622f0be7ef89320f828c |
 | harness/evolve-loop/bin/closure.py | 287d0291b1fb18a411985f81b49ce26e4a6dfd490546b3f7933a4a0b2f3c72c6 |
 | harness/evolve-loop/bin/evolve-lock.py | fc761ee94b8084892b650ad1c7a41bd59fbed15edfb4beca0f8a998358e4a366 |
 | harness/evolve-loop/bin/grade-fixture-walker.py | 72f54ac0b2a633f1d7b2351cf485de1a7427f6a1fa03c1530f9d038f45fb57a7 |

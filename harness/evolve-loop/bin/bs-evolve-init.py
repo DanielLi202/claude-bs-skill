@@ -242,14 +242,16 @@ def seed_fixture(target: pathlib.Path, cycles: list[pathlib.Path], slug: str) ->
     return out
 
 
-def update_fleet(target: pathlib.Path, slug: str, config: pathlib.Path) -> None:
+def update_fleet_unlocked(target: pathlib.Path, slug: str, config: pathlib.Path) -> None:
+    run([sys.executable, str(FLEET_UPDATE), "--fleet", str(FLEET), "--slug", slug, "--target", str(target), "--config", str(config)])
+
+
+def acquire_skill_lock(slug: str) -> tuple[pathlib.Path, str]:
     lock = FLEET.parent / "SKILL.lock"
-    proc = run([sys.executable, str(LOCK_HELPER), "acquire", "--lock-file", str(lock), "--owner", f"init:{slug}"])
-    token = json.loads(proc.stdout)["token"]
-    try:
-        run([sys.executable, str(FLEET_UPDATE), "--fleet", str(FLEET), "--slug", slug, "--target", str(target), "--config", str(config)])
-    finally:
-        run([sys.executable, str(LOCK_HELPER), "release", "--lock-file", str(lock), "--token", token], check=False)
+    proc = run([sys.executable, str(LOCK_HELPER), "acquire", "--lock-file", str(lock), "--owner", f"init:{slug}"], check=False)
+    if proc.returncode != 0:
+        raise SystemExit("init failed: SKILL.lock held; retry later\n" + proc.stdout + proc.stderr)
+    return lock, json.loads(proc.stdout)["token"]
 
 
 def ensure_skill_ignore() -> None:
@@ -298,14 +300,18 @@ def main() -> int:
     run([sys.executable, str(GITIGNORE_HELPER), "--target", str(target)])
     run([sys.executable, str(GITIGNORE_HELPER), "--target", str(target), "--check"])
     run([sys.executable, str(LOOP_STATE), "--state-dir", str(config_dir), "init", "--target", str(target), "--skill", str(SKILL_REPO), "--mode", args.mode, "--max", str(args.max_iterations)])
-    fixture = seed_fixture(target, cycles, slug)
-    ensure_skill_ignore()
-    update_fleet(target, slug, config)
-    # Ensure local skill state remains ignored while fixture is committed-capable.
-    ignored = run(["git", "-C", str(SKILL_REPO), "check-ignore", "-q", ".bs-evolve/fleet.yaml"], check=False).returncode == 0
-    if not ignored:
-        print("init failed: skill .bs-evolve/fleet.yaml is not ignored", file=sys.stderr)
-        return 4
+    lock, token = acquire_skill_lock(slug)
+    try:
+        fixture = seed_fixture(target, cycles, slug)
+        ensure_skill_ignore()
+        update_fleet_unlocked(target, slug, config)
+        # Ensure local skill state remains ignored while fixture is committed-capable.
+        ignored = run(["git", "-C", str(SKILL_REPO), "check-ignore", "-q", ".bs-evolve/fleet.yaml"], check=False).returncode == 0
+        if not ignored:
+            print("init failed: skill .bs-evolve/fleet.yaml is not ignored", file=sys.stderr)
+            return 4
+    finally:
+        run([sys.executable, str(LOCK_HELPER), "release", "--lock-file", str(lock), "--token", token], check=False)
     print(json.dumps({"target": str(target), "config": str(config), "fixture": str(fixture), "cycles": len(cycles)}, sort_keys=True))
     return 0
 

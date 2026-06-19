@@ -113,6 +113,30 @@ class BsEvolveB6B7Tests(unittest.TestCase):
             data = yaml.safe_load(fleet.read_text(encoding="utf-8"))
             self.assertEqual(sorted(data["projects"]), ["a", "b"])
 
+    def test_init_fails_before_skill_writes_when_skill_lock_is_held(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            skill = ROOT
+            target = base / "target"
+            init_repo(target)
+            dog = target / ".prompts" / "dogfood" / "cycle-001"
+            dog.mkdir(parents=True)
+            (dog / "grade_round_1.md").write_text("enough anonymizable generic evidence text " * 4, encoding="utf-8")
+            run(["git", "add", "."], cwd=target, check=True)
+            run(["git", "commit", "-m", "seed corpus"], cwd=target, check=True)
+            lock = skill / ".bs-evolve" / "SKILL.lock"
+            acq = run([sys.executable, str(skill / "harness" / "evolve-loop" / "bin" / "evolve-lock.py"), "acquire", "--lock-file", str(lock), "--owner", "other"], check=True)
+            try:
+                before = set((skill / "tests" / "grade_lint_fixtures").glob("anon-*"))
+                proc = run([sys.executable, str(skill / "harness" / "evolve-loop" / "bin" / "bs-evolve-init.py"), str(target), "--slug", "locked-demo"])
+                self.assertNotEqual(proc.returncode, 0)
+                self.assertIn("SKILL.lock held", proc.stderr + proc.stdout)
+                after = set((skill / "tests" / "grade_lint_fixtures").glob("anon-*"))
+                self.assertEqual(before, after)
+            finally:
+                token = __import__("json").loads(acq.stdout)["token"]
+                run([sys.executable, str(skill / "harness" / "evolve-loop" / "bin" / "evolve-lock.py"), "release", "--lock-file", str(lock), "--token", token])
+
     def test_fleet_stop_writes_stop_tombstones(self):
         with tempfile.TemporaryDirectory() as td:
             base = Path(td)
