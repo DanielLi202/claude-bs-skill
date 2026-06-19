@@ -253,7 +253,7 @@ The goal-completion nudge (`--goal-completion-nudge`, default off) addresses rec
 | runtime/grade_verify.py | cd7baca6f0102d8920408bfd03d18711f76ad003d353cded54c74935c223407f |
 | runtime/sync_status_marker.py | 4e0371d55d855dd18b6fd403e5c57a27099de412d99349efcd469e2595a3555a |
 | commands/bs.md | 60970c90e67577704fcb5c00aae919cad7202a98dfa8f46e8c1bfc0824275c37 |
-| commands/bs-evolve.md | 71495260b173b69a9579edf2ef3743aab45ac09d0c41cfb4144e4987fd794eb6 |
+| commands/bs-evolve.md | af49ca3152fb4e7822757ca04145b4db82f42a53efcd1afdda9c23029b36cab7 |
 | commands/bs-evolve-init.md | 4716284fbbf6e832891202093f911f597572c22920d6afd6a3fcc9c4bc0e4415 |
 | runtime/validate_events.py | 65b29d5c8a8535c7306368435c2d6665d5ea0f6170689c36615f44d62a587682 |
 | lib/events.py | c01d756672df1661bc444a55ac6f1c0905fac2ad1c8d85ebbd4f51f03b10ce46 |
@@ -263,7 +263,7 @@ The goal-completion nudge (`--goal-completion-nudge`, default off) addresses rec
 | harness/evolve-loop/bin/bs-evolve-config.py | a84014780b9e39ae2b723b86a78074ee821f3e4e7a23bb707908eda7f76a08d9 |
 | harness/evolve-loop/bin/bs-evolve-gitignore.py | 112a4c3bbfd7e9c18ccd57d459068d8a56c7426c64265066ffb75637062bc15f |
 | harness/evolve-loop/bin/bs-evolve-init.py | 5113937c18985ce6cbde22ffdd8b29b194e419fe707f54d1ba9214acae2e84d9 |
-| harness/evolve-loop/bin/closure.py | 450d1a81969da377bab65dbbfb346022067f572ddaa1bcc3257acf6dbcae931e |
+| harness/evolve-loop/bin/closure.py | 287d0291b1fb18a411985f81b49ce26e4a6dfd490546b3f7933a4a0b2f3c72c6 |
 | harness/evolve-loop/bin/evolve-lock.py | 5ddc81b902766b77d915c41a1219e9962636316d4e0ebedf8c6770782058e6fd |
 | harness/evolve-loop/bin/loop-guard.sh | b83bf72c63e2fed2944ec8caa557fb7ea4487d29c60affa37ffd8f7e08a5b397 |
 | harness/evolve-loop/bin/loop-state.py | 4dcc8e1ec115a018d839534ad345038725f8d756a5846ae2ff6a06b798667edc |
@@ -273,6 +273,7 @@ The goal-completion nudge (`--goal-completion-nudge`, default off) addresses rec
 | harness/evolve-loop/bin/release.sh | 6823191c06191c4dff13688f4030b34f636c52f61fd45869a132b54779e92f48 |
 | harness/evolve-loop/bin/rollback.sh | 0badbcc7c737437c6e09a2d7b14c1d2e42d21c1ae111970de161b5ed6a620577 |
 | harness/evolve-loop/bin/run-codex-staged.sh | 854e2eb8b081cbd8f5a28a1c66cb5a77eb8c02cea8f4fda3c4020359bce861e9 |
+| harness/evolve-loop/bin/skill-release-dedup.py | 144c74f7ded54040cfdcc7bd2734b6b5e5de193f86cdf8c79ba00d8f12f3aa8f |
 | harness/evolve-loop/bin/verify-manifest.sh | 38024f4d72815d789992c53724f243bcc504739f9050452df83715f00de2ce11 |
 
 The manifest locks runtime, helper, slash-command, and evolve-loop bin-helper surfaces by making file hashes part of the contract hash. Any listed file change requires updating this table and refreshing adopter bindings.

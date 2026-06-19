@@ -214,6 +214,16 @@ in a private skill worktree, then `release.sh` pushes candidate `HEAD` explicitl
 to `origin/main`, pushes the tag, and fast-forwards the local canonical checkout
 to the tag. It never deletes a pushed tag and never reaches into target repos.
 
+Before implementing, run `skill-release-dedup.py plan --write` with the r2 items
+and current-upstream covered ids. Only items with status `implement` may be
+changed. Items marked `covered_upstream` are recorded in the closure, and items
+already present in `skill_release_items_done` are skipped on re-entry after a
+killed Stage 4 turn. If there is no release to make because all items are covered,
+all deterministic items were already done, all remaining items need human review,
+or there are no deterministic items, the helper writes a non-empty
+`skill_release: {status: no_release, ...}` sentinel so `closure.py next` advances
+to remediation instead of wedging on Stage 4.
+
 Backtest and release evidence are stored under the target-owned `$REVIEWS/<cycle>/` and
 committed to the target repo after release. Target pin-sync is deferred to each
 target Step 0 rather than called from the release path.

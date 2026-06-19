@@ -99,7 +99,9 @@ def main():
             "cycle": cyc,
             "r1": None,                # "done" when r1.md written+committed
             "r2": None,                # "done" when r2.md written+committed
-            "skill_release": None,     # release tag once ALL deterministic r2 items landed
+            "skill_release": None,     # release tag or no-release sentinel once deterministic r2 items are handled
+            "skill_release_items_done": {},  # id -> commit for Stage 4 crash-safe self-recovery
+            "covered_upstream": [],     # deterministic r2 items already covered by a concurrent release
             "remediation": None,       # merge/amendment commit on the target repo
             "escalated_to_human": [],  # non-deterministic items, surfaced in the report
             "closed": False,
