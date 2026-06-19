@@ -253,7 +253,7 @@ The goal-completion nudge (`--goal-completion-nudge`, default off) addresses rec
 | runtime/grade_verify.py | cd7baca6f0102d8920408bfd03d18711f76ad003d353cded54c74935c223407f |
 | runtime/sync_status_marker.py | 4e0371d55d855dd18b6fd403e5c57a27099de412d99349efcd469e2595a3555a |
 | commands/bs.md | 60970c90e67577704fcb5c00aae919cad7202a98dfa8f46e8c1bfc0824275c37 |
-| commands/bs-evolve.md | 265a929f960fab9570c1b130124bb23170fa6c8a2cf7813db84c2051685aa2bb |
+| commands/bs-evolve.md | ef3412d6d31e18806d06f0b25c29082d0b77bbc89e09d2e8cb434e373cda3e08 |
 | commands/bs-evolve-init.md | 4716284fbbf6e832891202093f911f597572c22920d6afd6a3fcc9c4bc0e4415 |
 | runtime/validate_events.py | 65b29d5c8a8535c7306368435c2d6665d5ea0f6170689c36615f44d62a587682 |
 | lib/events.py | c01d756672df1661bc444a55ac6f1c0905fac2ad1c8d85ebbd4f51f03b10ce46 |
@@ -277,7 +277,7 @@ The goal-completion nudge (`--goal-completion-nudge`, default off) addresses rec
 | harness/evolve-loop/bin/migrate-inplace.sh | f058f9e309141a2ce7c0cdc72aa7e155bae9a6c1bb43a24a3210e44a15de2aaa |
 | harness/evolve-loop/bin/pin-sync.py | d330365df486faf47c844aca905011ba73bf2088bf4df8d616c7360ecc36fe9f |
 | harness/evolve-loop/bin/release.sh | 2d018cf02f24b5c6daf8ba0ad11ec8770204ab19957594731db35afd3dfae71d |
-| harness/evolve-loop/bin/rollback.sh | 0badbcc7c737437c6e09a2d7b14c1d2e42d21c1ae111970de161b5ed6a620577 |
+| harness/evolve-loop/bin/rollback.sh | 1e478a7ebd04777a70685cca28b978df1565fb9aea50c5421bfcaaf3b2f94bec |
 | harness/evolve-loop/bin/run-codex-staged.sh | 854e2eb8b081cbd8f5a28a1c66cb5a77eb8c02cea8f4fda3c4020359bce861e9 |
 | harness/evolve-loop/bin/skill-release-dedup.py | 144c74f7ded54040cfdcc7bd2734b6b5e5de193f86cdf8c79ba00d8f12f3aa8f |
 | harness/evolve-loop/bin/verify-manifest.sh | 38024f4d72815d789992c53724f243bcc504739f9050452df83715f00de2ce11 |

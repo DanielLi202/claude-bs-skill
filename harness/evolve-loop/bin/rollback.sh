@@ -1,49 +1,46 @@
 #!/usr/bin/env bash
-# bs-evolve-loop rollback to the pre-release anchor (Stage 4 safety net).
+# bs-evolve-loop forward-safe rollback.
 #
-# Two modes:
-#   (default)  local rollback — release.sh failed BEFORE/at push: hard-reset skill to
-#              the anchor sha, delete the bad local tag, restore target binding files.
-#   --pushed   forward-safe rollback — the bad release reached origin: `git revert` the
-#              release commit (NO history rewrite), drop the tag, re-sync + push target.
-#
-# Usage: rollback.sh --skill P --target P --anchor-sha SHA [--bad-tag vX.Y.Z] [--pushed]
-# Exit:  0 ok | 1 needs manual intervention | 2 usage
+# Rollback always runs under SKILL.lock, reverts an explicitly named bad sha, never
+# resets shared main/HEAD, and never deletes pushed release tags.
+# Usage: rollback.sh --skill P --bad-sha SHA [--summary text] [--dry]
 set -euo pipefail
 
-SKILL=""; TARGET=""; ANCHOR=""; BADTAG=""; PUSHED=0
+SKILL=""; BAD=""; SUMMARY="bs-evolve forward rollback"; DRY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --skill) SKILL="$2"; shift 2 ;;
-    --target) TARGET="$2"; shift 2 ;;
-    --anchor-sha) ANCHOR="$2"; shift 2 ;;
-    --bad-tag) BADTAG="$2"; shift 2 ;;
-    --pushed) PUSHED=1; shift ;;
+    --bad-sha) BAD="$2"; shift 2 ;;
+    --summary) SUMMARY="$2"; shift 2 ;;
+    --dry) DRY=1; shift ;;
+    --target|--anchor-sha|--bad-tag|--pushed) echo "rollback: legacy reset/tag-delete args are refused" >&2; exit 2 ;;
     *) echo "bad arg $1" >&2; exit 2 ;;
   esac
 done
-[ -n "$SKILL" ] && [ -n "$TARGET" ] && [ -n "$ANCHOR" ] || { echo "need --skill --target --anchor-sha" >&2; exit 2; }
+[ -n "$SKILL" ] && [ -n "$BAD" ] || { echo "need --skill --bad-sha" >&2; exit 2; }
+HARNESS="$(cd "$(dirname "$0")/.." && pwd)"
+LOCK="$SKILL/.bs-evolve/SKILL.lock"
 say() { echo "[rollback] $*"; }
 
 cd "$SKILL"
-if [ "$PUSHED" -eq 1 ]; then
-  say "pushed rollback: revert release commit (no history rewrite)"
-  git revert --no-edit HEAD || { say "revert failed — MANUAL intervention required"; exit 1; }
-  [ -n "$BADTAG" ] && { git tag -d "$BADTAG" 2>/dev/null || true; }
-  git push origin main || say "WARN: push revert failed — push manually"
-  [ -n "$BADTAG" ] && { git push origin ":refs/tags/$BADTAG" 2>/dev/null || true; }
-else
-  say "local rollback: reset skill to anchor $ANCHOR"
-  git reset --hard "$ANCHOR"
-  [ -n "$BADTAG" ] && { git tag -d "$BADTAG" 2>/dev/null || true; }
+case "$BAD" in
+  *[!0-9a-f]*|???????????????????????????????????????|?????????????????????????????????????????)
+    say "bad sha must be an explicit 40-character lowercase commit sha"; exit 2 ;;
+esac
+[ "${#BAD}" -eq 40 ] || { say "bad sha must be an explicit 40-character lowercase commit sha"; exit 2; }
+git rev-parse --verify "$BAD^{commit}" >/dev/null || { say "bad sha is not a commit"; exit 2; }
+
+acq="$(python3 "$HARNESS/bin/evolve-lock.py" acquire --lock-file "$LOCK" --owner "rollback:$BAD")" || { say "SKILL.lock held"; exit 11; }
+token="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["token"])' "$acq")"
+trap 'python3 "$HARNESS/bin/evolve-lock.py" release --lock-file "$LOCK" --token "$token" >/dev/null 2>&1 || true' EXIT
+
+if [ "$DRY" -eq 1 ]; then
+  say "DRY: would revert $BAD; no reset, no tag deletion"
+  exit 0
 fi
 
-cd "$TARGET"
-if [ "$PUSHED" -eq 1 ]; then
-  python3 scripts/sync-bs-binding.py --commit || say "WARN: re-sync after revert non-zero"
-  git push origin main || say "WARN: push target failed — push manually"
-else
-  git checkout -- .bootstrap.yaml .bootstrap/contract.sha256 docs/ops/bootstrap-workflow.md 2>/dev/null || true
-fi
-say "rollback done (pushed=$PUSHED). Verify: cd $TARGET && /bs doctor"
-exit 0
+git revert --no-edit "$BAD" || { say "revert failed; resolve manually under SKILL.lock discipline"; exit 1; }
+git commit --amend -m "rollback: revert bad bs release $BAD" -m "$SUMMARY" >/dev/null
+# Do not delete tags. Push only the forward revert.
+git push origin HEAD:refs/heads/main || { say "push rollback failed"; exit 3; }
+say "rollback pushed as forward revert of $BAD; pushed tags preserved"

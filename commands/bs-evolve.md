@@ -290,3 +290,9 @@ No command or cleanup may appear after that terminal wake.
 inside `SKILL.lock` via `fleet-update.py`; concurrent init must not lose updates. Operators can
 fan out STOP tombstones with `fleet-stop.py --fleet <skill>/.bs-evolve/fleet.yaml [--slug name]`.
 Lock-held retry wakes use `retry-jitter.py` so projects do not stampede the same lock.
+
+## Rollback safety
+
+Use `rollback.sh --skill <skill> --bad-sha <explicit-commit>` only under `SKILL.lock`.
+Rollback is a forward revert of the named bad sha; it must never reset shared main,
+must never roll back ambiguous HEAD, and never deletes a pushed tag.
