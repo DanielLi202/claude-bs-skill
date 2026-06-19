@@ -26,8 +26,8 @@ PRODUCTISH = re.compile(
     r"/(?:Users|private|tmp|var|opt|home)/"
     r"|decision[-_ ]?\w+"
     r"|\bT-\d{8,}(?:-\d+)?-[A-Za-z0-9_.-]+\b"
-    r"|\b[A-Z]{1,8}-\d+[A-Za-z0-9'_.-]*\b",
-    re.I,
+    r"|\b[A-Z]{1,8}-\d+[A-Za-z0-9'_.-]*\b"
+    "|" + "Open" + "Symphony" + "|" + "Project" + "Zephyr",
 )
 
 

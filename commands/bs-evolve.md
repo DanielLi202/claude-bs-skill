@@ -226,7 +226,14 @@ to remediation instead of wedging on Stage 4.
 
 Backtest and release evidence are stored under the target-owned `$REVIEWS/<cycle>/` and
 committed to the target repo after release. Target pin-sync is deferred to each
-target Step 0 rather than called from the release path.
+target Step 0 rather than called from the release path. G2 must run the hermetic
+`grade-fixture-walker.py` over committed anonymous must-not-fire fixtures; an empty
+or unreadable fixture root is a hard failure. G4 uses `release-gates.py g4` to
+parse structured misfire adjudications: every misfire needs a matching true-positive
+adjudication plus fresh-verify pass, any false-positive blocks release, and
+unmatched adjudications block release. `--no-backtest` is accepted only when the
+anchor diff avoids grade_lint/rule/fixture/backtest surfaces. Any release touching
+`grade_lint` rule surfaces must add a committed anonymous near-miss fixture.
 
 If `ONCE=1`, stop after this stage without scheduling a wake.
 

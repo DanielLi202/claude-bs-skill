@@ -81,9 +81,11 @@ if f"v{num}" not in text:
     sys.exit(1)
 PY
 
-# ---- G2 unittest ----
+# ---- G2 unittest + hermetic fixture walker ----
 say "G2: unittest suite"
 python3 -m unittest discover -s tests -p 'test_*.py' >/dev/null 2>&1 || { say "G2 FAIL: unittest red"; exit 2; }
+say "G2b: anonymous fixture walker"
+python3 "$HARNESS/bin/grade-fixture-walker.py" --skill "$SKILL" >/dev/null || { say "G2b FAIL: fixture walker red"; exit 2; }
 
 # ---- G3 manifest relock ----
 say "G3: manifest relock"
@@ -92,33 +94,18 @@ bash "$HARNESS/bin/verify-manifest.sh" "$SKILL" >/dev/null || { say "G3 FAIL: ma
 # ---- G4 backtest evidence ----
 if [ -n "$NOBACKTEST" ]; then
   say "G4: backtest SKIPPED — reason: $NOBACKTEST"
+  python3 "$HARNESS/bin/release-gates.py" no-backtest --skill "$SKILL" --anchor "$ANCHOR" --reason "$NOBACKTEST" >/dev/null || { say "G4 FAIL: --no-backtest not allowed for changed surfaces"; exit 2; }
 else
   say "G4: backtest evidence"
   [ -f "$BTREPORT" ] || { say "G4 FAIL: --backtest-report missing (or pass --no-backtest with a reason)"; exit 2; }
-  G4=$(python3 - "$BTREPORT" "${ADJVERIFY:-}" "${PLAN:-}" <<'PY'
-import sys, yaml, pathlib
-rep = yaml.safe_load(pathlib.Path(sys.argv[1]).read_text()) or {}
-if not rep.get("must_fire"):
-    print("must_fire false"); sys.exit(1)
-plan_file = sys.argv[3]
-if plan_file:
-    plan = yaml.safe_load(pathlib.Path(plan_file).read_text()) or {}
-    if rep.get("baseline_ref") != plan.get("baseline_ref"):
-        print(f"baseline_ref mismatch: report={rep.get('baseline_ref')} plan={plan.get('baseline_ref')}"); sys.exit(1)
-mis = rep.get("misfire_candidates") or []
-if mis:
-    av = sys.argv[2]
-    if not av or not pathlib.Path(av).exists():
-        print(f"{len(mis)} misfire candidate(s) but no --adj-verify evidence"); sys.exit(1)
-    text = pathlib.Path(av).read_text()
-    if "agree: false" in text:
-        print("fresh-context verifier DISAGREES with an adjudication"); sys.exit(1)
-    if "adj_verify" not in text:
-        print("adj-verify file lacks the adj_verify verdict block"); sys.exit(1)
-print("ok"); sys.exit(0)
-PY
-) || { say "G4 FAIL: $G4"; exit 2; }
-  say "G4 ok: must_fire + adjudications verified"
+  g4_args=(g4 --report "$BTREPORT")
+  [ -n "$ADJVERIFY" ] && g4_args+=(--adj-verify "$ADJVERIFY")
+  [ -n "$PLAN" ] && g4_args+=(--plan-file "$PLAN")
+  python3 "$HARNESS/bin/release-gates.py" "${g4_args[@]}" >/dev/null || { say "G4 FAIL: structured adjudication gate failed"; exit 2; }
+  if [ -n "$ANCHOR" ]; then
+    python3 "$HARNESS/bin/release-gates.py" near-miss --skill "$SKILL" --anchor "$ANCHOR" >/dev/null || { say "G4 FAIL: near-miss fixture missing"; exit 2; }
+  fi
+  say "G4 ok: must_fire + structured adjudications verified"
 fi
 
 if [ "$DRY" -eq 1 ]; then say "DRY: all gates pass; would tag/push $VERSION on skill only"; exit 0; fi
