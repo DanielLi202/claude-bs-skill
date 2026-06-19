@@ -25,6 +25,14 @@ def payload(proc: subprocess.CompletedProcess[str]) -> dict:
 
 
 class BsEvolveB1LockTests(unittest.TestCase):
+    def test_generated_owner_tokens_are_cli_safe_hex(self):
+        with tempfile.TemporaryDirectory() as td:
+            lock = Path(td) / "RUNNING.lock"
+            proc = run(["python3", str(LOCK), "acquire", "--lock-file", str(lock)], check=True)
+            tok = payload(proc)["token"]
+            self.assertRegex(tok, r"^[0-9a-f]{48}$")
+            self.assertFalse(tok.startswith("-"))
+
     def test_same_project_empty_lock_concurrency_starts_exactly_one_stage(self):
         with tempfile.TemporaryDirectory() as td:
             state = Path(td) / "target" / ".bs-evolve"

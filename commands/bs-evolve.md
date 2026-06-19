@@ -87,10 +87,13 @@ Unit tests cover the state-only part of this contract by running the same persis
    context memory for paths or mode.
 3. Initialize state if absent with config mode:
    `loop-state.py init --target "$BS_LOOP_TARGET_REPO" --skill "$BS_LOOP_SKILL_REPO" --mode "$BS_LOOP_MODE" --max "$BS_LOOP_MAX_ITERATIONS"`.
-4. `loop-guard.sh check-stop "$BS_LOOP_STATE_DIR"`; on STOP, report and end.
-5. `loop-state.py --state-dir "$BS_LOOP_STATE_DIR" should-stop`; on stop reason,
+4. Run `pin-sync.py --target "$BS_LOOP_TARGET_REPO" --skill "$BS_LOOP_SKILL_REPO" --commit --push`
+   if the target's `.bootstrap/contract.sha256` differs from the current skill contract;
+   the helper must leave the target tree clean before any new `/bs` cycle starts.
+5. `loop-guard.sh check-stop "$BS_LOOP_STATE_DIR"`; on STOP, report and end.
+6. `loop-state.py --state-dir "$BS_LOOP_STATE_DIR" should-stop`; on stop reason,
    report and end.
-6. Acquire the per-project lock: `loop-guard.sh acquire "$BS_LOOP_STATE_DIR"`.
+7. Acquire the per-project lock: `loop-guard.sh acquire "$BS_LOOP_STATE_DIR"`.
    The command creates `RUNNING.lock` atomically with a persisted owner token and
    prints JSON containing `token`; store that token in turn-local state and pass it
    to every `heartbeat` and `release`. Exit 11 means another stage is live; run
@@ -102,15 +105,15 @@ Unit tests cover the state-only part of this contract by running the same persis
    - live pgid with suspect markers or age >90 minutes ⇒ inspect log tail and, for
      write stages, `git diff --stat`; converging work re-arms a check-in wake,
      looping work is reaped and retried once with evidence;
-   - otherwise re-arm `ScheduleWakeup(delaySeconds: 1800, reason: "lock-held retry probe", prompt: WAKE_PROMPT)`
-     and end, unless `ONCE=1`, in which case report locked/waiting and end without
-     scheduling.
+   - otherwise compute per-project jitter with `retry-jitter.py --slug "$BS_LOOP_PROJECT_SLUG"`
+     and re-arm `ScheduleWakeup(delaySeconds: <jittered>, reason: "lock-held retry probe", prompt: WAKE_PROMPT)`;
+     end, unless `ONCE=1`, in which case report locked/waiting and end without scheduling.
    During long stages, periodically run
    `loop-guard.sh heartbeat "$BS_LOOP_STATE_DIR" "$RUNNING_LOCK_TOKEN"`; a token
    mismatch is blocking because another owner took over or the lock state is corrupt.
-7. Closure scan uses target-owned reviews:
+8. Closure scan uses target-owned reviews:
    `closure.py --reviews-root "$REVIEWS" newest-open`.
-8. If no open closure exists, adopt the latest eligible target corpus cycle with the
+9. If no open closure exists, adopt the latest eligible target corpus cycle with the
    explicit config lower bound:
    `adopt-cycle.py --corpus-root "$CORPUS" --reviews-root "$REVIEWS" --min-cycle "$BS_LOOP_ADOPT_MIN_CYCLE"`.
    Never scan below that bound; otherwise start a new `/bs` cycle in the target repo.
@@ -280,3 +283,10 @@ ScheduleWakeup(delaySeconds: 90, reason: "next bs-evolve iteration", prompt: WAK
 ```
 
 No command or cleanup may appear after that terminal wake.
+
+## Fleet operations
+
+`/bs-evolve-init` and fleet append operations must update `$BS_LOOP_SKILL_REPO/.bs-evolve/fleet.yaml`
+inside `SKILL.lock` via `fleet-update.py`; concurrent init must not lose updates. Operators can
+fan out STOP tombstones with `fleet-stop.py --fleet <skill>/.bs-evolve/fleet.yaml [--slug name]`.
+Lock-held retry wakes use `retry-jitter.py` so projects do not stampede the same lock.

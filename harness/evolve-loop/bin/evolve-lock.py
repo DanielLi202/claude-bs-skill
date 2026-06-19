@@ -101,7 +101,7 @@ def write_lock_atomic(path: pathlib.Path, payload: dict[str, Any]) -> bool:
 
 def acquire(path: pathlib.Path, *, owner: str, stale_sec: int, inflight_dir: pathlib.Path | None) -> int:
     with lock_guard(path):
-        token = secrets.token_urlsafe(24)
+        token = secrets.token_hex(24)
         payload = {
             "owner_token": token,
             "owner": owner,

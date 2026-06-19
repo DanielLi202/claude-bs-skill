@@ -18,6 +18,8 @@ SCRIPT = pathlib.Path(__file__).resolve()
 SKILL_REPO = SCRIPT.parents[3]
 CONFIG_HELPER = SCRIPT.with_name("bs-evolve-config.py")
 GITIGNORE_HELPER = SCRIPT.with_name("bs-evolve-gitignore.py")
+LOCK_HELPER = SCRIPT.with_name("evolve-lock.py")
+FLEET_UPDATE = SCRIPT.with_name("fleet-update.py")
 LOOP_STATE = SCRIPT.with_name("loop-state.py")
 FIXTURE_ROOT = SKILL_REPO / "tests" / "grade_lint_fixtures"
 GRADE_LINT = SKILL_REPO / "runtime" / "grade_lint.py"
@@ -241,13 +243,13 @@ def seed_fixture(target: pathlib.Path, cycles: list[pathlib.Path], slug: str) ->
 
 
 def update_fleet(target: pathlib.Path, slug: str, config: pathlib.Path) -> None:
-    FLEET.parent.mkdir(parents=True, exist_ok=True)
-    data = yaml.safe_load(FLEET.read_text(encoding="utf-8")) if FLEET.exists() else {}
-    if not isinstance(data, dict):
-        data = {}
-    projects = data.setdefault("projects", {})
-    projects[slug] = {"target_repo": str(target), "config": str(config), "updated_at": now_z()}
-    FLEET.write_text(yaml.safe_dump(data, sort_keys=True), encoding="utf-8")
+    lock = FLEET.parent / "SKILL.lock"
+    proc = run([sys.executable, str(LOCK_HELPER), "acquire", "--lock-file", str(lock), "--owner", f"init:{slug}"])
+    token = json.loads(proc.stdout)["token"]
+    try:
+        run([sys.executable, str(FLEET_UPDATE), "--fleet", str(FLEET), "--slug", slug, "--target", str(target), "--config", str(config)])
+    finally:
+        run([sys.executable, str(LOCK_HELPER), "release", "--lock-file", str(lock), "--token", token], check=False)
 
 
 def ensure_skill_ignore() -> None:
