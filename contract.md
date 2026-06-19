@@ -276,7 +276,7 @@ The goal-completion nudge (`--goal-completion-nudge`, default off) addresses rec
 | harness/evolve-loop/bin/skill-read-ref.py | 255f45ebc2f6fd18ad74d0af2d19774dac275b47c5c65a4a914ea0db5222ed52 |
 | harness/evolve-loop/bin/migrate-inplace.sh | f058f9e309141a2ce7c0cdc72aa7e155bae9a6c1bb43a24a3210e44a15de2aaa |
 | harness/evolve-loop/bin/pin-sync.py | d330365df486faf47c844aca905011ba73bf2088bf4df8d616c7360ecc36fe9f |
-| harness/evolve-loop/bin/release.sh | 2d018cf02f24b5c6daf8ba0ad11ec8770204ab19957594731db35afd3dfae71d |
+| harness/evolve-loop/bin/release.sh | 28acc0438bc1b039e1a14d9456ee3a6b20df85371c9a342e54783c29a3c47b43 |
 | harness/evolve-loop/bin/rollback.sh | 1e478a7ebd04777a70685cca28b978df1565fb9aea50c5421bfcaaf3b2f94bec |
 | harness/evolve-loop/bin/run-codex-staged.sh | 854e2eb8b081cbd8f5a28a1c66cb5a77eb8c02cea8f4fda3c4020359bce861e9 |
 | harness/evolve-loop/bin/skill-release-dedup.py | 144c74f7ded54040cfdcc7bd2734b6b5e5de193f86cdf8c79ba00d8f12f3aa8f |

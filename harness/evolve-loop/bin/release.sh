@@ -35,6 +35,7 @@ done
 HARNESS="$(cd "$(dirname "$0")/.." && pwd)"
 NUM="${VERSION#v}"
 say() { echo "[release] $*"; }
+peel_commit() { git rev-parse "$1^{commit}"; }
 
 cd "$SKILL"
 
@@ -42,7 +43,7 @@ cd "$SKILL"
 DIRTY=0
 git diff --quiet && git diff --cached --quiet || DIRTY=1
 if [ "$DIRTY" -eq 0 ]; then
-  if [ -n "$ANCHOR" ] && [ "$(git rev-parse HEAD)" = "$(git rev-parse "$ANCHOR")" ]; then
+  if [ -n "$ANCHOR" ] && [ "$(git rev-parse HEAD)" = "$(peel_commit "$ANCHOR")" ]; then
     say "tree clean and HEAD == anchor: nothing to release"; exit 2
   fi
   say "per-item commit model (tree clean; will tag HEAD)"
@@ -122,6 +123,6 @@ git push origin "HEAD:refs/heads/main" || { say "push skill main FAILED"; exit 3
 git push origin "$VERSION" || { say "push tag FAILED"; exit 3; }
 git fetch origin main --tags >/dev/null 2>&1 || true
 git merge --ff-only "$VERSION" >/dev/null || { say "local canonical not fast-forwardable to $VERSION"; exit 3; }
-[ "$(git rev-parse HEAD)" = "$(git rev-parse "$VERSION")" ] || { say "local canonical != tag"; exit 3; }
+[ "$(git rev-parse HEAD)" = "$(peel_commit "$VERSION")" ] || { say "local canonical != tag"; exit 3; }
 say "released $VERSION on skill; target pin-sync deferred to target Step 0"
 exit 0
