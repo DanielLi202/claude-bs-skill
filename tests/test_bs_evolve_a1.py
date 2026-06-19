@@ -15,7 +15,9 @@ LOOP_STATE = ROOT / "harness" / "evolve-loop" / "bin" / "loop-state.py"
 class BsEvolveA1ContractTests(unittest.TestCase):
     def test_command_exists_loads_config_and_exports_environment(self):
         text = COMMAND.read_text(encoding="utf-8")
-        self.assertIn("/bs-evolve --config <path-to-config.yaml> [--once]", text)
+        self.assertIn("/loop /bs-evolve [--once]", text)
+        self.assertIn("Advanced `--config` override", text)
+        self.assertIn("/bs-evolve-init", text)
         self.assertIn("bs-evolve-config.py", text)
         self.assertIn("BOOTSTRAP_SKILL_REPO", text)
         self.assertNotIn('eval "$(python3 "$BS_LOOP_SKILL_REPO/harness/evolve-loop/bin/bs-evolve-config.py', text)

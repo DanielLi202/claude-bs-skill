@@ -1,20 +1,30 @@
-<!-- runtime asset: bs-evolve orchestration command; invoked as /bs-evolve --config <path> [--once] -->
+<!-- runtime asset: bs-evolve orchestration command; invoked from a target repo as /loop /bs-evolve [--once] -->
 # /bs-evolve — one closure-ledger iteration
 
 ## Invocation contract
 
-Required form:
+Standard form from an initialized target repository root or subdirectory:
 
 ```text
-/bs-evolve --config <path-to-config.yaml> [--once]
+/loop /bs-evolve [--once]
 ```
 
 The command is the single algorithm body for every adopter. Do not fork or render
-per-project copies. The only project-specific inputs are read from `--config`.
+per-project copies. With no `--config`, the helper discovers the process CWD's git
+root and loads `<target>/.bs-evolve/config.yaml`. If that file is absent, the
+command fails closed before any stage work and tells the operator to run
+`/bs-evolve-init` first; it must not infer defaults or treat the current checkout
+as an uninitialized evolution target.
+
+### Advanced `--config` override
+
+`--config <path>` remains available for non-standard layouts, one checkout with
+multiple projects, or explicit operator override. It fully overrides CWD
+discovery, but it is no longer the standard invocation path.
 
 ### Config schema
 
-`--config` is a YAML mapping owned by the target repo, typically
+The config file is a YAML mapping owned by the target repo, typically
 `<target>/.bs-evolve/config.yaml`:
 
 ```yaml
@@ -28,7 +38,7 @@ corpus_dir: ./corpus
 adopt_min_cycle: 18                     # explicit lower bound for corpus adoption
 mode: auto                              # auto | dry-run
 max_iterations: 5
-wake_prompt: "/bs-evolve --config /absolute/path/to/config.yaml"
+wake_prompt: "/bs-evolve --config /absolute/path/to/config.yaml"  # optional; helper defaults to an absolute self-chain
 ```
 
 Every turn starts by resolving the installed skill root, then loading the config and
@@ -43,7 +53,9 @@ this export; that variable is an output of the helper.
 # command asset, not by target config.
 BOOTSTRAP_SKILL_REPO="<directory containing skill.yaml for this command>"
 test -f "$BOOTSTRAP_SKILL_REPO/skill.yaml"
-eval "$(python3 "$BOOTSTRAP_SKILL_REPO/harness/evolve-loop/bin/bs-evolve-config.py" --config "$CONFIG" --emit-env)"
+CONFIG_ARGS=()
+if [ -n "${CONFIG:-}" ]; then CONFIG_ARGS=(--config "$CONFIG"); fi
+eval "$(python3 "$BOOTSTRAP_SKILL_REPO/harness/evolve-loop/bin/bs-evolve-config.py" "${CONFIG_ARGS[@]}" --emit-env)"
 HARNESS="$BS_LOOP_HARNESS"
 REVIEWS="$BS_LOOP_REVIEWS_ROOT"
 CORPUS="$BS_LOOP_CORPUS_DIR"
@@ -66,7 +78,7 @@ Required exported names: `BS_LOOP_SKILL_REPO`, `BS_LOOP_TARGET_REPO`,
 
 Self-check boundary:
 
-Unit tests cover the state-only part of this contract by running the same persistent state operations used by a one-shot turn and asserting `mode: auto` remains `auto`. The wake-arm half is prompt-level/live-only: only the Stage A exit smoke (`/loop /bs-evolve --config <target>`) can prove that no Stage-7 wake is armed after `--once`; do not replace that live check with a simulated helper.
+Unit tests cover the state-only part of this contract by running the same persistent state operations used by a one-shot turn and asserting `mode: auto` remains `auto`. The wake-arm half is prompt-level/live-only: only the Stage A exit smoke (`/loop /bs-evolve` from an initialized target) can prove that no Stage-7 wake is armed after `--once`; do not replace that live check with a simulated helper.
 
 ## Hard invariants
 
@@ -82,8 +94,8 @@ Unit tests cover the state-only part of this contract by running the same persis
 
 ## Step 0 — load config, stop checks, guard, closure scan
 
-1. Parse args. `CONFIG` is required. `ONCE=1` only when `--once` is present.
-2. Run the config export block above. This is repeated every turn; do not rely on
+1. Parse args. `CONFIG` is optional and set only by advanced `--config <path>` override. `ONCE=1` only when `--once` is present.
+2. Run the config export block above from the target repo CWD unless `CONFIG` overrides it. This is repeated every turn; do not rely on
    context memory for paths or mode.
 3. Initialize state if absent with config mode:
    `loop-state.py init --target "$BS_LOOP_TARGET_REPO" --skill "$BS_LOOP_SKILL_REPO" --mode "$BS_LOOP_MODE" --max "$BS_LOOP_MAX_ITERATIONS"`.

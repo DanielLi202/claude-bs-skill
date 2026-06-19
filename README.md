@@ -1,6 +1,6 @@
 # claude-bs-skill
 
-Bootstrap development workflow skill v1.5.0.
+Bootstrap development workflow skill v1.5.1.
 
 This repository contains the universal `/bs` workflow contract, command descriptions, bundled runtime placeholders, parser libraries, generic agent prompts, and YAML-only initialization templates.
 
