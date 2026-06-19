@@ -8,6 +8,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 ROLLBACK = ROOT / "harness" / "evolve-loop" / "bin" / "rollback.sh"
+EVOLVE_LOCK = ROOT / "harness" / "evolve-loop" / "bin" / "evolve-lock.py"
 COMMAND = ROOT / "commands" / "bs-evolve.md"
 
 
@@ -22,16 +23,53 @@ def init_repo(repo: Path) -> None:
     run(["git", "config", "user.name", "Test User"], cwd=repo, check=True)
 
 
+def make_rollback_fixture(base: Path) -> tuple[Path, Path, str, str, str]:
+    bare = base / "origin.git"
+    run(["git", "init", "--bare", str(bare)], check=True)
+    repo = base / "skill"
+    init_repo(repo)
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    run(["git", "add", "README.md"], cwd=repo, check=True)
+    run(["git", "commit", "-m", "base"], cwd=repo, check=True)
+    run(["git", "remote", "add", "origin", str(bare)], cwd=repo, check=True)
+    run(["git", "push", "origin", "HEAD:refs/heads/main"], cwd=repo, check=True)
+    (repo / "bad.txt").write_text("bad release\n", encoding="utf-8")
+    run(["git", "add", "bad.txt"], cwd=repo, check=True)
+    run(["git", "commit", "-m", "bad release"], cwd=repo, check=True)
+    bad = run(["git", "rev-parse", "HEAD"], cwd=repo, check=True).stdout.strip()
+    run(["git", "tag", "v1.0.1"], cwd=repo, check=True)
+    run(["git", "push", "origin", "HEAD:refs/heads/main", "v1.0.1"], cwd=repo, check=True)
+    (repo / "sibling.txt").write_text("sibling release\n", encoding="utf-8")
+    run(["git", "add", "sibling.txt"], cwd=repo, check=True)
+    run(["git", "commit", "-m", "sibling release"], cwd=repo, check=True)
+    later = run(["git", "rev-parse", "HEAD"], cwd=repo, check=True).stdout.strip()
+    run(["git", "push", "origin", "HEAD:refs/heads/main"], cwd=repo, check=True)
+    return repo, bare, bad, later, "v1.0.1"
+
+
 class BsEvolveB8Tests(unittest.TestCase):
     def test_rollback_script_is_forward_safe_and_lock_held(self):
-        text = ROLLBACK.read_text(encoding="utf-8")
-        self.assertIn("SKILL.lock", text)
-        self.assertIn("evolve-lock.py", text)
-        self.assertIn("git revert --no-edit", text)
-        self.assertIn("git push origin HEAD:refs/heads/main", text)
-        self.assertNotIn("git reset --hard", text)
-        self.assertNotIn("git tag -d", text)
-        self.assertNotIn(":refs/tags", text)
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            repo, bare, bad, later, tag = make_rollback_fixture(base / "forward")
+            proc = run(["bash", str(ROLLBACK), "--skill", str(repo), "--bad-sha", bad, "--summary", "behavior test"])
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            run(["git", "fetch", "origin", "main", "--tags"], cwd=repo, check=True)
+            origin_main = run(["git", "rev-parse", "origin/main"], cwd=repo, check=True).stdout.strip()
+            self.assertEqual(run(["git", "merge-base", "--is-ancestor", later, "origin/main"], cwd=repo).returncode, 0)
+            self.assertEqual(run(["git", f"--git-dir={bare}", "rev-parse", f"{tag}^{{commit}}"], check=True).stdout.strip(), bad)
+            self.assertNotEqual(run(["git", f"--git-dir={bare}", "cat-file", "-e", f"{origin_main}:bad.txt"]).returncode, 0)
+
+            locked_repo, _locked_bare, locked_bad, _locked_later, _locked_tag = make_rollback_fixture(base / "locked")
+            lock = locked_repo / ".bs-evolve" / "SKILL.lock"
+            acq = run([sys.executable, str(EVOLVE_LOCK), "acquire", "--lock-file", str(lock), "--owner", "test"], check=True)
+            token = __import__("json").loads(acq.stdout)["token"]
+            try:
+                locked = run(["bash", str(ROLLBACK), "--skill", str(locked_repo), "--bad-sha", locked_bad, "--dry"])
+                self.assertEqual(locked.returncode, 11, locked.stdout + locked.stderr)
+                self.assertIn("SKILL.lock held", locked.stdout + locked.stderr)
+            finally:
+                run([sys.executable, str(EVOLVE_LOCK), "release", "--lock-file", str(lock), "--token", token], check=True)
 
     def test_rollback_rejects_legacy_reset_and_tag_delete_args(self):
         with tempfile.TemporaryDirectory() as td:

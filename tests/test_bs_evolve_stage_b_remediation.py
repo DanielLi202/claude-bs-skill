@@ -13,6 +13,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE = ROOT / "harness" / "evolve-loop" / "bin" / "release.sh"
 PIN_SYNC = ROOT / "harness" / "evolve-loop" / "bin" / "pin-sync.py"
+ROLLBACK = ROOT / "harness" / "evolve-loop" / "bin" / "rollback.sh"
+EVOLVE_LOCK = ROOT / "harness" / "evolve-loop" / "bin" / "evolve-lock.py"
 
 
 def run(cmd, cwd=None, check=False, env=None):
@@ -143,6 +145,47 @@ def make_pin_sync_copy(base: Path, *, mutator) -> Path:
     dst.write_text(text, encoding="utf-8")
     dst.chmod(0o755)
     return dst
+
+
+def make_rollback_copy(base: Path, *, mutator) -> Path:
+    root = base / "harness" / "evolve-loop" / "bin"
+    root.mkdir(parents=True)
+    for src in (ROLLBACK, EVOLVE_LOCK):
+        text = src.read_text(encoding="utf-8")
+        if src.name == "rollback.sh":
+            text = mutator(text)
+        dst = root / src.name
+        dst.write_text(text, encoding="utf-8")
+        dst.chmod(0o755)
+    return root / "rollback.sh"
+
+
+def make_rollback_fixture(base: Path) -> tuple[Path, Path, str, str, str, str]:
+    bare = base / "origin.git"
+    run(["git", "init", "--bare", str(bare)], check=True)
+    skill = base / "skill"
+    init_repo(skill)
+    (skill / "README.md").write_text("base\n", encoding="utf-8")
+    run(["git", "add", "README.md"], cwd=skill, check=True)
+    run(["git", "commit", "-m", "base"], cwd=skill, check=True)
+    base_sha = run(["git", "rev-parse", "HEAD"], cwd=skill, check=True).stdout.strip()
+    run(["git", "tag", "v1.0.0"], cwd=skill, check=True)
+    run(["git", "remote", "add", "origin", str(bare)], cwd=skill, check=True)
+    run(["git", "push", "origin", "HEAD:refs/heads/main", "v1.0.0"], cwd=skill, check=True)
+
+    (skill / "bad.txt").write_text("bad release\n", encoding="utf-8")
+    run(["git", "add", "bad.txt"], cwd=skill, check=True)
+    run(["git", "commit", "-m", "bad release"], cwd=skill, check=True)
+    bad_sha = run(["git", "rev-parse", "HEAD"], cwd=skill, check=True).stdout.strip()
+    run(["git", "tag", "v1.0.1"], cwd=skill, check=True)
+    run(["git", "push", "origin", "HEAD:refs/heads/main", "v1.0.1"], cwd=skill, check=True)
+
+    (skill / "sibling.txt").write_text("sibling release\n", encoding="utf-8")
+    run(["git", "add", "sibling.txt"], cwd=skill, check=True)
+    run(["git", "commit", "-m", "sibling release"], cwd=skill, check=True)
+    later_sha = run(["git", "rev-parse", "HEAD"], cwd=skill, check=True).stdout.strip()
+    run(["git", "push", "origin", "HEAD:refs/heads/main"], cwd=skill, check=True)
+    return skill, bare, base_sha, bad_sha, later_sha, "v1.0.1"
 
 
 def make_mutated_harness(base: Path) -> Path:
@@ -287,6 +330,76 @@ class StageBRemediationF4(unittest.TestCase):
             self.assertIn("M .bootstrap.yaml", dirty)
             self.assertIn("M .bootstrap/contract.sha256", dirty)
             self.assertEqual((mutant_target / ".bootstrap" / "contract.sha256").read_text(encoding="utf-8").strip(), new_digest)
+
+
+class StageBRemediationF6(unittest.TestCase):
+    def assert_rollback_forward_safe(self, skill: Path, bare: Path, bad_sha: str, later_sha: str, tag: str) -> str:
+        proc = run(["bash", str(ROLLBACK), "--skill", str(skill), "--bad-sha", bad_sha, "--summary", "test rollback"])
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        run(["git", "fetch", "origin", "main", "--tags"], cwd=skill, check=True)
+        origin_main = run(["git", "rev-parse", "origin/main"], cwd=skill, check=True).stdout.strip()
+        self.assertNotEqual(origin_main, bad_sha)
+        self.assertEqual(run(["git", "merge-base", "--is-ancestor", later_sha, "origin/main"], cwd=skill).returncode, 0)
+        tag_commit = run(["git", f"--git-dir={bare}", "rev-parse", f"{tag}^{{commit}}"], check=True).stdout.strip()
+        self.assertEqual(tag_commit, bad_sha)
+        self.assertNotEqual(run(["git", f"--git-dir={bare}", "cat-file", "-e", f"{origin_main}:bad.txt"]).returncode, 0)
+        self.assertEqual(run(["git", f"--git-dir={bare}", "cat-file", "-e", f"{origin_main}:sibling.txt"]).returncode, 0)
+        return origin_main
+
+    def test_rollback_preserves_pushed_tag_main_only_moves_forward_and_lock_held_refuses(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+            skill, bare, _base_sha, bad_sha, later_sha, tag = make_rollback_fixture(base / "good")
+            origin_main = self.assert_rollback_forward_safe(skill, bare, bad_sha, later_sha, tag)
+            self.assertNotEqual(origin_main, later_sha)
+
+            locked_skill, _locked_bare, _locked_base, locked_bad, _locked_later, _locked_tag = make_rollback_fixture(base / "locked")
+            lock = locked_skill / ".bs-evolve" / "SKILL.lock"
+            acq = run([sys.executable, str(EVOLVE_LOCK), "acquire", "--lock-file", str(lock), "--owner", "test-holder"], check=True)
+            token = __import__("json").loads(acq.stdout)["token"]
+            try:
+                locked = run(["bash", str(ROLLBACK), "--skill", str(locked_skill), "--bad-sha", locked_bad, "--dry"])
+                self.assertEqual(locked.returncode, 11, locked.stdout + locked.stderr)
+                self.assertIn("SKILL.lock held", locked.stdout + locked.stderr)
+            finally:
+                run([sys.executable, str(EVOLVE_LOCK), "release", "--lock-file", str(lock), "--token", token], check=True)
+
+    def test_rollback_mutants_delete_tag_or_force_rewind_and_behavior_checks_catch_them(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td)
+
+            def delete_tag(text: str) -> str:
+                needle = 'git push origin HEAD:refs/heads/main || { say "push rollback failed"; exit 3; }\n'
+                self.assertIn(needle, text)
+                return text.replace(needle, needle + 'git push origin :refs/tags/v1.0.1 >/dev/null 2>&1 || true\n')
+
+            tag_mutant = make_rollback_copy(base / "delete-tag-mutant", mutator=delete_tag)
+            tag_skill, tag_bare, _tag_base, tag_bad, _tag_later, tag = make_rollback_fixture(base / "delete-tag")
+            proc = run(["bash", str(tag_mutant), "--skill", str(tag_skill), "--bad-sha", tag_bad, "--summary", "mutant deletes tag"])
+            self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+            self.assertNotEqual(run(["git", f"--git-dir={tag_bare}", "show-ref", "--verify", f"refs/tags/{tag}"]).returncode, 0)
+
+            def force_rewind(text: str) -> str:
+                old = (
+                    'git revert --no-edit "$BAD" || { say "revert failed; resolve manually under SKILL.lock discipline"; exit 1; }\n'
+                    'git commit --amend -m "rollback: revert bad bs release $BAD" -m "$SUMMARY" >/dev/null\n'
+                )
+                self.assertIn(old, text)
+                text = text.replace(old, 'git reset --hard "$BAD^" >/dev/null\n')
+                text = text.replace(
+                    'git push origin HEAD:refs/heads/main || { say "push rollback failed"; exit 3; }',
+                    'git push --force origin HEAD:refs/heads/main || { say "push rollback failed"; exit 3; }',
+                )
+                return text
+
+            force_mutant = make_rollback_copy(base / "force-mutant", mutator=force_rewind)
+            force_skill, force_bare, force_base, force_bad, force_later, _force_tag = make_rollback_fixture(base / "force")
+            force = run(["bash", str(force_mutant), "--skill", str(force_skill), "--bad-sha", force_bad, "--summary", "mutant rewinds"])
+            self.assertEqual(force.returncode, 0, force.stdout + force.stderr)
+            run(["git", "fetch", "origin", "main"], cwd=force_skill, check=True)
+            self.assertEqual(run(["git", "rev-parse", "origin/main"], cwd=force_skill, check=True).stdout.strip(), force_base)
+            self.assertNotEqual(run(["git", "merge-base", "--is-ancestor", force_later, "origin/main"], cwd=force_skill).returncode, 0)
+            self.assertEqual(run(["git", f"--git-dir={force_bare}", "cat-file", "-e", "refs/heads/main:bad.txt"]).returncode, 128)
 
 
 class StageBRemediationF2(unittest.TestCase):
