@@ -46,6 +46,9 @@ def validate_time_fields(obj: dict, lineno: int, last_ts: str | None) -> tuple[i
     occurred = obj.get("occurred_at")
     if occurred is not None and (not isinstance(occurred, str) or not ISO_Z_RE.match(occurred)):
         return fail("ts_missing_or_invalid", step, attempt, f"line {lineno} occurred_at={occurred!r} is non-canonical"), last_ts
+    recorded = obj.get("recorded_at")
+    if isinstance(recorded, str) and isinstance(occurred, str) and time_key(occurred) > time_key(recorded):
+        return fail("occurred_after_recorded", step, attempt, f"line {lineno} occurred_at={occurred!r} after recorded_at={recorded!r}"), last_ts
     if last_ts is not None and time_key(ts) < time_key(last_ts):
         return fail("ts_not_monotonic", step, attempt, f"line {lineno} recorded_at/ts={ts!r} before previous recorded_at/ts={last_ts!r}"), last_ts
     return None, ts

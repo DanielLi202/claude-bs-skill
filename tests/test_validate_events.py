@@ -127,6 +127,14 @@ class ValidateEventsTests(unittest.TestCase):
         ])
         self.assertEqual(proc.returncode, 0, proc.stderr)
 
+    def test_future_occurred_after_recorded_fails(self):
+        proc = self.run_log([
+            ev('step_0', 'started', '2026-06-05T00:00:10Z', occurred_at='2026-06-05T00:00:11Z'),
+        ])
+        self.assertEqual(proc.returncode, 1)
+        self.assertIn('occurred_after_recorded', proc.stderr)
+        self.assertIn("occurred_at='2026-06-05T00:00:11Z' after recorded_at='2026-06-05T00:00:10Z'", proc.stderr)
+
     def test_non_monotonic_recorded_at_fails(self):
         proc = self.run_log([
             ev('step_0', 'started', '2026-06-05T00:00:10Z'),
