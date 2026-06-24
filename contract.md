@@ -1,4 +1,4 @@
-# Bootstrap Development Workflow Contract v1.5.2
+# Bootstrap Development Workflow Contract v1.5.3
 
 > Universal workflow contract for bootstrap-driven repositories. The contract owns orchestration semantics; each repository owns only its binding, backlog, ledger, verification command, and red-line documents.
 
@@ -244,8 +244,8 @@ The goal-completion nudge (`--goal-completion-nudge`, default off) addresses rec
 
 | file | sha256 |
 |---|---|
-| runtime/preflight.sh | 2558616dac1761249ae35f2b6c889ec463c570293d1226bb78fc2a0973d4c0af |
-| runtime/codex_driver.py | 19a9da1c8b3b3b6fd5e4343fc3cfac50163b4f1680b5421039d32385a803dc46 |
+| runtime/preflight.sh | fae4d7638eb16ac94138c75bfd911e07a167b9743fba9346109235315c058395 |
+| runtime/codex_driver.py | 6442e907ec7fe324de955d7bb5acb86f3e1d4f52513e98c9059fa816679b6fae |
 | runtime/codex_fix_driver.py | 0ba1be44f6ddf4f8ff8d40a8a661bd317c85752c5e9597f6c2ac13afb9d1ae4a |
 | runtime/reshape_fix_round.py | a458e5b7dfdf504b594441c48dd81ee83aeb28d0d8f51784ca40e2ded15e5fe3 |
 | runtime/conduct.sh | 3a1877940b0b63cd156cde75878615a0340d91c5ac02ab39ee9f13590e38d726 |
@@ -291,6 +291,7 @@ No parallel cycles, enum extension, severity override, council-member override, 
 
 ## 11. Changelog
 
+- v1.5.3: cycle-004 r2 process-review uptake (aicall-g2 dogfood). Shape role prompt gains a surface-classification guide for boundary cases: an in-process async tool/handler await is NOT `external_subprocess` (classify the tool boundary under `input_validation_or_schema`); a restricted/custom expression-string parser with no `eval`/`exec` is a `string_boundary` surface (parser/dunder/operator-overload injection); tool-argument/registry/result validation incl. `from_dict` of restored state is `input_validation_or_schema` (fail-closed). This lets Shape classify these surfaces correctly BEFORE conduct and avoids the post-conduct frozen-capsule schema repair seen in cycle-004. Prompt/doc only; no grade_lint rule/fixture/backtest surface touched (release skips G4 backtest with reason). Runtime manifest relocked (preflight.sh + codex_driver.py client version -> 1.5.3); clients + `skill.yaml` + `contract.md` title bumped to 1.5.3.
 - v1.5.2: cycle-003 r2 process-review uptake (aicall-g2 dogfood). Shape role prompt documents the exact `risk_surface.surfaces.<surface>` schema (`present`/`not_applicable`+`reason`) so authoring matches the grade_lint requirement; Grade role prompt documents the exact medium/high row binding (`adversarial_ref`+`acceptance_id`+`evidence_ref`; a row `id` alone does not bind a shaped adversarial ID); `runtime/validate_events.py` now rejects future `occurred_at > recorded_at` (backfilled history stays valid) with paired tests. Docs/prompt + one close-validation tightening; no grade_lint rule/fixture/backtest surface touched (release skips G4 backtest with reason). Runtime manifest relocked (preflight.sh + codex_driver.py client version -> 1.5.2); clients + `skill.yaml` + `contract.md` title bumped to 1.5.2. Deferred to a later release: the grade_lint subprocess_lifecycle diagnostic improvement (r2 C3) — un-gateable as a diagnostic-only change with no backtest corpus/escape cycle.
 - v1.5.1: bs-evolve zero-config UX — `/loop /bs-evolve` from an initialized target repo now discovers the CWD git root and loads `<target>/.bs-evolve/config.yaml`; uninitialized git repos fail closed with `/bs-evolve-init` guidance and no env emission; `--config <path>` remains an advanced override and wake prompts keep absolute config paths for cross-turn self-chaining. Runtime manifest relocked; clients + `skill.yaml` + `contract.md` title bumped to 1.5.1.
 - v1.5.0: bs-evolve self-evolution generalization — new `/bs-evolve` + `/bs-evolve-init` command surface turning the previously project-hardcoded evolve loop into a skill-shipped, multi-project-concurrent self-evolution driver. Algorithm single-source in `commands/bs-evolve.md`; per-project runtime state + closure ledgers externalized to each target's `.bs-evolve/` (reviews committed to the target repo, locks/state gitignored); `harness/evolve-loop/bin/*` helpers now manifest-locked. Stage A (decouple + in-place migration tooling `migrate-inplace.sh`) and Stage B (two-lock concurrency with durable on-disk owner tokens + fail-closed revalidation; private-worktree release with annotated-tag-peeled verify + atomic refspec push; floating-pin propagation via committed `/bs-refresh-contract`; structured G4 adjudication gate; global hermetic negative-fixture walker; lock-aware sha-targeted rollback) landed and independently adversarially verified (mutation-killed + real-script-executed). No change to the `/bs` shape/conduct/grade contract — additive command surface only; existing targets re-pin via `/bs-refresh-contract`. Runtime manifest relocked (preflight.sh + codex_driver.py client version → 1.5.0); clients + `skill.yaml` + `contract.md` title bumped to 1.5.0.
